@@ -27,6 +27,7 @@ export function createUI(ctx) {
   // estado geral, em ordem de prioridade
   function state() {
     if (S.booting) return 'boot';
+    if (S.locked) return 'locked';
     if (ctx.term.tasks.size) return 'busy';
     if (S.degraded) return 'degraded';
     if (!navigator.onLine) return 'offline';
@@ -36,8 +37,20 @@ export function createUI(ctx) {
   // campo do cabeçalho: símbolo + valor + tom (ok / warn / err / na)
   function field(id, value, tone) {
     const el = $(id);
-    el.className = 'hf' + (tone ? ' is-' + tone : '');
+    el.classList.remove('is-ok', 'is-warn', 'is-err', 'is-na');
+    if (tone) el.classList.add('is-' + tone);
     el.querySelector('b').textContent = value;
+  }
+
+  // situação da memória: [texto, tom]
+  function mem() {
+    const st = ctx.store;
+    if (!st) return S.locked ? ['bloqueada', 'warn'] : ['NA', 'na'];
+    if (st.kind === 'local') return ['local', 'warn'];
+    const p = st.pending();
+    if (p) return [`fila ${p}`, 'warn'];
+    if (st.status.state === 'cache') return ['sincronizando', 'na'];
+    return ['nuvem', 'ok'];
   }
 
   function yearInfo(d) {
@@ -57,7 +70,9 @@ export function createUI(ctx) {
     // cabeçalho
     $('h-state').querySelector('b').textContent = st.toUpperCase();
     field('h-net', navigator.onLine ? 'ON' : 'OFF', navigator.onLine ? 'ok' : 'err');
-    field('h-mem', S.storeKind ? S.storeKind.toUpperCase() : 'NA', S.storeKind === 'local' ? 'warn' : S.storeKind ? 'ok' : 'na');
+    const [memText, memTone] = mem();
+    field('h-mem', memText.toUpperCase(), memTone);
+    field('h-user', S.user ? S.user.email.split('@')[0] : (S.locked ? '—' : 'local'), S.user ? '' : 'na');
     const wx = S.weather;
     const wxEl = $('h-wx');
     wxEl.className = 'hf' + (wx ? '' : ' is-na');
@@ -69,12 +84,11 @@ export function createUI(ctx) {
     const today = E.filter(e => e.day === tk).length;
     const y = yearInfo(now);
     core.update({ yearPct: y.pct, today });
-    $('core-label').textContent = st.toUpperCase();
 
     const kv = [
-      ['estado', st.toUpperCase(), st === 'ready' ? 'ok' : st === 'busy' || st === 'boot' ? 'hud' : 'warn'],
       ['hoje', today, today ? 'ok' : ''],
-      ['memória', E.length, ''],
+      ['memória', memText, memTone === 'na' ? '' : memTone],
+      ['entradas', E.length, ''],
       ['processos', ctx.term.tasks.size, ctx.term.tasks.size ? 'hud' : ''],
       ['pendentes', 'NA', 'na'],
       ['uptime', dur(Date.now() - S.startedAt), '', 'k-up'],
@@ -114,7 +128,7 @@ export function createUI(ctx) {
     $('ev-n').textContent = L.length;
     const cls = { OK: 'c-act', INF: 'c-meta', WRN: 'c-warn', ERR: 'c-err', AI: 'c-hud' };
     $('events').innerHTML = L.length
-      ? L.slice(-8).reverse().map(e => {
+      ? L.slice(-6).reverse().map(e => {
         const d = new Date(e.ts);
         return `<li><span class="t">${hhmm(d)}:${pad(d.getSeconds())}</span><span class="lv ${cls[e.level]}">${e.level}</span><span title="${esc(e.text)}">${esc(e.text)}</span></li>`;
       }).join('')
@@ -148,7 +162,7 @@ export function createUI(ctx) {
     $('t-total').textContent = E.length;
     $('t-since').textContent = E.length ? (d => `${ddmm(d)}.${d.getFullYear()}`)(new Date(E[0].ts)) : 'NA';
     $('t-size').textContent = ctx.store ? kb(ctx.store.bytes()) : 'NA';
-    $('t-dest').textContent = S.storeKind === 'local' ? 'este navegador' : S.storeKind || 'NA';
+    $('t-dest').textContent = mem()[0];
 
     const cnt = {};
     E.forEach(e => (e.tags || []).forEach(t => { cnt[t] = (cnt[t] || 0) + 1; }));
@@ -167,9 +181,12 @@ export function createUI(ctx) {
   // rodapé: metadados de infraestrutura
   function renderFoot() {
     const sw = 'serviceWorker' in navigator ? (navigator.serviceWorker.controller ? ['ativo', 'ok'] : ['NA', 'na']) : ['NA', 'na'];
+    const [memText, memTone] = mem();
+    const rt = ctx.store?.status?.realtime ?? 'NA';
     const f = [
       ['ENV', location.hostname || 'arquivo', ''],
-      ['MEM', S.storeKind || 'NA', S.storeKind === 'local' ? 'warn' : S.storeKind ? 'ok' : 'na'],
+      ['MEM', memText, memTone],
+      ['RT', rt, rt === 'on' ? 'ok' : rt === 'NA' ? 'na' : 'warn'],
       ['NET', navigator.onLine ? 'online' : 'offline', navigator.onLine ? 'ok' : 'err'],
       ['LAT', S.lastLatency == null ? 'NA' : S.lastLatency + 'ms', S.lastLatency == null ? 'na' : ''],
       ['SESS', dur(Date.now() - S.startedAt), '', 'f-sess'],
@@ -180,7 +197,7 @@ export function createUI(ctx) {
     ];
     $('foot').innerHTML = f.map(([k, v, tone, id]) =>
       `<span class="ff${tone ? ' is-' + tone : ''}"><i>${k}</i><b${id ? ` id="${id}"` : ''}>${esc(v)}</b></span>`).join('');
-    $('work-meta').textContent = `${ctx.term.log.length} eventos · sessão ${dur(Date.now() - S.startedAt)}`;
+    $('work-meta').textContent = { email: 'login · e-mail', code: 'login · código' }[S.mode] || 'captura';
   }
 
   const fmtMs = ms => ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(1) + 's';
@@ -195,10 +212,9 @@ export function createUI(ctx) {
     const up = dur(Date.now() - S.startedAt);
     const k = $('k-up'); if (k) k.textContent = up;
     const f = $('f-sess'); if (f) f.textContent = up;
-    $('work-meta').textContent = `${ctx.term.log.length} eventos · sessão ${up}`;
     document.querySelectorAll('[data-t0]').forEach(el => { el.textContent = fmtMs(performance.now() - +el.dataset.t0); });
     if (d.getMinutes() !== lastMinute) { lastMinute = d.getMinutes(); render(); }
   }
 
-  return { render, tick, state, pulse: core.pulse };
+  return { render, tick, state, mem, pulse: core.pulse };
 }

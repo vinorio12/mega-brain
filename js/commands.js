@@ -69,7 +69,7 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'inbox', alias: ['ls'], args: '[n]', desc: 'últimas n entradas (padrão 10)',
+      name: 'inbox', data: true, alias: ['ls'], args: '[n]', desc: 'últimas n entradas (padrão 10)',
       run(arg) {
         const n = Math.max(1, Math.min(500, parseInt(arg, 10) || 10));
         const items = S.entries.slice(-n);
@@ -77,14 +77,14 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'hoje', desc: 'o que entrou hoje',
+      name: 'hoje', data: true, desc: 'o que entrou hoje',
       run() {
         const k = dayKey(new Date());
         list(S.entries.filter(e => e.day === k), 'hoje');
       },
     },
     {
-      name: 'buscar', alias: ['grep', 'b'], args: '<termo>', desc: 'procura nas entradas (texto ou #tag)',
+      name: 'buscar', data: true, alias: ['grep', 'b'], args: '<termo>', desc: 'procura nas entradas (texto ou #tag)',
       run(arg) {
         if (!arg) throw usage('buscar', '<termo>');
         const q = arg.toLowerCase();
@@ -94,7 +94,7 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'apagar', alias: ['rm'], args: '<n>', desc: 'apaga a entrada #n (dá pra desfazer)', async: true,
+      name: 'apagar', data: true, alias: ['rm'], args: '<n>', desc: 'apaga a entrada #n (dá pra desfazer)', async: true,
       async run(arg, signal, t) {
         const n = parseInt(String(arg).replace('#', ''), 10);
         const e = S.entries[n - 1];
@@ -107,7 +107,7 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'desfazer', alias: ['undo'], desc: 'recupera a última entrada apagada', async: true,
+      name: 'desfazer', data: true, alias: ['undo'], desc: 'recupera a última entrada apagada', async: true,
       async run(arg, signal, t) {
         const e = S.undo.pop();
         if (!e) return term.say('nada pra desfazer.');
@@ -123,12 +123,17 @@ export function createCommands(ctx) {
         const k = dayKey(new Date());
         const state = ctx.ui.state();
         const wx = S.weather;
+        const [memText, memTone] = ctx.ui.mem();
+        const st = ctx.store?.status;
         table([
           ['estado', `<span class="${state === 'ready' ? 'c-act' : state === 'busy' ? 'c-hud' : 'c-warn'}">${state.toUpperCase()}</span>`],
-          ['memória', ctx.store.kind === 'local'
-            ? '<span class="c-warn">local</span> <span class="dim">· só neste navegador, sem nuvem ainda</span>'
-            : '<span class="c-act">nuvem · sincronizada</span>'],
-          ['entradas', `${S.entries.length} <span class="dim">· hoje ${S.entries.filter(e => e.day === k).length} · ${kb(ctx.store.bytes())}</span>`],
+          ['sessão', S.user ? esc(S.user.email) : S.locked ? '<span class="c-warn">bloqueada · digite seu e-mail</span>' : 'modo local'],
+          ['memória', `<span class="${memTone === 'ok' ? 'c-act' : memTone === 'na' ? 'c-meta' : 'c-warn'}">${memText}</span>` +
+            (ctx.store?.kind === 'local' ? ' <span class="dim">· só neste navegador</span>' : '') +
+            (st?.lastSync ? ` <span class="dim">· último sync ${hhmm(new Date(st.lastSync))}</span>` : '') +
+            (st?.lastError ? ` <span class="c-warn">· ${esc(st.lastError)}</span>` : '')],
+          ['tempo real', st?.realtime ?? '<span class="dim">NA</span>'],
+          ['entradas', `${S.entries.length} <span class="dim">· hoje ${S.entries.filter(e => e.day === k).length} · ${ctx.store ? kb(ctx.store.bytes()) : 'NA'}</span>`],
           ['rede', navigator.onLine ? '<span class="c-act">online</span>' : '<span class="c-err">offline</span>'],
           ['latência', S.lastLatency == null ? '<span class="dim">NA</span>' : `${S.lastLatency}ms <span class="dim">· última operação</span>`],
           ['clima', wx ? `${describe(wx.code).icon} ${Math.round(wx.temp)}° ${esc(wx.place.name)} <span class="dim">· ${hhmm(new Date(wx.at))}</span>` : '<span class="dim">NA · /clima ativa</span>'],
@@ -140,9 +145,9 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'clima', alias: ['wx'], args: '[cidade]', desc: 'clima agora · sem cidade usa a última ou sua localização', async: true, announce: true,
+      name: 'clima', alias: ['wx'], args: '[cidade | aqui]', desc: 'clima agora · padrão jaraguá do sul · "aqui" usa sua localização', async: true, announce: true,
       async run(arg, signal, t) {
-        const place = arg ? await geocode(arg, signal) : (savedPlace() || await locate(signal));
+        const place = !arg ? savedPlace() : arg.toLowerCase() === 'aqui' ? await locate(signal) : await geocode(arg, signal);
         const w = await fetchWeather(place, signal);
         S.weather = w;
         const d = describe(w.code);
@@ -176,7 +181,7 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'exportar', alias: ['export'], desc: 'baixa uma cópia de todas as entradas (.json)',
+      name: 'exportar', data: true, alias: ['export'], desc: 'baixa uma cópia de todas as entradas (.json)',
       run() {
         const blob = new Blob([JSON.stringify({ app: 'mega-brain', version: VERSION, exportedAt: new Date().toISOString(), entries: S.entries }, null, 2)], { type: 'application/json' });
         const a = document.createElement('a');
@@ -186,6 +191,26 @@ export function createCommands(ctx) {
         setTimeout(() => URL.revokeObjectURL(a.href), 5000);
         term.ok('store', `exportadas ${S.entries.length} entradas · ${esc(a.download)}`);
       },
+    },
+    {
+      name: 'entrar', alias: ['login'], desc: 'entra na sua conta (pede e-mail e código)',
+      run() { ctx.actions.login(); },
+    },
+    {
+      name: 'sair', alias: ['logout'], desc: 'sai da conta e apaga a cópia deste aparelho', async: true,
+      async run(arg, signal, t) { await ctx.actions.logout(t); },
+    },
+    {
+      name: 'sync', desc: 'envia o que está na fila e busca a versão da nuvem', async: true, announce: true, data: true,
+      async run(arg, signal, t) { await ctx.actions.sync(t); },
+    },
+    {
+      name: 'migrar', desc: 'envia pra nuvem as notas que ficaram no modo local', async: true, announce: true, data: true,
+      async run(arg, signal, t) { await ctx.actions.migrate(t); },
+    },
+    {
+      name: 'instalar', alias: ['install'], desc: 'instala o Mega Brain como app neste aparelho',
+      run() { ctx.actions.install(); },
     },
     {
       name: 'roadmap', desc: 'fases do projeto',

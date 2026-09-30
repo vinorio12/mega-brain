@@ -25,8 +25,11 @@ export function describe(code) {
   return hit ? { icon: hit[1], text: hit[2] } : { icon: '◌', text: `código ${code}` };
 }
 
+// Local padrão quando você ainda não escolheu outro com /clima <cidade>.
+export const DEFAULT_PLACE = { lat: -26.4851, lon: -49.0713, name: 'Jaraguá do Sul', region: 'Santa Catarina' };
+
 export function savedPlace() {
-  try { return JSON.parse(localStorage.getItem(GEO_KEY)); } catch { return null; }
+  try { return JSON.parse(localStorage.getItem(GEO_KEY)) || DEFAULT_PLACE; } catch { return DEFAULT_PLACE; }
 }
 function savePlace(p) {
   try { localStorage.setItem(GEO_KEY, JSON.stringify(p)); } catch {}

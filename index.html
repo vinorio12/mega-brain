@@ -5,7 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#030405">
 <meta name="color-scheme" content="dark">
+<meta name="description" content="Terminal pessoal · segundo cérebro">
 <title>Mega Brain</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mega Brain">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
@@ -13,6 +22,25 @@
 <script type="module" src="js/app.js"></script>
 </head>
 <body>
+<!-- Tela de boot (some sozinha depois das checagens). -->
+<div class="boot" id="boot" aria-hidden="true">
+  <div class="boot-in">
+    <svg class="boot-core" viewBox="-60 -60 120 120">
+      <circle r="56" pathLength="1" class="b1"/>
+      <circle r="44" pathLength="1" class="b2"/>
+      <circle r="30" pathLength="1" class="b3"/>
+      <circle r="14" pathLength="1" class="b4"/>
+      <line x1="0" y1="-60" x2="0" y2="60" class="bx"/>
+      <line x1="-60" y1="0" x2="60" y2="0" class="bx"/>
+      <circle r="4" class="b5"/>
+    </svg>
+    <div class="boot-title"><b>MB</b><i>//</i>CORE</div>
+    <ol class="boot-log" id="boot-log"></ol>
+    <div class="boot-bar"><i id="boot-bar"></i></div>
+    <div class="boot-skip">qualquer tecla pula</div>
+  </div>
+</div>
+
 <!-- Estrutura: cabeçalho, 3 áreas (núcleo | terminal | telemetria) e rodapé de status. -->
 <div class="app" id="app" data-state="boot">
 
@@ -20,7 +48,7 @@
     <div class="ident"><b>MB</b><i>//</i><span>CORE</span><small id="h-ver"></small></div>
     <div class="head-fields">
       <span class="hf hf-state" id="h-state" title="estado da aplicação"><i class="dot"></i><b>BOOT</b></span>
-      <span class="hf hf-user" title="sessão"><span class="k">◈</span><b id="h-user">vini</b></span>
+      <span class="hf hf-user" id="h-user" title="sessão"><span class="k">◈</span><b>—</b></span>
       <span class="hf" id="h-net" title="rede"><span class="k">⇅</span><b>NA</b></span>
       <span class="hf" id="h-mem" title="memória"><span class="k">◫</span><b>NA</b></span>
       <span class="hf" id="h-wx" title="clima"><span class="k">◌</span><b>NA</b></span>
@@ -29,7 +57,7 @@
   </header>
 
   <aside class="intel" aria-label="Núcleo">
-    <div class="ph"><span>núcleo</span><span class="ph-r" id="core-label">—</span></div>
+    <div class="ph"><span>núcleo</span></div>
     <div class="core-wrap"><svg id="core" viewBox="-100 -100 200 200" aria-hidden="true"></svg></div>
     <dl class="kv" id="core-kv"></dl>
     <div class="intel-more">
@@ -73,7 +101,7 @@
         <li><span>entradas</span><b id="t-total">0</b></li>
         <li><span>desde</span><b id="t-since">NA</b></li>
         <li><span>tamanho</span><b id="t-size">NA</b></li>
-        <li><span>destino</span><b id="t-dest">NA</b></li>
+        <li><span>sync</span><b id="t-dest">NA</b></li>
       </ul>
     </section>
     <section>

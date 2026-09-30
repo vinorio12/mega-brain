@@ -32,7 +32,12 @@ Terminal cru, underground. Fundo quase preto, uma fonte monoespaçada (JetBrains
 - `index.html` estrutura da tela · `css/style.css` visual
 - `js/app.js` boot e ligação das peças · `js/terminal.js` saída, log, tarefas, teclado
 - `js/commands.js` comandos · `js/ui.js` painéis · `js/core.js` visualização do núcleo
-- `js/store.js` memória (hoje localStorage; Supabase entra com a mesma interface) · `js/weather.js` clima (Open-Meteo)
+- `js/store.js` memória local · `js/cloud.js` login + memória na nuvem (mesma interface, com cache e fila offline)
+- `js/config.js` URL e chave publishable do Supabase (vazia = modo local)
+- `js/boot.js` tela de boot · `js/weather.js` clima (Open-Meteo, padrão Jaraguá do Sul)
+- `sw.js` + `manifest.webmanifest` + `icons/` PWA (ao mudar arquivos do app, aumentar `CACHE` no sw.js)
+- `supabase/*.sql` banco (rodar no SQL Editor) · `tools/icons.ps1` gera os PNGs dos ícones
+- `.mcp.json` conecta o MCP do Supabase (projeto xfvfgidvqrubdtogtczy)
 
 ## Formato de uma entrada (protótipo)
 { text, tags[], kind: "nota", ts (epoch ms), day "AAAA-MM-DD" }
@@ -41,9 +46,11 @@ Terminal cru, underground. Fundo quase preto, uma fonte monoespaçada (JetBrains
 - [x] 0. Esqueleto (protótipo no Cowork): terminal, HUD (hoje, semana, ano, memória, tags, módulos), inbox, comandos /ajuda /inbox /hoje /buscar /apagar /desfazer /status /roadmap /limpar
 - [ ] 0.5. Migrar o protótipo para app próprio (PWA + banco na nuvem + login)
   - [x] separar em arquivos + visual novo + terminal (histórico, tab, ctrl+c, ctrl+k, tarefas com ID, erros com código) + /clima
-  - [ ] Supabase (banco + login só do Vini)
-  - [ ] PWA (manifest, ícone, service worker)
-  - [ ] publicar com link próprio
+  - [x] boot animado, clima padrão Jaraguá do Sul, HUD sem repetições
+  - [x] código do Supabase: login por código no e-mail, memória na nuvem com fila offline e tempo real, /entrar /sair /sync /migrar
+  - [ ] Supabase configurado (rodar supabase/001_entries.sql, criar usuário, desligar cadastro, chave em js/config.js)
+  - [x] PWA (manifest, ícones, service worker, /instalar)
+  - [ ] publicar no GitHub Pages (repositório público)
 - [ ] 1. Tarefas e projetos: tabs Hoje, TCC, WEG, Pessoal, prazos, concluir
 - [ ] 2. IA intérprete: texto livre vira tarefa, gasto, treino etc.
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês

@@ -6,7 +6,8 @@
 
 import { uid } from './util.js';
 
-const KEY = 'mb.entries.v1';
+export const LOCAL_KEY = 'mb.entries.v1';
+const KEY = LOCAL_KEY;
 
 export function createLocalStore() {
   let entries = [];
@@ -70,5 +71,8 @@ export function createLocalStore() {
     bytes() {
       return (localStorage.getItem(KEY) || '').length * 2;
     },
+
+    pending: () => 0,
+    status: { state: 'local', realtime: 'NA', lastSync: null, lastError: null },
   };
 }

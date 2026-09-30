@@ -11,7 +11,7 @@ const HIST_KEY = 'mb.hist.v1';
 const LEVEL_CLASS = { OK: 'ok', INF: 'inf', WRN: 'wrn', ERR: 'err', AI: 'ai' };
 const DEFAULT_HINT = 'tab completa · ↑↓ histórico · ctrl+k limpa';
 
-export function createTerminal({ out, input, form, hint, completions, onSubmit, onChange }) {
+export function createTerminal({ out, input, form, hint, completions, privacy, onSubmit, onChange }) {
   const log = [];
   const tasks = new Map();
   let seq = 0;
@@ -171,14 +171,15 @@ export function createTerminal({ out, input, form, hint, completions, onSubmit, 
     const v = input.value.trim();
     input.value = '';
     if (!v) return;
-    if (hist[hist.length - 1] !== v) {
+    const priv = privacy?.(); // 'mask' = esconde na tela · 'nohist' = só não guarda no histórico
+    if (!priv && hist[hist.length - 1] !== v) {
       hist.push(v);
       hist = hist.slice(-200);
       try { localStorage.setItem(HIST_KEY, JSON.stringify(hist)); } catch {}
     }
     hi = hist.length;
     draft = '';
-    echo(v);
+    echo(priv === 'mask' ? '•'.repeat(v.length) : v);
     onSubmit(v);
   });
 

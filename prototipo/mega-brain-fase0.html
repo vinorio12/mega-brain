@@ -1,0 +1,483 @@
+<title>Mega Brain</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Share+Tech+Mono&display=swap">
+<style>
+/* Layout: HUD de status à esquerda + terminal principal à direita; no celular o HUD vira uma faixa compacta acima do terminal. Visual único escuro, por escolha. */
+:root{
+  --bg:#040705;
+  --panel:#07100a;
+  --line:#123822;
+  --line-hi:#1f5c38;
+  --fg:#a9f5c4;
+  --neon:#3dff8f;
+  --glow:rgba(61,255,143,.38);
+  --dim:#56866a;
+  --faint:#2a4a36;
+  --amber:#ffc857;
+  --red:#ff5d6c;
+  --scan:rgba(61,255,143,.028);
+  --vignette:rgba(0,0,0,.55);
+  --mono:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --hud:"Share Tech Mono", "JetBrains Mono", ui-monospace, monospace;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 var(--mono);overflow:hidden;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:10;background:repeating-linear-gradient(to bottom,var(--scan) 0 1px,transparent 1px 3px)}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:9;background:radial-gradient(ellipse at center,transparent 55%,var(--vignette) 100%)}
+
+.app{height:100%;display:grid;grid-template-columns:250px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);grid-template-areas:"bar bar" "hud term";gap:16px;padding-block:14px;padding-inline:16px;max-width:1400px;margin-inline:auto}
+
+/* barra superior */
+.bar{grid-area:bar;display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:10px;font-family:var(--hud);text-transform:uppercase;letter-spacing:.08em;font-size:13px}
+.brand{color:var(--neon);text-shadow:0 0 10px var(--glow);font-size:16px;letter-spacing:.22em;white-space:nowrap}
+.brand .ver{color:var(--dim);font-size:12px;letter-spacing:.12em;margin-left:10px;text-shadow:none}
+.bar-right{display:flex;gap:18px;align-items:center;color:var(--dim)}
+.clock{color:var(--fg);font-variant-numeric:tabular-nums}
+.sync{display:inline-flex;align-items:center;gap:7px}
+.sync i{width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.sync b{font-weight:400;color:var(--amber)}
+.sync[data-s="online"] i{background:var(--neon);box-shadow:0 0 8px var(--neon)}
+.sync[data-s="online"] b{color:var(--neon)}
+.sync[data-s="erro"] i{background:var(--red);box-shadow:0 0 8px var(--red)}
+.sync[data-s="erro"] b{color:var(--red)}
+@media (prefers-reduced-motion:no-preference){.sync[data-s="conectando"] i{animation:pulse .9s infinite alternate}}
+@keyframes pulse{to{opacity:.2}}
+
+/* HUD */
+.hud{grid-area:hud;display:flex;flex-direction:column;gap:20px;overflow-y:auto;min-height:0;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+.hud h2{margin:0 0 9px;font:400 11px/1 var(--hud);letter-spacing:.22em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:8px}
+.hud h2::after{content:"";flex:1;height:1px;background:var(--line)}
+.big{font:400 46px/1 var(--hud);color:var(--neon);text-shadow:0 0 14px var(--glow);font-variant-numeric:tabular-nums}
+.sub{color:var(--dim);font-size:12px;margin-top:5px}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;height:88px}
+.wd{display:grid;grid-template-rows:auto minmax(0,1fr) auto;justify-items:center;gap:4px;font-size:11px;color:var(--dim);min-height:0}
+.wn{font-variant-numeric:tabular-nums;min-height:1.2em}
+.wb{width:100%;display:flex;align-items:flex-end;background:var(--bg);border:1px solid var(--line);min-height:0}
+.wb i{display:block;width:100%;background:var(--neon);opacity:.5}
+.wd.is-today .wb{border-color:var(--line-hi)}
+.wd.is-today .wb i{opacity:1;box-shadow:0 0 10px var(--glow)}
+.wd.is-today .wl,.wd.is-today .wn{color:var(--neon)}
+.wd.is-future{opacity:.35}
+.meter{height:6px;background:var(--bg);border:1px solid var(--line)}
+.meter i{display:block;height:100%;width:0;background:var(--neon);box-shadow:0 0 8px var(--glow)}
+.list{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:12px}
+.list li{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.list b{font-weight:400;color:var(--fg);font-variant-numeric:tabular-nums}
+.list .empty{color:var(--faint)}
+.pill{font:11px/1.6 var(--hud);letter-spacing:.1em;color:var(--dim);border:1px solid var(--line);padding:0 6px;white-space:nowrap}
+.pill.on{color:var(--neon);border-color:var(--line-hi);text-shadow:0 0 8px var(--glow)}
+.mods li span:first-child{color:var(--fg)}
+.mods li.off span:first-child{color:var(--dim)}
+
+/* terminal */
+.term{grid-area:term;display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);background:var(--panel);position:relative}
+.term::before,.term::after{content:"";position:absolute;width:14px;height:14px;border:0 solid var(--neon);pointer-events:none;opacity:.85}
+.term::before{top:-1px;left:-1px;border-width:1px 0 0 1px}
+.term::after{bottom:-1px;right:-1px;border-width:0 1px 1px 0}
+.out{flex:1;overflow-y:auto;padding:16px 18px;min-height:0;overflow-wrap:anywhere;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+.ln{white-space:pre-wrap}
+.echo{margin-top:10px;color:var(--fg)}
+.caret{color:var(--neon)}
+.ok{color:var(--neon)}
+.warn{color:var(--amber)}
+.err{color:var(--red)}
+.dim{color:var(--dim)}
+.tag{color:var(--neon)}
+.num{color:var(--dim);display:inline-block;min-width:4ch;font-variant-numeric:tabular-nums}
+.stamp{color:var(--dim);font-variant-numeric:tabular-nums}
+.okc{color:var(--neon)}
+.amb{color:var(--amber)}
+.redc{color:var(--red)}
+.title-line{margin-bottom:6px}
+.title-line .neon{font-family:var(--hud);font-size:22px;letter-spacing:.24em}
+.neon{color:var(--neon);text-shadow:0 0 10px var(--glow)}
+.help{display:grid;grid-template-columns:19ch minmax(0,1fr);gap:14px}
+.help .k{color:var(--neon)}
+.kv{display:grid;grid-template-columns:11ch minmax(0,1fr);gap:14px}
+.kv .k{color:var(--dim)}
+.prompt{display:flex;align-items:center;gap:10px;border-top:1px solid var(--line);padding:12px 18px;margin:0}
+.prompt:focus-within{border-top-color:var(--line-hi)}
+.ps{color:var(--neon);white-space:nowrap;text-shadow:0 0 8px var(--glow);cursor:text}
+.ps .path{color:var(--dim);text-shadow:none}
+#cmd{flex:1;min-width:0;background:transparent;border:0;outline:0;color:var(--fg);font:inherit;caret-color:var(--neon);padding:0}
+#cmd::placeholder{color:var(--faint)}
+
+@media (max-width:760px){
+  .app{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr);grid-template-areas:"bar" "hud" "term";gap:12px;padding-block:10px}
+  .hud{display:grid;grid-template-columns:auto minmax(0,1fr);gap:18px;overflow:visible}
+  .hud .desk{display:none}
+  .big{font-size:34px}
+  .week{height:58px}
+  .bar-right .date{display:none}
+  .brand .ver{display:none}
+  .ps .who{display:none}
+  #cmd{font-size:16px}
+  .out{padding:12px 14px}
+  .prompt{padding:10px 14px}
+  .help{grid-template-columns:minmax(0,1fr);gap:0}
+  .kv{grid-template-columns:9ch minmax(0,1fr);gap:10px}
+  .help{margin-bottom:6px}
+}
+</style>
+
+<div class="app">
+  <header class="bar">
+    <div class="brand">Mega Brain<span class="ver">MF · v0.1 · fase 0</span></div>
+    <div class="bar-right">
+      <span class="sync" id="sync" data-s="conectando"><i></i><b>conectando</b></span>
+      <span class="date" id="date"></span>
+      <span class="clock" id="clock">--:--:--</span>
+    </div>
+  </header>
+
+  <aside class="hud" aria-label="Painel de status">
+    <section>
+      <h2>Hoje</h2>
+      <div class="big" id="h-today">0</div>
+      <div class="sub">entradas capturadas</div>
+    </section>
+    <section>
+      <h2>Semana</h2>
+      <div class="week" id="h-week"></div>
+      <div class="sub desk" id="h-week-sum">0 na semana</div>
+    </section>
+    <section class="desk">
+      <h2 id="h-year-title">Ano</h2>
+      <div class="meter"><i id="h-year-bar"></i></div>
+      <div class="sub" id="h-year"></div>
+    </section>
+    <section class="desk">
+      <h2>Memória</h2>
+      <ul class="list">
+        <li><span>entradas</span><b id="h-total">0</b></li>
+        <li><span>desde</span><b id="h-since">—</b></li>
+      </ul>
+    </section>
+    <section class="desk">
+      <h2>Tags</h2>
+      <ul class="list" id="h-tags"><li class="empty">use #tags nas notas</li></ul>
+    </section>
+    <section class="desk">
+      <h2>Módulos</h2>
+      <ul class="list mods">
+        <li><span>inbox</span><span class="pill on">online</span></li>
+        <li class="off"><span>tarefas</span><span class="pill">fase 1</span></li>
+        <li class="off"><span>ia intérprete</span><span class="pill">fase 2</span></li>
+        <li class="off"><span>finanças</span><span class="pill">fase 3</span></li>
+        <li class="off"><span>corpo e hábitos</span><span class="pill">fase 4</span></li>
+        <li class="off"><span>dashboards</span><span class="pill">fase 5</span></li>
+        <li class="off"><span>coach</span><span class="pill">fase 6</span></li>
+      </ul>
+    </section>
+  </aside>
+
+  <main class="term" id="term">
+    <div class="out" id="out" role="log" aria-live="polite"></div>
+    <form class="prompt" id="form" autocomplete="off">
+      <label for="cmd" class="ps"><span class="who">vini@megabrain</span><span class="path">:~$</span></label>
+      <input id="cmd" name="cmd" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" placeholder="escreva qualquer coisa · /ajuda">
+    </form>
+  </main>
+</div>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const out = $('#out'), input = $('#cmd'), form = $('#form'), term = $('#term');
+  const S = { entries: [], col: null, hist: [], hi: 0, undo: null, synced: false, local: false, memLine: null, startedAt: Date.now() };
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const DOW = ['dom','seg','ter','qua','qui','sex','sáb'];
+  const MON = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+
+  const pad = n => String(n).padStart(2, '0');
+  const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const dayKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const hhmm = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const ddmm = d => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
+  const hl = t => esc(t).replace(/#([\p{L}\p{N}_-]+)/gu, '<span class="tag">#$1</span>');
+  const sleep = ms => new Promise(r => setTimeout(r, reduce ? 0 : ms));
+
+  function line(html, cls) {
+    const d = document.createElement('div');
+    d.className = 'ln' + (cls ? ' ' + cls : '');
+    d.innerHTML = html;
+    out.appendChild(d);
+    out.scrollTop = out.scrollHeight;
+    return d;
+  }
+
+  /* relógio e data */
+  function tick() {
+    const d = new Date();
+    $('#clock').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    $('#date').textContent = `${DOW[d.getDay()]} ${pad(d.getDate())} ${MON[d.getMonth()]} ${d.getFullYear()}`;
+    if (d.getSeconds() === 0) renderHud();
+  }
+
+  function yearInfo(d) {
+    const start = new Date(d.getFullYear(), 0, 1), next = new Date(d.getFullYear() + 1, 0, 1);
+    const day = Math.floor((d - start) / 864e5) + 1, total = Math.round((next - start) / 864e5);
+    return { day, total, pct: day / total };
+  }
+
+  /* painel lateral, sempre calculado a partir das entradas reais */
+  function renderHud() {
+    const now = new Date(), tk = dayKey(now), E = S.entries;
+    $('#h-today').textContent = E.filter(e => e.day === tk).length;
+
+    const dow = (now.getDay() + 6) % 7;
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+    const days = [...Array(7)].map((_, i) => {
+      const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+      const k = dayKey(d);
+      return { k, n: E.filter(e => e.day === k).length, today: k === tk, future: d > now && k !== tk, label: 'STQQSSD'[i] };
+    });
+    const max = Math.max(1, ...days.map(x => x.n));
+    $('#h-week').innerHTML = days.map(x =>
+      `<div class="wd${x.today ? ' is-today' : ''}${x.future ? ' is-future' : ''}" title="${x.k}: ${x.n}">` +
+      `<span class="wn">${x.future ? '' : x.n}</span><span class="wb"><i style="height:${Math.round(x.n / max * 100)}%"></i></span><span class="wl">${x.label}</span></div>`
+    ).join('');
+    const wk = days.reduce((a, x) => a + x.n, 0);
+    $('#h-week-sum').textContent = `${wk} na semana`;
+
+    const y = yearInfo(now);
+    $('#h-year-title').textContent = `Ano ${now.getFullYear()}`;
+    $('#h-year-bar').style.width = (y.pct * 100).toFixed(1) + '%';
+    $('#h-year').textContent = `dia ${y.day} de ${y.total} · ${Math.round(y.pct * 100)}%`;
+
+    $('#h-total').textContent = E.length;
+    $('#h-since').textContent = E.length ? (d => `${ddmm(d)}/${d.getFullYear()}`)(new Date(E[0].ts)) : '—';
+
+    const cnt = {};
+    E.forEach(e => (e.tags || []).forEach(t => { cnt[t] = (cnt[t] || 0) + 1; }));
+    const top = Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    $('#h-tags').innerHTML = top.length
+      ? top.map(([t, n]) => `<li><span class="tag">#${esc(t)}</span><b>${n}</b></li>`).join('')
+      : '<li class="empty">use #tags nas notas</li>';
+  }
+
+  function setSync(s, label) {
+    const el = $('#sync');
+    el.dataset.s = s;
+    el.querySelector('b').textContent = label || s;
+  }
+
+  /* memória (banco de dados privado do usuário) */
+  async function initDb() {
+    const cl = window.claude;
+    if (!cl || typeof cl.use !== 'function') return goLocal();
+    try {
+      const [db, user] = await Promise.all([cl.use('db'), cl.use('user')]);
+      if (!db || !user) return goLocal();
+      const uid = await user.id();
+      if (!uid) return goLocal();
+      S.col = db.doc('data/users/' + uid + '/brain').collection('entries');
+      S.col.orderBy('ts', 'desc').limit(1000).onSnapshot(snap => {
+        S.entries = snap.docs.map(d => Object.assign({ id: d.id }, d.data())).reverse();
+        renderHud();
+        if (!S.synced) {
+          S.synced = true;
+          setSync('online', 'online');
+          S.memLine.innerHTML = `<span class="okc">[ok]</span> memória sincronizada · ${S.entries.length} entradas`;
+          ready();
+        }
+      }, err => {
+        setSync('erro', 'erro');
+        line(`[!!] a memória parou de responder (${esc(err.code || 'erro')}). recarregue a página.`, 'err');
+      });
+    } catch (e) {
+      goLocal();
+    }
+  }
+
+  function goLocal() {
+    S.local = true;
+    setSync('local', 'local');
+    S.memLine.innerHTML = '<span class="amb">[!!]</span> memória indisponível · modo local, nada será salvo';
+    ready();
+  }
+
+  function ready() {
+    line('<span class="dim">escreva qualquer coisa pra capturar. </span><span class="ok">/ajuda</span><span class="dim"> mostra os comandos.</span>');
+  }
+
+  /* captura */
+  async function capture(text) {
+    const tags = [...new Set([...text.matchAll(/#([\p{L}\p{N}_-]+)/gu)].map(m => m[1].toLowerCase()))];
+    const now = new Date();
+    const doc = { text, tags, kind: 'nota', ts: now.getTime(), day: dayKey(now) };
+    const tagTxt = tags.length ? ' · ' + tags.map(t => `<span class="tag">#${esc(t)}</span>`).join(' ') : '';
+    if (S.col) {
+      try {
+        await S.col.add(doc);
+        line(`<span class="ok">✓ capturado</span> <span class="stamp">· ${hhmm(now)}</span>${tagTxt}`);
+      } catch (e) {
+        line(`✕ não consegui salvar (${esc(e.code || 'erro')}). ${e.code === 'quota_exceeded' ? 'a memória está cheia.' : 'tente de novo.'}`, 'err');
+      }
+    } else {
+      S.entries.push(Object.assign({ id: 'local-' + now.getTime() }, doc));
+      renderHud();
+      line(`<span class="warn">✓ capturado (só nesta tela)</span> <span class="stamp">· ${hhmm(now)}</span>${tagTxt}`);
+    }
+  }
+
+  function list(items, title) {
+    if (!items.length) return line(`nada em ${title}.`, 'dim');
+    line(`── ${title} ──────────`, 'dim');
+    items.forEach(e => {
+      const d = new Date(e.ts), n = S.entries.indexOf(e) + 1;
+      line(`<span class="num">#${n}</span> <span class="stamp">${ddmm(d)} ${hhmm(d)}</span>  ${hl(e.text)}`);
+    });
+  }
+
+  function uptime() {
+    const s = Math.floor((Date.now() - S.startedAt) / 1000);
+    return `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
+  }
+
+  const HELP = [
+    ['qualquer texto', 'captura na inbox. use #tags: ler cap 2 #tcc'],
+    ['/inbox [n]', 'últimas n entradas (padrão 10)'],
+    ['/hoje', 'o que entrou hoje'],
+    ['/buscar <termo>', 'procura nas entradas'],
+    ['/apagar <n>', 'apaga a entrada #n'],
+    ['/desfazer', 'recupera a última apagada'],
+    ['/status', 'estado do sistema'],
+    ['/roadmap', 'o que vem nas próximas fases'],
+    ['/limpar', 'limpa a tela (ctrl+l)'],
+    ['↑ ↓', 'navega no histórico de comandos'],
+  ];
+
+  const PHASES = [
+    ['0', 'esqueleto · terminal, hud, inbox', true],
+    ['1', 'tarefas e projetos · tabs hoje, tcc, weg, pessoal', false],
+    ['2', 'ia intérprete · escrever sem decorar comando', false],
+    ['3', 'finanças · gastos, entradas, saldo do mês', false],
+    ['4', 'corpo e hábitos · treino, saúde, padrão semanal', false],
+    ['5', 'dashboards · gráficos e tendências', false],
+    ['6', 'coach · resumo do dia, revisão da semana', false],
+  ];
+
+  const CMDS = {
+    ajuda() {
+      HELP.forEach(([k, v]) => line(`<span class="k">${esc(k)}</span><span class="dim">${esc(v)}</span>`, 'help'));
+    },
+    inbox(arg) {
+      const n = Math.max(1, Math.min(200, parseInt(arg, 10) || 10));
+      const items = S.entries.slice(-n);
+      list(items, `inbox · ${items.length} de ${S.entries.length}`);
+    },
+    hoje() {
+      const k = dayKey(new Date());
+      list(S.entries.filter(e => e.day === k), 'hoje');
+    },
+    buscar(arg) {
+      if (!arg) return line('uso: /buscar <termo>', 'warn');
+      const q = arg.toLowerCase();
+      list(S.entries.filter(e => String(e.text).toLowerCase().includes(q)), `busca "${esc(arg)}"`);
+    },
+    async apagar(arg) {
+      const n = parseInt(arg, 10), e = S.entries[n - 1];
+      if (!n || !e) return line('uso: /apagar <número>. os números aparecem em /inbox', 'warn');
+      const { id, ...data } = e;
+      if (S.col) {
+        try { await S.col.doc(id).delete(); }
+        catch (err) { return line(`✕ não consegui apagar (${esc(err.code || 'erro')}).`, 'err'); }
+      } else {
+        S.entries.splice(n - 1, 1);
+        renderHud();
+      }
+      S.undo = { id, data: JSON.parse(JSON.stringify(data)) };
+      line(`✕ apagado #${n} · ${hl(e.text)}  <span class="dim">(/desfazer recupera)</span>`, 'warn');
+    },
+    async desfazer() {
+      if (!S.undo) return line('nada pra desfazer.', 'dim');
+      const { id, data } = S.undo;
+      S.undo = null;
+      if (S.col) {
+        try { await S.col.doc(id).set(data); }
+        catch (err) { return line(`✕ não consegui recuperar (${esc(err.code || 'erro')}).`, 'err'); }
+      } else {
+        S.entries.push(Object.assign({ id }, data));
+        S.entries.sort((a, b) => a.ts - b.ts);
+        renderHud();
+      }
+      line(`↺ recuperado · ${hl(data.text)}`, 'ok');
+    },
+    status() {
+      const k = dayKey(new Date());
+      const rows = [
+        ['memória', S.col ? '<span class="ok">online · sincronizada</span>' : '<span class="warn">local · nada é salvo</span>'],
+        ['entradas', `${S.entries.length} <span class="dim">(hoje ${S.entries.filter(e => e.day === k).length})</span>`],
+        ['sessão', uptime()],
+        ['versão', 'MF v0.1 · fase 0'],
+      ];
+      rows.forEach(([a, b]) => line(`<span class="k">${a}</span><span>${b}</span>`, 'kv'));
+    },
+    roadmap() {
+      PHASES.forEach(([n, t, done]) => line(`${done ? '<span class="okc">[ok]</span>' : '<span class="dim">[  ]</span>'} <span class="${done ? 'ok' : 'dim'}">fase ${n}</span>  ${esc(t)}`));
+    },
+    limpar() { out.innerHTML = ''; },
+  };
+  Object.assign(CMDS, { help: CMDS.ajuda, clear: CMDS.limpar, ls: CMDS.inbox, rm: CMDS.apagar, undo: CMDS.desfazer });
+
+  form.addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const t = input.value.trim();
+    input.value = '';
+    if (!t) return;
+    S.hist.push(t);
+    S.hi = S.hist.length;
+    line(`<span class="caret">›</span> ${hl(t)}`, 'echo');
+    if (t.startsWith('/')) {
+      const [c, ...rest] = t.slice(1).split(/\s+/);
+      const fn = CMDS[(c || '').toLowerCase()];
+      if (fn) await fn(rest.join(' '));
+      else line(`comando desconhecido: /${esc(c)} · tente /ajuda`, 'err');
+    } else {
+      await capture(t);
+    }
+  });
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'ArrowUp' && S.hist.length) {
+      e.preventDefault();
+      S.hi = Math.max(0, S.hi - 1);
+      input.value = S.hist[S.hi];
+    } else if (e.key === 'ArrowDown' && S.hist.length) {
+      e.preventDefault();
+      S.hi = Math.min(S.hist.length, S.hi + 1);
+      input.value = S.hist[S.hi] || '';
+    } else if (e.key === 'l' && e.ctrlKey) {
+      e.preventDefault();
+      out.innerHTML = '';
+    }
+  });
+
+  term.addEventListener('mouseup', () => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) input.focus({ preventScroll: true });
+  });
+
+  async function boot() {
+    tick();
+    setInterval(tick, 1000);
+    renderHud();
+    line('<span class="neon">MEGA BRAIN</span>  <span class="dim">MF · v0.1 · fase 0</span>', 'title-line');
+    await sleep(160);
+    line('<span class="okc">[ok]</span> núcleo carregado');
+    await sleep(160);
+    line('<span class="okc">[ok]</span> interface de terminal');
+    await sleep(160);
+    S.memLine = line('<span class="amb">[..]</span> conectando à memória');
+    initDb();
+    if (matchMedia('(pointer: fine)').matches) input.focus({ preventScroll: true });
+  }
+
+  boot();
+})();
+</script>

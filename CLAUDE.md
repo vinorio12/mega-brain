@@ -8,13 +8,31 @@ Terminal pessoal estilo "segundo cérebro" do Vini. Centraliza tarefas, projetos
 - Mudanças pequenas e testáveis. Me diga como testar o que foi feito.
 - Nunca apague dados salvos do usuário sem pedir.
 
-## Visual
-Terminal escuro, verde neon, minimalista mas com dados na tela (HUD futurista, vibe Jarvis sem ser Jarvis). Referência: mega-brain-fase0.html (protótipo feito no Cowork).
+## Visual: "Cybernetic Intelligence Terminal"
+Terminal cru, underground. Fundo quase preto, uma fonte monoespaçada (JetBrains Mono), sensação de acesso direto ao núcleo.
+- Regra de ouro: 85–90% da tela em silêncio. Destaque por contraste, não por excesso de efeito (efeitos sutis são bem-vindos).
+- 6 cores (tokens em `css/style.css`): texto `--tx`, metadados marrom-acinzentado `--meta`, atividade verde `--act`, HUD/inteligência azul-bebê `--hud`, aviso amarelo `--warn`, erro vermelho `--err`.
+- Raio 0–4px, bordas 1px cinza-azulado de baixa opacidade, sem sombras de card. Brilho só em elementos ativos.
+- Estados nunca só por cor: sempre com texto (OK/WRN/ERR, READY/BUSY...) ou forma.
+- Só dados reais. Sem dado → "NA", mas o campo não some.
+- Layout: cabeçalho de sistema · núcleo (esq.) · terminal (centro) · telemetria (dir.) · rodapé de infraestrutura. No celular: cabeçalho, faixa do núcleo, terminal, rodapé.
+- O terminal não executa comandos do sistema operacional: é uma linguagem própria (`js/commands.js`).
+- Protótipo original guardado em `prototipo/mega-brain-fase0.html`.
 
-## Alvo técnico (a confirmar na primeira sessão)
-- App próprio instalável no celular e no PC (PWA), com link próprio
-- Dados na nuvem com login só do Vini
-- IA intérprete de texto livre a partir da Fase 2
+## Alvo técnico (confirmado)
+- HTML/CSS/JS puros com módulos ES, sem build e sem Node.
+- PWA instalável no celular e no PC, com link próprio.
+- Supabase: banco Postgres + login por e-mail, cadastro desligado, regras RLS (cada linha só do dono).
+- IA intérprete a partir da Fase 2 (chave guardada no Supabase, nunca no front).
+
+## Como rodar localmente
+`powershell -NoProfile -ExecutionPolicy Bypass -File tools/serve.ps1` → http://localhost:5173
+
+## Estrutura
+- `index.html` estrutura da tela · `css/style.css` visual
+- `js/app.js` boot e ligação das peças · `js/terminal.js` saída, log, tarefas, teclado
+- `js/commands.js` comandos · `js/ui.js` painéis · `js/core.js` visualização do núcleo
+- `js/store.js` memória (hoje localStorage; Supabase entra com a mesma interface) · `js/weather.js` clima (Open-Meteo)
 
 ## Formato de uma entrada (protótipo)
 { text, tags[], kind: "nota", ts (epoch ms), day "AAAA-MM-DD" }
@@ -22,6 +40,10 @@ Terminal escuro, verde neon, minimalista mas com dados na tela (HUD futurista, v
 ## Roadmap
 - [x] 0. Esqueleto (protótipo no Cowork): terminal, HUD (hoje, semana, ano, memória, tags, módulos), inbox, comandos /ajuda /inbox /hoje /buscar /apagar /desfazer /status /roadmap /limpar
 - [ ] 0.5. Migrar o protótipo para app próprio (PWA + banco na nuvem + login)
+  - [x] separar em arquivos + visual novo + terminal (histórico, tab, ctrl+c, ctrl+k, tarefas com ID, erros com código) + /clima
+  - [ ] Supabase (banco + login só do Vini)
+  - [ ] PWA (manifest, ícone, service worker)
+  - [ ] publicar com link próprio
 - [ ] 1. Tarefas e projetos: tabs Hoje, TCC, WEG, Pessoal, prazos, concluir
 - [ ] 2. IA intérprete: texto livre vira tarefa, gasto, treino etc.
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês

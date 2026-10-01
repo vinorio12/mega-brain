@@ -352,6 +352,22 @@ ul, dl, dd { margin: 0; padding: 0; list-style: none; }
 .ff.is-na b { color: var(--meta-2); }
 
 /* ------------------------------------------------------------
+   Painéis escondíveis (/painel = telemetria · /foco = só o terminal)
+   ------------------------------------------------------------ */
+@media (min-width: 761px) {
+  .app.no-tele { grid-template-columns: 272px minmax(0, 1fr); grid-template-areas: "head head" "intel work" "foot foot"; }
+  .app.no-tele .tele { display: none; }
+  .app.focus { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "work" "foot"; }
+  .app.focus .tele, .app.focus .intel { display: none; }
+  /* no modo foco o texto fica numa coluna confortável no meio */
+  .app.focus .out, .app.focus .prompt { padding-left: max(16px, calc((100% - 960px) / 2)); padding-right: max(16px, calc((100% - 960px) / 2)); }
+}
+@media (max-width: 760px) {
+  .app.focus { grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "head" "work" "foot"; }
+  .app.focus .intel { display: none; }
+}
+
+/* ------------------------------------------------------------
    Estado bloqueado (esperando login)
    ------------------------------------------------------------ */
 [data-state="locked"] .hf-state { color: var(--warn); }

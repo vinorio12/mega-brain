@@ -24,6 +24,30 @@ export function createUI(ctx) {
 
   $('h-ver').textContent = 'v' + VERSION;
 
+  /* ---------- painéis escondíveis (lembra a escolha neste aparelho) ---------- */
+  const LAYOUT_KEY = 'mb.layout.v1';
+  let layout = { tele: true, focus: false };
+  try { layout = { ...layout, ...JSON.parse(localStorage.getItem(LAYOUT_KEY)) }; } catch {}
+  const applyLayout = () => {
+    app.classList.toggle('no-tele', !layout.tele);
+    app.classList.toggle('focus', layout.focus);
+  };
+  applyLayout();
+
+  // 'tele' liga/desliga a telemetria · 'focus' deixa só o terminal. Devolve o estado novo.
+  function toggle(what) {
+    if (what === 'focus') layout.focus = !layout.focus;
+    else { layout.tele = !layout.tele; layout.focus = false; }
+    try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch {}
+    applyLayout();
+    return what === 'focus' ? layout.focus : layout.tele;
+  }
+
+  // ctrl+. alterna a telemetria
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === '.') { e.preventDefault(); toggle('tele'); }
+  });
+
   // estado geral, em ordem de prioridade
   function state() {
     if (S.booting) return 'boot';
@@ -216,5 +240,5 @@ export function createUI(ctx) {
     if (d.getMinutes() !== lastMinute) { lastMinute = d.getMinutes(); render(); }
   }
 
-  return { render, tick, state, mem, pulse: core.pulse };
+  return { render, tick, state, mem, toggle, pulse: core.pulse };
 }

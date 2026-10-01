@@ -155,11 +155,13 @@ export function createCloudStore(sb, user, { onSync } = {}) {
     return flushing;
   }
 
-  function queue(op) {
+  async function queue(op) {
     outbox.push(op);
     write(OUTBOX, outbox);
     rebuild();
-    return flush();
+    await flush();
+    // se um envio anterior estava terminando, ele pode não ter visto esta operação: envia de novo
+    if (outbox.includes(op)) await flush();
   }
 
   async function listen() {

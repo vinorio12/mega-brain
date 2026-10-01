@@ -282,6 +282,17 @@ describe('memória na nuvem (Supabase falso)', () => {
     st.forget();
     clean();
   });
+  test('duas capturas ao mesmo tempo sobem as duas', async () => {
+    clean();
+    const sb = fakeSb();
+    const st = createCloudStore(sb, user);
+    await st.connect();
+    await Promise.all([st.add({ text: 'a', ts: 1, day: 'x' }), st.add({ text: 'b', ts: 2, day: 'x' })]);
+    eq(st.pending(), 0, 'nada preso na fila');
+    eq(sb.rows.size, 2);
+    st.forget();
+    clean();
+  });
   test('forget apaga só a cópia deste aparelho', async () => {
     clean();
     const sb = fakeSb();

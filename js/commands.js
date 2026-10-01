@@ -90,6 +90,7 @@ export function createCommands(ctx) {
           ['↑ ↓', 'navega no histórico'],
           ['ctrl+c', 'cancela a tarefa em andamento'],
           ['ctrl+k', 'limpa a tela (o log continua)'],
+          ['ctrl+.', 'mostra/esconde a telemetria'],
           ['esc', 'apaga a linha'],
         ]);
       },
@@ -271,6 +272,20 @@ export function createCommands(ctx) {
           const mark = s === 'ok' ? '<span class="c-act">[ok]</span>' : s === 'wip' ? '<span class="c-hud">[..]</span>' : '<span class="dim">[  ]</span>';
           term.print(`${mark} <span class="${s ? 'c-tx' : 'dim'}">fase ${n.padEnd(3)}</span> ${esc(t)}`);
         });
+      },
+    },
+    {
+      name: 'painel', alias: ['tele'], desc: 'mostra/esconde a telemetria (ctrl+.)',
+      run() {
+        const on = ctx.ui.toggle('tele');
+        term.say(on ? 'telemetria visível.' : 'telemetria escondida · <span class="c-hud">/painel</span> ou ctrl+. traz de volta.');
+      },
+    },
+    {
+      name: 'foco', alias: ['zen'], desc: 'deixa só o terminal na tela (de novo pra voltar)',
+      run() {
+        const on = ctx.ui.toggle('focus');
+        term.say(on ? 'modo foco · <span class="c-hud">/foco</span> de novo traz os painéis.' : 'painéis de volta.');
       },
     },
     {

@@ -23,6 +23,32 @@ export const PHASES = [
   ['6', 'coach · resumo do dia, revisão da semana', ''],
 ];
 
+// Decide quais entradas um "/apagar ..." está pedindo. Função pura (não apaga nada), testada em tests/.
+//   números: "3", "1 2 3", "1,2,3", "1-4", "#2"  → { mode: 'num', targets: [{n, e}], bad: ['#9', ...] }
+//   texto:   "comprar café"                      → { mode: 'text', targets: [{n, e}] }  (todas que contêm o texto)
+export function pickTargets(raw, entries) {
+  const tokens = String(raw).trim().split(/[\s,;]+/).filter(Boolean);
+  if (!tokens.length) return { mode: 'empty', targets: [], bad: [] };
+
+  if (tokens.every(x => /^#?\d+(-#?\d+)?$/.test(x))) {
+    const nums = new Set(), bad = [];
+    for (const tk of tokens) {
+      const [a, b] = tk.replace(/#/g, '').split('-').map(Number);
+      const lo = Math.min(a, b ?? a), hi = Math.min(Math.max(a, b ?? a), entries.length);
+      if (lo < 1 || lo > hi) { bad.push(tk.replace(/#/g, '')); continue; }
+      for (let n = lo; n <= hi; n++) nums.add(n);
+      const top = Math.max(a, b ?? a), from = entries.length + 1;
+      if (b != null && top >= from) bad.push(top === from ? String(from) : `${from}-${top}`);
+    }
+    const targets = [...nums].sort((x, y) => x - y).map(n => ({ n, e: entries[n - 1] }));
+    return { mode: 'num', targets, bad };
+  }
+
+  const q = String(raw).trim().toLowerCase();
+  const targets = entries.map((e, i) => ({ n: i + 1, e })).filter(({ e }) => String(e.text).toLowerCase().includes(q));
+  return { mode: 'text', targets, bad: [] };
+}
+
 export function createCommands(ctx) {
   const { S, term } = ctx;
   const usage = (name, args) => new CmdError('E_ARG', 'shell', 'argumento faltando ou inválido', `uso: <span class="c-hud">/${name} ${esc(args)}</span>`);
@@ -98,35 +124,21 @@ export function createCommands(ctx) {
       desc: 'apaga por número (1 2 3 · 1-4) ou pelo texto (dá pra desfazer)', async: true,
       async run(arg, signal, t) {
         const raw = String(arg).trim();
-        if (!raw) throw usage('apagar', '1  ·  1 2 3  ·  1-4  ·  comprar café');
-        const tokens = raw.split(/[\s,;]+/).filter(Boolean);
-        let targets;
+        const pick = pickTargets(raw, S.entries);
+        if (pick.mode === 'empty') throw usage('apagar', '1  ·  1 2 3  ·  1-4  ·  comprar café');
+        const { targets } = pick;
 
-        if (tokens.every(x => /^#?\d+(-#?\d+)?$/.test(x))) {
-          // por número: "1 2 3", "1,2,3", "1-4" (números do /inbox)
-          const nums = new Set(), bad = [];
-          for (const tk of tokens) {
-            const [a, b] = tk.replace(/#/g, '').split('-').map(Number);
-            const lo = Math.min(a, b ?? a), hi = Math.min(Math.max(a, b ?? a), S.entries.length);
-            if (lo < 1 || lo > hi) { bad.push(tk); continue; }
-            for (let n = lo; n <= hi; n++) nums.add(n);
-            const top = Math.max(a, b ?? a), from = S.entries.length + 1;
-            if (b != null && top >= from) bad.push(top === from ? from : `${from}-${top}`);
-          }
-          if (!nums.size) throw new CmdError('E_ARG', 'shell', `nenhuma entrada com ${bad.length > 1 ? 'esses números' : 'esse número'}`, 'os números aparecem no <span class="c-hud">/inbox</span>');
-          if (bad.length) term.warn('shell', `ignorados (não existem): ${bad.map(n => '#' + n).join(' ')}`);
-          targets = [...nums].sort((a, b) => a - b).map(n => ({ n, e: S.entries[n - 1] }));
+        if (pick.mode === 'num') {
+          if (!targets.length) throw new CmdError('E_ARG', 'shell', `nenhuma entrada com ${pick.bad.length > 1 ? 'esses números' : 'esse número'}`, 'os números aparecem no <span class="c-hud">/inbox</span>');
+          if (pick.bad.length) term.warn('shell', `ignorados (não existem): ${pick.bad.map(n => '#' + esc(n)).join(' ')}`);
         } else {
           // pelo texto: só apaga sozinho se UMA entrada bater
-          const q = raw.toLowerCase();
-          const hits = S.entries.map((e, i) => ({ n: i + 1, e })).filter(({ e }) => String(e.text).toLowerCase().includes(q));
-          if (!hits.length) throw new CmdError('E_404', 'store', `nenhuma entrada contém "${raw}"`, 'confira com <span class="c-hud">/buscar</span>');
-          if (hits.length > 1) {
-            list(hits.map(h => h.e), `"${raw}" bate com ${hits.length} entradas`);
-            term.say(`não apaguei nada, pra não sumir coisa errada. escolha pelos números, ex: <span class="c-hud">/apagar ${hits.slice(0, 3).map(h => h.n).join(' ')}</span>`);
+          if (!targets.length) throw new CmdError('E_404', 'store', `nenhuma entrada contém "${raw}"`, 'confira com <span class="c-hud">/buscar</span>');
+          if (targets.length > 1) {
+            list(targets.map(h => h.e), `"${raw}" bate com ${targets.length} entradas`);
+            term.say(`não apaguei nada, pra não sumir coisa errada. escolha pelos números, ex: <span class="c-hud">/apagar ${targets.slice(0, 3).map(h => h.n).join(' ')}</span>`);
             return;
           }
-          targets = hits;
         }
 
         for (const { e } of targets) await ctx.store.remove(e.id);

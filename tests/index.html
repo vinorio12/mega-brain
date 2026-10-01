@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Mega Brain · testes</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  :root { --bg:#030405; --tx:#c3c8cf; --meta:#857d72; --act:#46e38b; --hud:#9dc3df; --warn:#e2be4c; --err:#ff5d5d; --line:rgba(150,170,195,.12); }
+  html, body { margin: 0; background: var(--bg); color: var(--tx); font: 13px/1.6 "JetBrains Mono", ui-monospace, Consolas, monospace; }
+  main { max-width: 920px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 13px; letter-spacing: .3em; color: var(--hud); font-weight: 700; margin: 0 0 4px; }
+  .sub { color: var(--meta); margin: 0 0 20px; }
+  .grp { margin: 18px 0 6px; color: var(--meta); text-transform: uppercase; letter-spacing: .14em; font-size: 11px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  .t { display: grid; grid-template-columns: 6ch minmax(0, 1fr); gap: 1ch; }
+  .t b { font-weight: 500; }
+  .pass b { color: var(--act); }
+  .fail b { color: var(--err); }
+  .fail .why { grid-column: 2; color: var(--err); white-space: pre-wrap; }
+  #sum { margin-top: 24px; padding-top: 10px; border-top: 1px solid var(--line); }
+  #sum.ok { color: var(--act); } #sum.bad { color: var(--err); }
+  #sandbox { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>MB//CORE · TESTES</h1>
+  <p class="sub">roda sozinho ao abrir · usa gavetas próprias, não mexe nas suas notas · nem na nuvem</p>
+  <div id="results"></div>
+  <div id="sum">rodando…</div>
+</main>
+<!-- elementos falsos pro teste do terminal -->
+<div id="sandbox">
+  <div><div id="tout"></div></div>
+  <form id="tform"><input id="tinput"><span id="thint"></span></form>
+</div>
+<script type="module" src="run.js"></script>
+</body>
+</html>

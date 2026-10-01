@@ -7,9 +7,9 @@
 import { uid } from './util.js';
 
 export const LOCAL_KEY = 'mb.entries.v1';
-const KEY = LOCAL_KEY;
 
-export function createLocalStore() {
+// `KEY` é onde fica guardado. Os testes passam outra chave pra nunca mexer nas suas notas.
+export function createLocalStore(KEY = LOCAL_KEY) {
   let entries = [];
   const subs = new Set();
 

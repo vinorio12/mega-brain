@@ -11,12 +11,12 @@ const HIST_KEY = 'mb.hist.v1';
 const LEVEL_CLASS = { OK: 'ok', INF: 'inf', WRN: 'wrn', ERR: 'err', AI: 'ai' };
 const DEFAULT_HINT = 'tab completa · ↑↓ histórico · ctrl+k limpa';
 
-export function createTerminal({ out, input, form, hint, completions, privacy, onSubmit, onChange }) {
+export function createTerminal({ out, input, form, hint, completions, privacy, onSubmit, onChange, histKey = HIST_KEY }) {
   const log = [];
   const tasks = new Map();
   let seq = 0;
   let hist = [];
-  try { hist = JSON.parse(localStorage.getItem(HIST_KEY)) || []; } catch {}
+  try { hist = JSON.parse(localStorage.getItem(histKey)) || []; } catch {}
   let hi = hist.length;
   let draft = '';
   let flashTimer = null;
@@ -175,7 +175,7 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
     if (!priv && hist[hist.length - 1] !== v) {
       hist.push(v);
       hist = hist.slice(-200);
-      try { localStorage.setItem(HIST_KEY, JSON.stringify(hist)); } catch {}
+      try { localStorage.setItem(histKey, JSON.stringify(hist)); } catch {}
     }
     hi = hist.length;
     draft = '';

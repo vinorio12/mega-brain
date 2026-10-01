@@ -27,6 +27,23 @@ Terminal cru, underground. Fundo quase preto, uma fonte monoespaçada (JetBrains
 
 ## Como rodar localmente
 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/serve.ps1` → http://localhost:5173
+Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
+
+## Manual de manutenção (siga em toda mudança)
+1. Mudanças pequenas. Explique ao Vini o que vai fazer antes de fazer.
+2. Toda lógica nova que dá pra isolar vira **função pura** + teste em `tests/run.js`. Exemplos: `pickTargets`, `parseDue`.
+3. Arquivo novo em `js/` → adicionar no `SHELL` do `sw.js`. **Toda mudança** em arquivo do app → aumentar o `CACHE` do `sw.js`.
+4. Rodar `/tests/` (tudo verde) e testar no navegador antes do commit. Testes nunca usam as chaves reais (`mb.entries.v1`, `mb.hist.v1`, cache da nuvem): use `mb.test.*` e o Supabase falso.
+5. Commit em português, explicando o porquê.
+6. Comando novo: adicionar em `defs` no `js/commands.js` (`data: true` se mexe nas notas, `async: true` se usa rede/memória). Ele aparece sozinho no `/ajuda` e no Tab.
+7. Banco: arquivo novo numerado em `supabase/` (`002_...sql`), escrito pra poder rodar mais de uma vez (`if not exists`). Toda tabela nova precisa de RLS "só o dono". O Vini roda no SQL Editor, ou Claude roda pelo MCP.
+8. Texto do usuário sempre passa por `esc()`/`hl()` antes de virar HTML.
+9. Nunca apagar notas sem pedido explícito. Ações em lote por texto ambíguo só listam e pedem números (veja o `/apagar`).
+10. Erros pro usuário: `CmdError(código, origem, descrição, dica)`, com dica que diga o que fazer.
+
+## Documentos
+- `docs/publicar.md` · passo a passo do GitHub Pages
+- `docs/fase-1.md` · proposta da Fase 1 com 4 perguntas pro Vini
 
 ## Estrutura
 - `index.html` estrutura da tela · `css/style.css` visual
@@ -35,6 +52,8 @@ Terminal cru, underground. Fundo quase preto, uma fonte monoespaçada (JetBrains
 - `js/store.js` memória local · `js/cloud.js` login + memória na nuvem (mesma interface, com cache e fila offline)
 - `js/config.js` URL e chave publishable do Supabase (vazia = modo local)
 - `js/boot.js` tela de boot · `js/weather.js` clima (Open-Meteo, padrão Jaraguá do Sul)
+- `js/dates.js` datas faladas → AAAA-MM-DD (`parseDue`, `fmtDue`), pronto pra prazos da Fase 1
+- `tests/` testes no navegador · `docs/` passo a passo e planos
 - `sw.js` + `manifest.webmanifest` + `icons/` PWA (ao mudar arquivos do app, aumentar `CACHE` no sw.js)
 - `supabase/*.sql` banco (rodar no SQL Editor) · `tools/icons.ps1` gera os PNGs dos ícones
 - `.mcp.json` conecta o MCP do Supabase (projeto xfvfgidvqrubdtogtczy)
@@ -49,9 +68,11 @@ Terminal cru, underground. Fundo quase preto, uma fonte monoespaçada (JetBrains
   - [x] boot animado, clima padrão Jaraguá do Sul, HUD sem repetições
   - [x] código do Supabase: login (senha ou código), memória na nuvem com fila offline e tempo real, /entrar /sair /sync /migrar /codigo
   - [x] Supabase configurado (tabela + RLS, usuário criado, cadastro desligado, chave em js/config.js) · login testado e funcionando
-  - [ ] Supabase: atualizar Site URL / Redirect URLs pro link do GitHub Pages ao publicar
+  - [x] /apagar em lote e por texto · /painel (ctrl+.) e /foco · tempo real autenticado + sync entre abas
+  - [x] testes automáticos (tests/) · js/dates.js pronto pra Fase 1 · README e docs/
+  - [ ] confirmar com o Vini que o tempo real funciona logado (RT `on` no rodapé, duas janelas)
+  - [ ] publicar no GitHub Pages (docs/publicar.md) + atualizar Site URL no Supabase
   - [x] PWA (manifest, ícones, service worker, /instalar)
-  - [ ] publicar no GitHub Pages (repositório público)
 - [ ] 1. Tarefas e projetos: tabs Hoje, TCC, WEG, Pessoal, prazos, concluir
 - [ ] 2. IA intérprete: texto livre vira tarefa, gasto, treino etc.
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês

@@ -7,6 +7,7 @@ import { pickTargets, createCommands } from '../js/commands.js';
 import { createLocalStore } from '../js/store.js';
 import { createCloudStore } from '../js/cloud.js';
 import { createTerminal } from '../js/terminal.js';
+import { parseDue, fmtDue } from '../js/dates.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -110,6 +111,24 @@ describe('util · tempo e números', () => {
   test('dur formata hh:mm:ss', () => eq(dur(3_725_000), '01:02:05'));
   test('lev mede distância entre palavras', () => { eq(lev('inbx', 'inbox'), 1); eq(lev('', 'abc'), 3); });
   test('kb formata tamanho', () => { eq(kb(500), '500 B'); eq(kb(2048), '2.0 KB'); });
+});
+
+describe('datas faladas (Fase 1: prazos)', () => {
+  const now = new Date(2026, 8, 30, 15, 0); // quarta, 30/09/2026
+  const p = s => parseDue(s, now);
+  test('hoje / amanhã / depois', () => eq([p('hoje'), p('amanhã'), p('amanha'), p('depois')], ['2026-09-30', '2026-10-01', '2026-10-01', '2026-10-02']));
+  test('dia da semana = o próximo', () => eq([p('sex'), p('sexta'), p('seg'), p('sáb'), p('sab')], ['2026-10-02', '2026-10-02', '2026-10-05', '2026-10-03', '2026-10-03']));
+  test('dia da semana de hoje = hoje', () => eq([p('qua'), p('ter')], ['2026-09-30', '2026-10-06']));
+  test('+n dias, semanas, meses', () => eq([p('+3'), p('+3d'), p('+2s'), p('+1m')], ['2026-10-03', '2026-10-03', '2026-10-14', '2026-10-30']));
+  test('+1m no dia 31 cai no último dia do mês', () => eq(parseDue('+1m', new Date(2026, 0, 31)), '2026-02-28'));
+  test('dd/mm e dd.mm', () => eq([p('15/10'), p('15.10'), p('5/1')], ['2026-10-15', '2026-10-15', '2027-01-05']));
+  test('dd/mm que já passou vai pro ano que vem', () => eq(p('10/09'), '2027-09-10'));
+  test('só o dia: este mês ou o próximo', () => eq([p('30'), p('15')], ['2026-09-30', '2026-10-15']));
+  test('com ano', () => eq([p('15/10/27'), p('15/10/2027')], ['2027-10-15', '2027-10-15']));
+  test('datas impossíveis → null', () => eq([p('31/02'), p('32'), p('0'), p('15/13'), p('xyz'), p('')], [null, null, null, null, null, null]));
+  test('fmtDue mostra de forma curta', () => eq(
+    ['2026-09-30', '2026-10-01', '2026-10-02', '2026-09-28', '2026-10-20', '2027-01-05'].map(k => fmtDue(k, now)),
+    ['hoje', 'amanhã', 'sex 02.10', 'atrasada 2d', '20.10', '05.01.27']));
 });
 
 describe('/apagar · escolha do que apagar (pickTargets)', () => {

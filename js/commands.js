@@ -83,8 +83,22 @@ export function createCommands(ctx) {
           return;
         }
         table([['qualquer texto', 'captura na inbox · use #tags: <span class="dim">ler cap 2</span> <span class="c-act">#tcc</span>']], 'cmd');
-        table(defs.map(c => [`/${c.name}${c.args ? ' ' + esc(c.args) : ''}`, esc(c.desc)]), 'cmd');
-        term.print('', '');
+        const groups = [
+          ['memória', c => c.data],
+          ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
+          ['tela', c => ['painel', 'foco', 'limpar', 'log', 'historico'].includes(c.name)],
+        ];
+        const used = new Set();
+        const section = (title, pick) => {
+          const list = defs.filter(c => !used.has(c) && pick(c));
+          if (!list.length) return;
+          list.forEach(c => used.add(c));
+          term.print(`── ${title}`, 'sep');
+          table(list.map(c => [`/${c.name}${c.args ? ' ' + esc(c.args) : ''}`, esc(c.desc)]), 'cmd');
+        };
+        groups.forEach(([title, pick]) => section(title, pick));
+        section('sistema', () => true);
+        term.print('── teclado', 'sep');
         table([
           ['tab', 'completa /comandos e #tags'],
           ['↑ ↓', 'navega no histórico'],
@@ -242,7 +256,7 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'entrar', alias: ['login'], desc: 'entra na sua conta (pede e-mail e código)',
+      name: 'entrar', alias: ['login'], desc: 'entra na sua conta (e-mail e senha)',
       run() { ctx.actions.login(); },
     },
     {

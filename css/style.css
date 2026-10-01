@@ -302,6 +302,37 @@ ul, ol, dl, dd { margin: 0; padding: 0; list-style: none; }
 .task .done { color: var(--meta); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--meta) 70%, transparent); }
 .task .done .c-act { color: var(--meta); }
 .task .due { white-space: nowrap; text-align: right; }
+/* blocos (kanban, calendário): ocupam a largura do terminal */
+.row.block { white-space: normal; margin: 6px 0 4px; }
+
+/* kanban: colunas lado a lado no PC; empilhadas no celular */
+.kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(190px, 1fr); gap: 10px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+.kcol { display: grid; align-content: start; gap: 6px; min-width: 0; }
+.kcol header { display: flex; justify-content: space-between; padding-bottom: 4px; border-bottom: 1px solid var(--line-2); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--int); }
+.kcol header b { font-weight: 400; color: var(--meta); letter-spacing: 0; }
+.kcol.is-final header { color: var(--act); }
+.kcard { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 1ch; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg-2); }
+.kcard .n { color: var(--meta); }
+.kcard .kt { overflow-wrap: anywhere; }
+.kcard .km { grid-column: 2; font-size: 11px; color: var(--meta); }
+.kcard.is-done .kt { color: var(--meta); text-decoration: line-through; }
+.kempty { color: var(--meta-2); padding: 4px 8px; }
+
+/* calendário: grade no PC, agenda no celular */
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.cal-h { background: var(--bg-1); color: var(--meta); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; padding: 3px 6px; }
+.cal-c { background: var(--bg-1); min-height: 64px; padding: 3px 5px; font-size: 11px; min-width: 0; }
+.cal-c.is-out { opacity: .35; }
+.cal-c.is-today { box-shadow: inset 0 0 0 1px var(--act); }
+.cal-c.is-today .cal-d { color: var(--act); }
+.cal-c.is-late .cal-d { color: var(--warn); }
+.cal-d { color: var(--meta); margin-bottom: 2px; }
+.cal-i { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-i .n { color: var(--meta); }
+.cal-i.is-high { color: var(--warn); }
+.cal-more { color: var(--meta); }
+.cal-narrow { display: none !important; }
+
 .task .tmeta { font-size: .92em; }
 .auto { color: var(--meta); padding-left: 6.4ch; }
 .auto-tag { font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--int); border: 1px solid color-mix(in srgb, var(--int) 40%, transparent); padding: 0 4px; border-radius: var(--r); margin-left: 4px; }
@@ -471,6 +502,10 @@ ul, ol, dl, dd { margin: 0; padding: 0; list-style: none; }
   .ent { grid-template-columns: 4ch 11ch minmax(0, 1fr); gap: 0 1ch; }
   .tbl { grid-template-columns: 11ch minmax(0, 1fr); gap: 0 1.2ch; }
   .auto { padding-left: 4.5ch; }
+  .kanban { grid-auto-flow: row; grid-auto-columns: auto; overflow-x: visible; gap: 14px; }
+  .cal-wide { display: none !important; }
+  .cal-narrow { display: grid !important; }
+  .tgrp.cal-narrow { display: block !important; }
   .task { grid-template-columns: 3.5ch 3ch minmax(0, 1fr) auto; gap: 0 1ch; }
   .intent-line { padding: 0 12px 4px; }
   .intent-line.has-intent { display: block; }

@@ -9,6 +9,7 @@ import { createCloudStore } from '../js/cloud.js';
 import { createTerminal } from '../js/terminal.js';
 import { parseDue, fmtDue } from '../js/dates.js';
 import { deriveState, describeState, readIntent } from '../js/state.js';
+import { viewName, viewGroups, calendarModel, parseMonth } from '../js/views.js';
 import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord, guessProject, dueFor, fillByRules, matchStatus, briefing } from '../js/tasks.js';
 
 /* ---------------- mini framework ---------------- */
@@ -215,6 +216,42 @@ describe('tarefas · regras automáticas', () => {
     eq([r.values.prazo, r.auto.includes('prazo')], [null, false]);
   });
   test('matchStatus ambíguo → null', () => eq(matchStatus('a', [{ name: 'abc' }, { name: 'abd' }]), null));
+});
+
+describe('visões (views.js)', () => {
+  const now = new Date(2026, 9, 1, 15, 0); // quinta 01/10/2026
+  const reg = registry([]);
+  const T = (text, projeto, status = 'a fazer', prazo = null, feito_em = null) => ({ id: text, kind: 'tarefa', text, tags: [projeto], ts: 1, data: { projeto, status, prazo, prioridade: 'média', feito_em } });
+  const E = [
+    T('a', 'tcc', 'a fazer', '2026-10-05'), T('b', 'weg', 'fazendo', '2026-10-02'), T('c', 'tcc', 'esperando'),
+    T('d', 'pessoal', 'feito', null, now.getTime()), T('e', 'weg', 'feito', null, now.getTime() - 3 * 864e5),
+    T('f', 'tcc', 'a fazer', '2026-09-20'), T('g', 'tcc', 'a fazer', '2026-11-03'),
+  ];
+  test('viewName entende apelidos', () => eq(['kanban', 'quadro', 'cal', 'agenda', 'projetos', 'xyz'].map(viewName), ['kanban', 'kanban', 'calendario', 'calendario', 'lista', null]));
+  test('lista: um grupo por projeto, na ordem; feita antiga some', () => {
+    const r = viewGroups(E, 'lista', { reg, now });
+    eq(r.groups.map(g => [g.key, g.items.map(e => e.text)]), [['tcc', ['f', 'a', 'g', 'c']], ['weg', ['b']], ['pessoal', ['d']]]);
+  });
+  test('status: grupos na ordem dos status, sem vazios', () => eq(viewGroups(E, 'status', { reg, now }).groups.map(g => g.key), ['a fazer', 'fazendo', 'esperando', 'feito']));
+  test('kanban: todas as colunas, mesmo vazias', () => {
+    const r = viewGroups([T('x', 'tcc')], 'kanban', { reg, now });
+    eq(r.groups.map(g => [g.key, g.items.length]), [['a fazer', 1], ['fazendo', 0], ['esperando', 0], ['feito', 0]]);
+  });
+  test('filtro de projeto vale pra todas', () => eq(viewGroups(E, 'status', { reg, now, proj: 'weg' }).list, ['b']));
+  test('numeração segue a ordem mostrada', () => { const r = viewGroups(E, 'lista', { reg, now }); eq(r.list, r.groups.flatMap(g => g.items.map(e => e.id))); });
+  test('calendário: semanas de seg a dom, mês certo, hoje marcado', () => {
+    const c = calendarModel(E, { reg, now });
+    eq([c.year, c.month, c.weeks.every(w => w.length === 7)], [2026, 10, true]);
+    eq(c.weeks[0][0].key, '2026-09-28'); // segunda antes do dia 1
+    ok(c.weeks.flat().find(x => x.key === '2026-10-01').today);
+  });
+  test('calendário: atrasadas antes, depois os dias do mês; outros meses fora', () => {
+    const c = calendarModel(E, { reg, now });
+    eq(c.list, ['f', 'b', 'a']);
+    eq(c.days.map(d => d.key), ['2026-10-02', '2026-10-05']);
+  });
+  test('calendário de outro mês', () => eq(calendarModel(E, { reg, now, month: '2026-11' }).list, ['f', 'g']));
+  test('parseMonth', () => eq(['+1', '-1', '11/2026', '3', '2027-02', '13', 'x'].map(s => parseMonth(s, now)), ['2026-11', '2026-09', '2026-11', '2026-03', '2027-02', null, null]));
 });
 
 describe('tela inicial (briefing)', () => {

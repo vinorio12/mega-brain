@@ -12,6 +12,7 @@
 import { esc, hl, dayKey, hhmm, ddmm, dur, lev, kb, tagsOf, uid, CmdError, VERSION, DOW } from './util.js';
 import { geocode, locate, fetchWeather, savedPlace, describe } from './weather.js';
 import { fmtDue, parseDue } from './dates.js';
+import { VIEWS, viewName, viewGroups, calendarModel, parseMonth } from './views.js';
 import {
   isTask, doneAt, projName, parseTaskInput, newTask, groupTasks, doneHistory, projectsSummary, taskNumbers, taskStats,
   projectOf, statusChange, finalStatus, firstStatus, fillByRules, matchStatus, statusOf, prioOf, isFinalStatus, briefing,
@@ -131,7 +132,7 @@ export function createCommands(ctx) {
       `<span class="n">t${n}</span>` +
       `<span class="bx">${box}</span>` +
       `<span class="${done ? 'done' : ''}">${hl(text)}${meta ? ` <span class="tmeta">${meta}</span>` : ''}</span>` +
-      `<span class="due ${tone}">${esc(due)}</span>`, 'task');
+      `<span class="due ${tone}">${esc(due)}</span>`, 'task' + (opts.cls ? ' ' + opts.cls : ''));
   }
 
   // a linha "↳ auto": o que o app escolheu sozinho, pra você conferir e corrigir
@@ -155,13 +156,89 @@ export function createCommands(ctx) {
   }
 
   // mostra grupos de tarefas numerados t1, t2... e guarda essa numeração pros próximos comandos
-  function showTaskGroups(groups, list, fmtTitle = g => g.title) {
+  //   hide: campos que o título do grupo já mostra (não repetem em cada linha)
+  function showTaskGroups(groups, list, fmtTitle = g => g.title, hide = []) {
     S.taskList = list;
     let n = 0;
     for (const g of groups) {
       term.print(`${esc(fmtTitle(g))} <span class="c-meta">${g.items.length}</span>`, 'tgrp');
-      for (const e of g.items) taskLine(++n, e);
+      for (const e of g.items) taskLine(++n, e, new Date(), { hide });
     }
+  }
+
+  /* ---------- visões (/ver) ---------- */
+
+  const VIEW_KEY = 'mb.view.v1';
+  const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  function currentView() {
+    try { return viewName(localStorage.getItem(VIEW_KEY)) || 'prazo'; } catch { return 'prazo'; }
+  }
+
+  function showView(view, proj = S.ctx, month = null) {
+    if (view === 'calendario') return showCalendar(proj, month);
+    const { groups, list } = viewGroups(S.entries, view, { reg: ctx.reg(), proj });
+    if (!list.length && view !== 'kanban') {
+      S.taskList = [];
+      return term.say(`nenhuma tarefa em ${esc(projLabel(proj))}. crie com <span class="c-int">- revisar cap 2${proj ? ' #' + esc(proj) : ''} >sex</span>`);
+    }
+    term.print(`── ${view} · ${esc(projLabel(proj))} ${'─'.repeat(10)}`, 'sep');
+    if (view === 'kanban') showKanban(groups, list);
+    else showTaskGroups(groups, list, g => g.title, view === 'lista' ? ['projeto'] : view === 'status' ? ['status'] : []);
+    term.print('<span class="dim">/feito t1 · /mover t1 fazendo · /editar t1 >sex · /ver muda a visão</span>');
+  }
+
+  // um cartão do kanban
+  function card(n, e, now) {
+    const reg = ctx.reg(), done = !!doneAt(e), proj = projectOf(e, reg.projects), pr = prioOf(e);
+    const due = e.data?.prazo ? fmtDue(e.data.prazo, now) : '';
+    const tone = done ? 'c-meta' : due.startsWith('atrasada') ? 'c-warn' : due === 'hoje' ? 'c-act' : 'c-meta';
+    const text = proj ? e.text.replace(new RegExp(`\\s*#${proj}(?![\\p{L}\\p{N}_-])`, 'giu'), '') : e.text;
+    const meta = [proj ? `<span class="c-act">#${esc(proj)}</span>` : '', pr === 'alta' && !done ? '<span class="c-warn">!alta</span>' : '', due ? `<span class="${tone}">${esc(due)}</span>` : ''].filter(Boolean).join(' ');
+    return `<div class="kcard${done ? ' is-done' : ''}"><span class="n">t${n}</span><span class="kt">${hl(text)}</span>${meta ? `<span class="km">${meta}</span>` : ''}</div>`;
+  }
+
+  function showKanban(groups, list) {
+    S.taskList = list;
+    const now = new Date();
+    let n = 0;
+    const cols = groups.map(g => {
+      const cards = g.items.map(e => card(++n, e, now)).join('') || '<div class="kempty">—</div>';
+      return `<section class="kcol${g.final ? ' is-final' : ''}"><header><span>${esc(g.title)}</span><b>${g.items.length}</b></header>${cards}</section>`;
+    }).join('');
+    term.print(`<div class="kanban">${cols}</div>`, 'block');
+  }
+
+  function showCalendar(proj, month) {
+    const now = new Date();
+    const cal = calendarModel(S.entries, { reg: ctx.reg(), proj, now, month });
+    S.taskList = cal.list;
+    const num = new Map(cal.list.map((id, i) => [id, i + 1]));
+    term.print(`── ${MONTHS[cal.month - 1]} ${cal.year} · ${esc(projLabel(proj))} ${'─'.repeat(8)}`, 'sep');
+    if (!cal.total) term.say(`nenhuma tarefa com prazo em ${MONTHS[cal.month - 1]}${cal.late.length ? '' : ''}.`);
+
+    // atrasadas de antes do mês: aparecem nos dois tamanhos de tela
+    if (cal.late.length) {
+      term.print(`atrasadas <span class="c-meta">${cal.late.length}</span>`, 'tgrp');
+      cal.late.forEach(e => taskLine(num.get(e.id), e, now));
+    }
+    // PC: grade do mês
+    const head = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'].map(d => `<div class="cal-h">${d}</div>`).join('');
+    const cells = cal.weeks.flat().map(c => {
+      const items = c.items.slice(0, 3).map(e => `<div class="cal-i${prioOf(e) === 'alta' ? ' is-high' : ''}" title="${esc(e.text)}"><span class="n">t${num.get(e.id)}</span> ${esc(e.text)}</div>`).join('');
+      const more = c.items.length > 3 ? `<div class="cal-more">+${c.items.length - 3}</div>` : '';
+      const cls = ['cal-c', c.inMonth ? '' : 'is-out', c.today ? 'is-today' : '', c.past && c.items.length ? 'is-late' : ''].filter(Boolean).join(' ');
+      return `<div class="${cls}"><div class="cal-d">${c.day}</div>${items}${more}</div>`;
+    }).join('');
+    term.print(`<div class="cal-grid">${head}${cells}</div>`, 'block cal-wide');
+    // celular: agenda dia a dia
+    for (const d of cal.days) {
+      const [y, m, dd] = d.key.split('-').map(Number);
+      const dt = new Date(y, m - 1, dd);
+      const isToday = d.key === dayKey(now);
+      term.print(`${isToday ? 'hoje · ' : ''}${DOW[dt.getDay()]} ${ddmm(dt)} <span class="c-meta">${d.items.length}</span>`, 'tgrp cal-narrow');
+      d.items.forEach(e => taskLine(num.get(e.id), e, now, { cls: 'cal-narrow' }));
+    }
+    term.print(`<span class="dim">/ver calendario +1 próximo mês · -1 anterior · 11/2026</span>`);
   }
 
   // a lista que os números t1, t2... estão usando agora (a última mostrada, ou a padrão da aba)
@@ -269,7 +346,7 @@ export function createCommands(ctx) {
         table([['qualquer texto', 'captura na inbox · use #tags: <span class="dim">ler cap 2</span> <span class="c-act">#tcc</span>']], 'cmd');
         table([['- texto #proj @status >prazo !prio', 'cria tarefa (igual ao /t) · o que faltar vira ↳ auto']], 'cmd');
         const groups = [
-          ['tarefas e projetos', c => ['inicio', 't', 'tarefas', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
+          ['tarefas e projetos', c => ['inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
           ['memória', c => c.data],
           ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
           ['tela', c => ['painel', 'foco', 'limpar', 'log', 'historico', 'boot'].includes(c.name)],
@@ -342,19 +419,39 @@ export function createCommands(ctx) {
     },
     {
       name: 'tarefas', alias: ['ts'], data: true, args: '[projeto | todas]',
-      desc: 'tarefas abertas: atrasadas, hoje, próximas, sem prazo, feitas hoje',
+      desc: 'tarefas na visão atual (/ver troca) · ex: /tarefas tcc',
       run(arg) {
         const a = String(arg).trim().toLowerCase();
         const proj = !a ? S.ctx : ['todas', 'tudo', '*', '~'].includes(a) ? null : projName(a);
         if (a && proj === null && !['todas', 'tudo', '*', '~'].includes(a)) throw usage('tarefas', '[projeto] · ex: /tarefas tcc');
-        const { groups, list: ids } = groupTasks(S.entries, { proj, projects: ctx.reg().projects });
-        if (!groups.length) {
-          S.taskList = [];
-          return term.say(`nenhuma tarefa em ${esc(projLabel(proj))}. crie com <span class="c-hud">- revisar cap 2${proj ? ' #' + esc(proj) : ''} >sex</span>`);
+        showView(currentView(), proj);
+      },
+    },
+    {
+      name: 'ver', alias: ['v', 'visao'], data: true, args: '[prazo | lista | status | kanban | calendario] [projeto] [mês]',
+      desc: 'muda a visão das tarefas (fica salva) · ex: /ver kanban · /ver lista tcc · /ver calendario +1',
+      run(arg) {
+        const words = String(arg).trim().toLowerCase().split(/\s+/).filter(Boolean);
+        let view = null, proj = S.ctx, month = null;
+        for (const w of words) {
+          const v = viewName(w);
+          if (v && !view) { view = v; continue; }
+          const mo = parseMonth(w);
+          if (mo) { month = mo; view = view || 'calendario'; continue; }
+          if (['todas', 'tudo', '*', '~'].includes(w)) { proj = null; continue; }
+          const p = projName(w);
+          if (!p) throw usage('ver', 'kanban  ·  lista tcc  ·  calendario +1');
+          proj = p;
         }
-        term.print(`── tarefas · ${esc(projLabel(proj))} ${'─'.repeat(10)}`, 'sep');
-        showTaskGroups(groups, ids);
-        term.print('<span class="dim">/feito t1 · /adiar t1 sex · /apagar t1 · /feitas histórico</span>');
+        if (!words.length) {
+          const cur = currentView();
+          term.print(`── visões ${'─'.repeat(10)}`, 'sep');
+          VIEWS.forEach(v => term.print(`<span class="k ${v === cur ? 'c-act' : 'c-int'}">${v === cur ? '▸ ' : '  '}${v}</span><span class="dim">${{ prazo: 'atrasadas · hoje · próximas · sem prazo', lista: 'agrupada por projeto', status: 'agrupada por status', kanban: 'colunas por status', calendario: 'mês por prazo (agenda no celular)' }[v]}</span>`, 'tbl'));
+          return term.print('<span class="dim">/ver kanban troca · /tarefas usa a visão atual</span>');
+        }
+        view = view || currentView();
+        try { localStorage.setItem(VIEW_KEY, view); } catch {}
+        showView(view, proj, month);
       },
     },
     {

@@ -214,7 +214,7 @@ async function migrate(t) {
 
 function setMode(mode) {
   S.mode = mode;
-  input.placeholder = { email: 'seu e-mail', code: 'aguardando o link do e-mail (ou digite o código)' }[mode] || PLACEHOLDER;
+  input.placeholder = { email: 'seu e-mail', code: 'código do e-mail' }[mode] || PLACEHOLDER;
   input.inputMode = mode === 'code' ? 'numeric' : mode === 'email' ? 'email' : 'text';
   input.autocomplete = mode === 'code' ? 'one-time-code' : mode === 'email' ? 'email' : 'off';
   ui.render();
@@ -245,8 +245,7 @@ async function submitEmail(text) {
     try { localStorage.setItem(EMAIL_KEY, email); } catch {}
     setMode('code');
     term.ok('auth', `e-mail de acesso enviado pra ${esc(email)} <span class="c-meta">· ${t.id} · ${t.elapsed()}ms</span>`);
-    term.say('abra o e-mail e clique no link de login. esta tela libera sozinha. ' +
-      'se o e-mail trouxer um código, digite aqui · <span class="c-hud">/entrar</span> recomeça');
+    term.say('digite aqui o código que chegou no e-mail. (o link do e-mail também funciona) · <span class="c-hud">/entrar</span> recomeça');
   }, { announce: true });
 }
 

@@ -162,7 +162,11 @@ export function createCloudStore(sb, user, { onSync } = {}) {
     return flush();
   }
 
-  function listen() {
+  async function listen() {
+    // O canal de tempo real precisa da sua credencial ANTES de conectar.
+    // Sem ela, a trava "só o dono" (RLS) faz o banco não mandar nada: o canal fica ligado, mas mudo.
+    const { data } = await sb.auth.getSession();
+    if (data.session) await sb.realtime.setAuth(data.session.access_token);
     channel = sb.channel('entries:' + user.id)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' }, p => {
         if (p.eventType === 'DELETE') server = server.filter(e => e.id !== p.old.id);
@@ -170,13 +174,23 @@ export function createCloudStore(sb, user, { onSync } = {}) {
         write(CACHE, server);
         rebuild();
       })
-      .subscribe(s => setStatus({ realtime: s === 'SUBSCRIBED' ? 'on' : s === 'CLOSED' ? 'off' : s.toLowerCase() }));
+      .subscribe((s, err) => setStatus({
+        realtime: s === 'SUBSCRIBED' ? 'on' : s === 'CLOSED' ? 'off' : s.toLowerCase(),
+        ...(err ? { lastError: 'tempo real: ' + err.message } : {}),
+      }));
   }
 
   // ao voltar a rede ou reabrir o app: envia a fila e confere o servidor
-  const resync = () => { if (navigator.onLine) flush().then(() => pull()).catch(e => setStatus({ state: 'pending', lastError: e.message })); };
+  let alive = true; // vira false no /sair
+  const resync = () => { if (alive && navigator.onLine) flush().then(() => pull()).catch(e => setStatus({ state: 'pending', lastError: e.message })); };
   addEventListener('online', resync);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) resync(); });
+
+  // outra aba do app neste mesmo aparelho salvou algo: atualiza na hora, sem depender da internet
+  addEventListener('storage', e => { if (alive && e.key === CACHE) { server = read(CACHE); rebuild(); } });
+
+  // rede de segurança: se o tempo real cair, confere o servidor a cada 60s (só com o app visível)
+  setInterval(() => { if (!document.hidden) resync(); }, 60000);
 
   return {
     kind: 'nuvem',
@@ -186,7 +200,7 @@ export function createCloudStore(sb, user, { onSync } = {}) {
     // abre na hora com o cache; a sincronização acontece em seguida (sync())
     async connect() {
       rebuild();
-      listen();
+      listen().catch(e => setStatus({ realtime: 'erro', lastError: 'tempo real: ' + e.message }));
       return entries.length;
     },
 
@@ -212,6 +226,7 @@ export function createCloudStore(sb, user, { onSync } = {}) {
 
     // apaga a cópia deste aparelho (não mexe no servidor). Usado no /sair.
     forget() {
+      alive = false;
       if (channel) sb.removeChannel(channel);
       localStorage.removeItem(CACHE);
       localStorage.removeItem(OUTBOX);

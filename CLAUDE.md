@@ -83,9 +83,24 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - [x] comandos: /t, "- ", /tarefas [proj], /feito, /reabrir, /adiar, /feitas [proj] [dias], /projetos, /ir (alt+1..4), /apagar t1, /desfazer de qualquer mudança
   - [x] HUD: telemetria "tarefas" (da aba), "pendentes" real no núcleo, módulo tarefas online · 104 testes
   - [x] 002_data.sql rodado · publicado
-- [ ] 0.6. Redesign MB Core: núcleo vivo com estados reais, satélites, rails contextuais, boot cinematográfico (feito, aguardando aprovação do Vini antes de publicar)
+- [x] 0.6. Redesign MB Core: núcleo vivo com estados reais, satélites, rails contextuais, boot cinematográfico · publicado
+- [ ] 1b. Tarefas v2, visões e acervo · plano em `docs/plano-tarefas-acervo.md` (decisões do Vini lá)
+  - [x] 0 · plano aprovado, 0.6 publicado
+  - [ ] 0.5 · login usuário + senha · `/status` do sistema vira `/condition`
+  - [ ] 1 · modelo de dados (projeto, status, prazo, prioridade) + registros de projetos e status
+  - [ ] 2 · escrever/editar com `#proj @status >prazo !prioridade` + regras automáticas + linha `↳ auto`
+  - [ ] 3 · tela inicial (atrasadas, prioridade alta, vencem primeiro)
+  - [ ] 4 · visões `/ver lista|status|kanban|calendario`
+  - [ ] 6 · acervo (links colados, `/guardar` textos, busca em tudo)
+  - [ ] 7 · fechamento e publicação
 - [ ] 2. IA intérprete: texto livre vira tarefa, gasto, treino etc.
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)
 - [ ] 5. Dashboards: gráficos por área e tendências, só com dados reais
 - [ ] 6. Coach: resumo do dia, revisão semanal, incentivo gentil
+
+## Backlog (ideias guardadas, sem data)
+- IA no servidor pras tarefas (Etapa 5 do plano) · antes, pesquisar a API de IA mais barata (sem cartão no momento)
+- Login por biometria (passkey/WebAuthn) ou câmera, no celular e no PC
+- Título automático dos links do acervo
+- "Cofre"/"Vault" pra algo secreto

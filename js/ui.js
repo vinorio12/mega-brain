@@ -213,7 +213,7 @@ export function createUI(ctx) {
     const ctxTasks = taskStats(S.ctx ? E.filter(e => inCtx(e)) : E);
     const [memText] = mem();
     const st = ctx.store?.status;
-    const intent = readIntent(inputValue, { mode: S.mode, ctx: S.ctx, catalog: ctx.commands.catalog() });
+    const intent = readIntent(inputValue, { mode: S.mode, ctx: S.ctx, catalog: ctx.commands.catalog(), reg: ctx.reg(), entries: S.entries });
 
     set('s-context', '~' + (S.ctx ? '/' + S.ctx : ''), `${ctxTasks.abertas} abertas${ctxTasks.atrasadas ? ` · ${ctxTasks.atrasadas} atrasadas` : ''}`);
     set('s-memory', memText, `${E.length} entradas`);
@@ -244,7 +244,7 @@ export function createUI(ctx) {
 
   // direita: o contexto do momento. Digitando → mostra o que o Enter vai fazer. Parado → tarefas relevantes.
   function renderCtx(E, now) {
-    const intent = readIntent(inputValue, { mode: S.mode, ctx: S.ctx, catalog: ctx.commands.catalog() });
+    const intent = readIntent(inputValue, { mode: S.mode, ctx: S.ctx, catalog: ctx.commands.catalog(), reg: ctx.reg(), entries: S.entries });
     const body = $('x-body'), line = $('intent-line');
     let title = 'contexto', sub = '~' + (S.ctx ? '/' + S.ctx : ''), html = '', short = '';
 
@@ -272,10 +272,15 @@ export function createUI(ctx) {
     } else if (intent.type === 'task') {
       title = 'nova tarefa';
       sub = 'enter cria';
-      html = `<dl class="ctx-intent"><dt>texto</dt><dd>${esc(intent.text.replace(/#[\p{L}\p{N}_-]+/gu, '').trim() || intent.text)}</dd>` +
-        `<dt>projeto</dt><dd class="c-act">${intent.tags.length ? intent.tags.map(t => '#' + esc(t)).join(' ') : '<span class="dim">—</span>'}</dd>` +
-        `<dt>prazo</dt><dd class="c-int">${intent.prazo ? esc(fmtDue(intent.prazo, now)) : '<span class="dim">sem prazo</span>'}</dd></dl>`;
-      short = `→ tarefa${intent.tags.length ? ' · #' + intent.tags.join(' #') : ''}${intent.prazo ? ' · ' + fmtDue(intent.prazo, now) : ''}`;
+      // cada campo: o valor + "auto" quando o app vai decidir sozinho
+      const A = k => intent.auto.includes(k) ? ' <span class="auto-tag">auto</span>' : '';
+      html = `<dl class="ctx-intent"><dt>texto</dt><dd>${esc(intent.text)}</dd>` +
+        `<dt>projeto</dt><dd class="c-act">#${esc(intent.projeto)}${A('projeto')}</dd>` +
+        `<dt>status</dt><dd class="c-int">@${esc(intent.status)}${A('status')}</dd>` +
+        `<dt>prioridade</dt><dd class="${intent.prioridade === 'alta' ? 'c-warn' : ''}">!${esc(intent.prioridade)}${A('prioridade')}</dd>` +
+        `<dt>prazo</dt><dd class="c-int">${intent.prazo ? esc(fmtDue(intent.prazo, now)) : '<span class="dim">sem prazo</span>'}${A('prazo')}</dd></dl>` +
+        '<div class="ctx-hint">auto = o app decide · informe com #proj @status >prazo !prio</div>';
+      short = `→ tarefa · #${intent.projeto} · @${intent.status} · !${intent.prioridade}${intent.prazo ? ' · ' + fmtDue(intent.prazo, now) : ''}${intent.auto.length ? ' (auto: ' + intent.auto.join(', ') + ')' : ''}`;
     } else if (intent.type === 'task-error') {
       title = 'nova tarefa';
       sub = intent.error === 'prazo' ? 'prazo?' : 'vazia';

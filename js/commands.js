@@ -14,7 +14,7 @@ import { geocode, locate, fetchWeather, savedPlace, describe } from './weather.j
 import { fmtDue, parseDue } from './dates.js';
 import {
   isTask, doneAt, projName, parseTaskInput, newTask, groupTasks, doneHistory, projectsSummary, taskNumbers, taskStats,
-  projectOf, statusChange, finalStatus, firstStatus,
+  projectOf, statusChange, finalStatus, firstStatus, fillByRules, matchStatus, statusOf, prioOf, isFinalStatus,
 } from './tasks.js';
 
 export const PHASES = [
@@ -109,16 +109,49 @@ export function createCommands(ctx) {
 
   /* ---------- tarefas ---------- */
 
-  // uma linha de tarefa: t3  [ ]  revisar cap 2 #tcc        sex 02.10
-  function taskLine(n, e, now = new Date()) {
+  // uma linha de tarefa:  t3  [~]  revisar cap 2  #tcc !alta @fazendo        sex 02.10
+  //   caixa: [ ] primeiro status · [~] em andamento (outros abertos) · [x] concluída
+  //   opts.hide: campos que a visão já mostra no título do grupo (ex: 'projeto' na lista por projeto)
+  function taskLine(n, e, now = new Date(), opts = {}) {
+    const reg = ctx.reg();
     const done = !!doneAt(e);
+    const st = statusOf(e), pr = prioOf(e), proj = projectOf(e, reg.projects);
     const due = e.data?.prazo ? fmtDue(e.data.prazo, now) : '';
     const tone = done ? 'c-meta' : due.startsWith('atrasada') ? 'c-warn' : due === 'hoje' ? 'c-act' : 'c-meta';
+    const box = done ? '<span class="c-act">[x]</span>' : st === firstStatus(reg) ? '[ ]' : '<span class="c-int">[~]</span>';
+    const hide = new Set(opts.hide || []);
+    const meta = [
+      proj && !hide.has('projeto') ? `<span class="c-act">#${esc(proj)}</span>` : '',
+      pr === 'alta' && !done ? '<span class="c-warn">!alta</span>' : pr === 'baixa' && !done ? '<span class="dim">!baixa</span>' : '',
+      !done && st !== firstStatus(reg) && !hide.has('status') ? `<span class="c-int">@${esc(st)}</span>` : '',
+    ].filter(Boolean).join(' ');
+    // o texto sem a #tag do projeto (ela já aparece no meta)
+    const text = proj ? e.text.replace(new RegExp(`\\s*#${proj}(?![\\p{L}\\p{N}_-])`, 'giu'), '') : e.text;
     term.print(
       `<span class="n">t${n}</span>` +
-      `<span class="bx">${done ? '<span class="c-act">[x]</span>' : '[ ]'}</span>` +
-      `<span class="${done ? 'done' : ''}">${hl(e.text)}</span>` +
+      `<span class="bx">${box}</span>` +
+      `<span class="${done ? 'done' : ''}">${hl(text)}${meta ? ` <span class="tmeta">${meta}</span>` : ''}</span>` +
       `<span class="due ${tone}">${esc(due)}</span>`, 'task');
+  }
+
+  // a linha "↳ auto": o que o app escolheu sozinho, pra você conferir e corrigir
+  function autoLine(values, auto, n, fonte = 'regra') {
+    if (!auto.length) return;
+    const show = {
+      projeto: `<span class="c-act">#${esc(values.projeto)}</span>`,
+      status: `@${esc(values.status)}`,
+      prioridade: `!${esc(values.prioridade)}`,
+      prazo: values.prazo ? `>${esc(fmtDue(values.prazo))}` : '>sem prazo',
+    };
+    term.print(`<span class="c-int">↳ auto</span> <span class="dim">(${fonte})</span> · ${auto.map(k => show[k]).join(' · ')} <span class="dim">· /desfazer ou /editar t${n}</span>`, 'auto');
+  }
+
+  // erros de leitura da tarefa (prazo, prioridade, status) com dica do que dá pra usar
+  function parseError(p) {
+    if (p.error === 'prazo') return new CmdError('E_PRAZO', 'task', `não entendi o prazo ${p.token}`, 'use <span class="c-int">>hoje >amanhã >sex >15/10 >+3 >sem</span>');
+    if (p.error === 'prioridade') return new CmdError('E_PRIO', 'task', `prioridade ${p.token} não existe`, 'use <span class="c-int">!alta !média !baixa</span> (ou !1 !2 !3)');
+    if (p.error === 'status') return new CmdError('E_STATUS', 'task', `status ${p.token} não existe`, `use ${ctx.reg().statuses.map(s => '<span class="c-int">@' + esc(s.name.replace(/\s+/g, '')) + '</span>').join(' ')} · /status novo nome cria`);
+    return null;
   }
 
   // mostra grupos de tarefas numerados t1, t2... e guarda essa numeração pros próximos comandos
@@ -172,22 +205,50 @@ export function createCommands(ctx) {
   const projLabel = p => (p ? '#' + p : 'todas');
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+  // Cria a tarefa: o que você informou vale; o resto as regras decidem (e a linha "↳ auto" mostra).
   async function addTask(raw, t) {
-    const p = parseTaskInput(raw, S.ctx);
-    if (p.error === 'vazio') throw usage('t', 'revisar cap 2 #tcc >sex');
-    if (p.error === 'prazo') throw new CmdError('E_PRAZO', 'task', `não entendi o prazo ${p.token}`, 'use <span class="c-hud">>hoje >amanhã >sex >15/10 >+3</span>');
-    const e = await ctx.store.add(newTask(p));
+    const reg = ctx.reg();
+    const p = parseTaskInput(raw, { ctx: S.ctx, reg });
+    if (p.error === 'vazio') throw usage('t', 'revisar cap 2 #tcc @fazendo >sex !alta');
+    if (p.error) throw parseError(p);
+    const { values, auto } = fillByRules(p, { entries: S.entries, reg });
+    const e = await ctx.store.add(newTask({ text: p.text, tags: [...new Set([values.projeto, ...p.tags])], ...values, auto: { campos: auto, fonte: 'regra' } }));
+    S.undo.push({ label: 'tarefa criada', items: [], created: [e.id] });
     // entra no fim da lista atual, pra já ter um número
-    if (!S.taskList?.length) S.taskList = groupTasks(S.entries, { proj: S.ctx, projects: ctx.reg().projects }).list;
+    if (!S.taskList?.length) S.taskList = groupTasks(S.entries, { proj: S.ctx, projects: reg.projects }).list;
     else if (!S.taskList.includes(e.id)) S.taskList.push(e.id);
     const n = S.taskList.indexOf(e.id) + 1;
     S.lastLatency = t.elapsed();
     const queued = ctx.store.pending() > 0;
     term[queued ? 'warn' : 'ok']('task',
-      `tarefa${queued ? ' na fila' : ''} <span class="c-meta">t${n}</span> · ${hl(e.text)}` +
-      (p.prazo ? ` · <span class="c-hud">${esc(fmtDue(p.prazo))}</span>` : '') +
+      `tarefa${queued ? ' na fila' : ''} <span class="c-meta">t${n}</span> · ${hl(p.text)}` +
       ` <span class="c-meta">· ${t.id} · ${S.lastLatency}ms</span>`);
+    autoLine(values, auto, n);
     ctx.ui.pulse(queued ? 'warn' : 'act');
+  }
+
+  // /editar e /mover: muda só os campos informados; o que você corrigir deixa de ser "auto"
+  async function editTasks(targets, p, t, label) {
+    const reg = ctx.reg();
+    const change = e => {
+      const d = {};
+      if (p.projeto) d.projeto = p.projeto;
+      if (p.prioridade) d.prioridade = p.prioridade;
+      if (p.prazo !== null && p.prazo !== undefined) d.prazo = p.prazo || null;
+      if (p.status) Object.assign(d, statusChange(reg, p.status));
+      const campos = (e.data?.auto?.campos || []).filter(k => !(k in d) && !(k === 'status' && p.status));
+      d.auto = campos.length ? { ...e.data.auto, campos } : null;
+      return d;
+    };
+    const before = targets.map(x => x.e);
+    for (const { e } of targets) {
+      const next = { ...e, data: { ...(e.data || {}), ...change(e) } };
+      if (p.text) next.text = p.text;
+      if (p.projeto || p.text) next.tags = [...new Set([next.data.projeto, ...tagsOf(next.text)].filter(Boolean))];
+      await ctx.store.restore(next);
+    }
+    S.undo.push({ label, items: before });
+    S.lastLatency = t.elapsed();
   }
 
   const defs = [
@@ -206,9 +267,9 @@ export function createCommands(ctx) {
           return;
         }
         table([['qualquer texto', 'captura na inbox · use #tags: <span class="dim">ler cap 2</span> <span class="c-act">#tcc</span>']], 'cmd');
-        table([['- texto #proj >sex', 'cria tarefa (igual ao /t)']], 'cmd');
+        table([['- texto #proj @status >prazo !prio', 'cria tarefa (igual ao /t) · o que faltar vira ↳ auto']], 'cmd');
         const groups = [
-          ['tarefas e projetos', c => ['t', 'tarefas', 'feito', 'reabrir', 'adiar', 'feitas', 'projeto', 'ir'].includes(c.name)],
+          ['tarefas e projetos', c => ['t', 'tarefas', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
           ['memória', c => c.data],
           ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
           ['tela', c => ['painel', 'foco', 'limpar', 'log', 'historico', 'boot'].includes(c.name)],
@@ -258,8 +319,8 @@ export function createCommands(ctx) {
     },
     /* ---------- tarefas e projetos (Fase 1) ---------- */
     {
-      name: 't', exec: true, alias: ['tarefa', 'todo'], data: true, async: true, args: '<texto> [#projeto] [>prazo]',
-      desc: 'cria tarefa · ex: revisar cap 2 #tcc >sex (ou comece a linha com "- ")',
+      name: 't', exec: true, alias: ['tarefa', 'todo'], data: true, async: true, args: '<texto> [#projeto] [@status] [>prazo] [!prioridade]',
+      desc: 'cria tarefa · o que faltar o app decide (↳ auto) · ou comece a linha com "- "',
       async run(arg, signal, t) { await addTask(arg, t); },
     },
     {
@@ -321,9 +382,97 @@ export function createCommands(ctx) {
         if (!clear && !prazo) throw new CmdError('E_PRAZO', 'task', `não entendi o prazo ${when}`, 'use <span class="c-hud">hoje amanhã sex 15/10 +3</span> ou <span class="c-hud">sem</span>');
         const targets = resolveTasks(which, 'adiar', 't2 sex');
         if (!targets) return;
-        await updateTasks(targets, () => ({ prazo }), 'mudança de prazo');
-        term.ok('task', `prazo ${prazo ? '→ <span class="c-hud">' + esc(fmtDue(prazo)) + '</span>' : 'removido'} · ${targets.map(x => `t${x.n} ${hl(x.e.text)}`).join(' · ')} <span class="c-meta">· ${t.id}</span>`);
-        ctx.ui.pulse('hud');
+        await editTasks(targets, { prazo: prazo || '' }, t, 'mudança de prazo');
+        term.ok('task', `prazo ${prazo ? '→ <span class="c-int">' + esc(fmtDue(prazo)) + '</span>' : 'removido'} · ${targets.map(x => `t${x.n} ${hl(x.e.text)}`).join(' · ')} <span class="c-meta">· ${t.id}</span>`);
+        ctx.ui.pulse('int');
+      },
+    },
+    {
+      name: 'editar', alias: ['ed', 'e'], exec: true, data: true, async: true,
+      args: '<t1 ...> [#projeto] [@status] [>prazo] [!prioridade] [texto novo]',
+      desc: 'corrige tarefas · muda só o que você escrever · ex: /editar t2 #weg !alta',
+      async run(arg, signal, t) {
+        const words = String(arg).trim().split(/\s+/).filter(Boolean);
+        const nums = [];
+        while (words.length && /^t?\d+(-t?\d+)?$/i.test(words[0])) nums.push(words.shift());
+        if (!nums.length) throw usage('editar', 't2 #weg @fazendo >sex !alta  ·  t3 texto novo');
+        const p = parseTaskInput(words.join(' '), { reg: ctx.reg(), allowEmpty: true });
+        if (p.error) throw parseError(p);
+        if (p.text && nums.length > 1) throw new CmdError('E_ARG', 'task', 'texto novo só dá pra uma tarefa por vez', 'use um número só, ex: /editar t2 texto novo');
+        if (!p.text && !p.projeto && !p.status && !p.prioridade && p.prazo === null) throw usage('editar', 't2 #weg @fazendo >sex !alta  ·  t3 texto novo');
+        const targets = resolveTasks(nums.join(' '), 'editar', 't2 #weg');
+        if (!targets) return;
+        await editTasks(targets, p, t, 'edição');
+        const what = [
+          p.projeto && `<span class="c-act">#${esc(p.projeto)}</span>`, p.status && `@${esc(p.status)}`,
+          p.prioridade && `!${esc(p.prioridade)}`, p.prazo !== null && (p.prazo ? `>${esc(fmtDue(p.prazo))}` : '>sem prazo'),
+          p.text && `"${hl(p.text)}"`,
+        ].filter(Boolean).join(' · ');
+        term.ok('task', `editada${targets.length > 1 ? 's ' + targets.length : ''} · ${targets.map(x => 't' + x.n).join(' ')} → ${what} <span class="c-meta">· ${t.id} · /desfazer volta</span>`);
+        ctx.ui.pulse('int');
+      },
+    },
+    {
+      name: 'mover', alias: ['mv'], exec: true, data: true, async: true, args: '<t1 ...> <status>',
+      desc: 'muda o status · ex: /mover t3 fazendo · /mover t1 t2 esperando',
+      async run(arg, signal, t) {
+        const words = String(arg).trim().split(/\s+/).filter(Boolean);
+        const nums = [];
+        while (words.length && /^t?\d+(-t?\d+)?$/i.test(words[0])) nums.push(words.shift());
+        const st = matchStatus(words.join(' ').replace(/^@/, ''), ctx.reg().statuses);
+        if (!nums.length || !words.length) throw usage('mover', 't3 fazendo');
+        if (!st) throw parseError({ error: 'status', token: '@' + words.join('') });
+        const targets = resolveTasks(nums.join(' '), 'mover', 't3 fazendo');
+        if (!targets) return;
+        await editTasks(targets, { status: st, prazo: null }, t, 'mudança de status');
+        term.ok('task', `${targets.map(x => 't' + x.n).join(' ')} → <span class="c-int">@${esc(st)}</span> <span class="c-meta">· ${t.id} · /desfazer volta</span>`);
+        ctx.ui.pulse(isFinalStatus(ctx.reg(), st) ? 'act' : 'int');
+      },
+    },
+    {
+      name: 'status', alias: ['colunas'], data: true, async: true, exec: true,
+      args: '[novo nome | renomear velho novo]',
+      desc: 'status das tarefas: lista com contagem · cria ou renomeia',
+      async run(arg, signal, t) {
+        const raw = String(arg).trim();
+        const [sub, ...rest] = raw.split(/\s+/);
+        const reg = ctx.reg();
+        const recOf = name => S.records.find(e => e.kind === 'status' && String(e.text).toLowerCase() === name);
+
+        if (sub === 'novo' || sub === 'nova' || sub === 'criar') {
+          const name = rest.join(' ').toLowerCase().trim();
+          if (!name || name.length > 24 || !/^[\p{L}\p{N} _-]+$/u.test(name)) throw usage('status', 'novo nome (ex: /status novo revisão)');
+          if (matchStatus(name, reg.statuses) && reg.statuses.some(s => s.name === name)) return term.say(`@${esc(name)} já existe.`);
+          // entra antes do status final (feito)
+          const fin = S.records.find(e => e.kind === 'status' && e.data?.final);
+          const ordem = fin ? (fin.data.ordem ?? 99) - 0.5 : reg.statuses.length + 1;
+          const e = await ctx.store.add({ kind: 'status', text: name, tags: [], ts: Date.now(), day: dayKey(new Date()), data: { ordem, final: false } });
+          S.undo.push({ label: 'status criado', items: [], created: [e.id] });
+          term.ok('task', `status criado · <span class="c-int">@${esc(name.replace(/\s+/g, ''))}</span> <span class="c-meta">· ${t.id}</span>`);
+          return ctx.ui.pulse('act');
+        }
+        if (sub === 'renomear') {
+          const [a, b] = rest;
+          const from = a && matchStatus(a, reg.statuses);
+          const to = (b || '').toLowerCase();
+          const r = from && recOf(from);
+          if (!r || !to) throw usage('status', 'renomear velho novo');
+          if (reg.statuses.some(s => s.name === to)) throw new CmdError('E_ARG', 'task', `@${to} já existe`, 'escolha outro nome');
+          const tasks = S.entries.filter(e => isTask(e) && statusOf(e) === from);
+          S.undo.push({ label: 'status renomeado', items: [r, ...tasks] });
+          await ctx.store.restore({ ...r, text: to });
+          for (const e of tasks) await ctx.store.restore({ ...e, data: { ...(e.data || {}), status: to } });
+          term.ok('task', `@${esc(from)} → <span class="c-int">@${esc(to)}</span> · ${plural(tasks.length, 'tarefa')} <span class="c-meta">· ${t.id}</span>`);
+          return ctx.ui.pulse('act');
+        }
+        if (sub && sub !== 'lista') throw usage('status', '[novo nome | renomear velho novo]');
+
+        term.print(`── status ${'─'.repeat(10)}`, 'sep');
+        reg.statuses.forEach(s => {
+          const n = S.entries.filter(e => isTask(e) && statusOf(e) === s.name).length;
+          term.print(`<span class="k c-int">@${esc(s.name.replace(/\s+/g, ''))}</span><span>${plural(n, 'tarefa')}${s.final ? ' <span class="dim">· final (conta como concluída)</span>' : ''}</span>`, 'tbl');
+        });
+        term.print('<span class="dim">/mover t3 fazendo · /status novo revisão · a condição do sistema agora é /condition</span>');
       },
     },
     {

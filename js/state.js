@@ -1,7 +1,7 @@
 // Estado do MB Core e leitura do que o operador está digitando. Funções puras, testadas em tests/.
 
 import { tagsOf, lev } from './util.js';
-import { parseTaskInput } from './tasks.js';
+import { parseTaskInput, fillByRules, registry } from './tasks.js';
 
 // Cada estado: rótulo, descrição curta e tom de cor (token do CSS)
 export const STATE_INFO = {
@@ -44,7 +44,7 @@ export function describeState(key, { tasks = [], mode = null } = {}) {
 
 // O que vai acontecer quando o operador apertar Enter?
 //   catalog: [{ name, alias, args, desc }] dos comandos
-export function readIntent(text, { mode = null, ctx = null, catalog = [] } = {}) {
+export function readIntent(text, { mode = null, ctx = null, catalog = [], reg = registry([]), entries = [] } = {}) {
   const raw = String(text);
   if (mode) return { type: 'login', field: mode };
   const v = raw.trim();
@@ -63,8 +63,11 @@ export function readIntent(text, { mode = null, ctx = null, catalog = [] } = {})
   }
 
   if (/^-\s+\S/.test(v)) {
-    const p = parseTaskInput(v.replace(/^-\s+/, ''), ctx);
-    return p.error ? { type: 'task-error', error: p.error, token: p.token } : { type: 'task', ...p };
+    const p = parseTaskInput(v.replace(/^-\s+/, ''), { ctx, reg });
+    if (p.error) return { type: 'task-error', error: p.error, token: p.token };
+    // prévia completa: o que foi informado + o que as regras vão decidir
+    const { values, auto } = fillByRules(p, { entries, reg });
+    return { type: 'task', ...p, ...values, auto };
   }
 
   let note = v;

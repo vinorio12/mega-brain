@@ -9,7 +9,7 @@ import { createCloudStore } from '../js/cloud.js';
 import { createTerminal } from '../js/terminal.js';
 import { parseDue, fmtDue } from '../js/dates.js';
 import { deriveState, describeState, readIntent } from '../js/state.js';
-import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord } from '../js/tasks.js';
+import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord, guessProject, dueFor, fillByRules, matchStatus } from '../js/tasks.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -138,13 +138,19 @@ describe('datas faladas (Fase 1: prazos)', () => {
 describe('tarefas · lógica (tasks.js)', () => {
   const now = new Date(2026, 8, 30, 15, 0); // quarta 30/09
   const T = (text, prazo = null, feito = null, i = 0) => ({ id: 'k' + i + text, text, tags: tagsOf(text), kind: 'tarefa', ts: 1000 + i, day: '2026-09-30', data: { prazo, feito } });
-  test('parseTaskInput: texto, tags e prazo', () => eq(parseTaskInput('revisar cap 2 #tcc >sex', null, now), { text: 'revisar cap 2 #tcc', tags: ['tcc'], prazo: '2026-10-02' }));
-  test('parseTaskInput: prazo no meio do texto', () => eq(parseTaskInput('ligar >amanhã pro joão', null, now).text, 'ligar pro joão'));
-  test('parseTaskInput: aba adiciona a tag', () => eq(parseTaskInput('ler artigo', 'tcc', now).tags, ['tcc']));
-  test('parseTaskInput: aba não duplica a tag', () => eq(parseTaskInput('ler #tcc', 'tcc', now).text, 'ler #tcc'));
-  test('parseTaskInput: prazo inválido', () => eq(parseTaskInput('x >blabla', null, now), { error: 'prazo', token: '>blabla' }));
-  test('parseTaskInput: só prazo = vazio', () => eq(parseTaskInput('>sex', null, now).error, 'vazio'));
-  test('parseTaskInput: ">" sozinho fica no texto', () => eq(parseTaskInput('a > b', null, now).text, 'a > b'));
+  const P = (s, o = {}) => parseTaskInput(s, { now, ...o });
+  test('parseTaskInput: projeto, status, prazo e prioridade', () => eq(P('revisar cap 2 #tcc @fazendo >sex !alta'), { text: 'revisar cap 2', tags: ['tcc'], projeto: 'tcc', status: 'fazendo', prazo: '2026-10-02', prioridade: 'alta' }));
+  test('parseTaskInput: nada informado = tudo null', () => eq(P('ligar pro joão'), { text: 'ligar pro joão', tags: [], projeto: null, status: null, prazo: null, prioridade: null }));
+  test('parseTaskInput: prazo no meio do texto', () => eq(P('ligar >amanhã pro joão').text, 'ligar pro joão'));
+  test('parseTaskInput: #tag que não é projeto fica no texto', () => { const p = P('ler #artigo #tcc'); eq([p.text, p.projeto, p.tags], ['ler #artigo', 'tcc', ['tcc', 'artigo']]); });
+  test('parseTaskInput: aba vira o projeto', () => eq(P('ler artigo', { ctx: 'weg' }).projeto, 'weg'));
+  test('parseTaskInput: #projeto explícito vence a aba', () => eq(P('ler #tcc', { ctx: 'weg' }).projeto, 'tcc'));
+  test('parseTaskInput: prioridades por nome, letra e número', () => eq(['!alta', '!media', '!b', '!1', '!3'].map(x => P('x ' + x).prioridade), ['alta', 'média', 'baixa', 'alta', 'baixa']));
+  test('parseTaskInput: status sem espaço e por começo', () => eq(['@afazer', '@a-fazer', '@faz', '@esp'].map(x => P('x ' + x).status), ['a fazer', 'a fazer', 'fazendo', 'esperando']));
+  test('parseTaskInput: erros dizem o que não entendeu', () => eq([P('x >blabla'), P('x !urgente'), P('x @nada')].map(p => p.error + ' ' + p.token), ['prazo >blabla', 'prioridade !urgente', 'status @nada']));
+  test('parseTaskInput: >sem = sem prazo de propósito', () => eq(P('x >sem').prazo, ''));
+  test('parseTaskInput: só campos = vazio (menos no editar)', () => { eq(P('>sex').error, 'vazio'); eq(P('!alta', { allowEmpty: true }).prioridade, 'alta'); });
+  test('parseTaskInput: ">" sozinho fica no texto', () => eq(P('a > b').text, 'a > b'));
   test('groupTasks: grupos na ordem certa', () => {
     const E = [T('sem', null, null, 1), T('prox', '2026-10-05', null, 2), T('hoje', '2026-09-30', null, 3), T('velha', '2026-09-28', null, 4), T('feita', null, now.getTime(), 5), T('feita ontem', null, now.getTime() - 864e5, 6), entry('nota comum', 7)];
     const r = groupTasks(E, { now });
@@ -179,6 +185,36 @@ describe('tarefas · lógica (tasks.js)', () => {
   });
   test('taskNumbers: t1 t3, 1-4, t2-t4; texto → null', () => eq([taskNumbers('t1 t3'), taskNumbers('1-4'), taskNumbers('t2-t4'), taskNumbers('ler')], ['1 3', '1-4', '2-4', null]));
   test('projName limpa e valida', () => eq([projName('#TCC'), projName('fase-1'), projName('a b'), projName('')], ['tcc', 'fase-1', null, null]));
+});
+
+describe('tarefas · regras automáticas', () => {
+  const now = new Date(2026, 8, 30, 15, 0); // quarta 30/09
+  const reg = registry([]);
+  const task = (text, projeto) => ({ id: text, kind: 'tarefa', text, tags: [projeto], ts: 1, data: { projeto } });
+  const hist = [task('revisar capítulo da fundamentação', 'tcc'), task('reunião com orientador', 'tcc'), task('relatório de manutenção da prensa', 'weg')];
+  test('projeto pelo nome no texto', () => eq(guessProject('estudar pro tcc hoje', { reg }), 'tcc'));
+  test('projeto pelas palavras das tarefas antigas', () => {
+    eq(guessProject('mandar email pro orientador', { entries: hist, reg }), 'tcc');
+    eq(guessProject('checar manutenção', { entries: hist, reg }), 'weg');
+  });
+  test('sem pista nenhuma → pessoal', () => eq(guessProject('comprar pão', { entries: hist, reg }), 'pessoal'));
+  test('palavras comuns não contam', () => eq(guessProject('fazer com que', { entries: [task('fazer com que algo', 'weg')], reg }), 'pessoal'));
+  test('prazo pela prioridade, dias corridos', () => eq(['alta', 'média', 'baixa'].map(p => dueFor(p, now)), ['2026-10-01', '2026-10-03', '2026-10-07']));
+  test('fillByRules: preenche só o que falta e diz o que foi automático', () => {
+    const p = parseTaskInput('comprar pão !alta', { reg, now });
+    const r = fillByRules(p, { reg, now });
+    eq(r.values, { projeto: 'pessoal', status: 'a fazer', prioridade: 'alta', prazo: '2026-10-01' });
+    eq(r.auto, ['projeto', 'status', 'prazo']);
+  });
+  test('fillByRules: tudo informado → nada automático', () => {
+    const p = parseTaskInput('x #weg @fazendo >sex !baixa', { reg, now });
+    eq(fillByRules(p, { reg, now }).auto, []);
+  });
+  test('fillByRules: >sem fica sem prazo e não é auto', () => {
+    const r = fillByRules(parseTaskInput('x >sem', { reg, now }), { reg, now });
+    eq([r.values.prazo, r.auto.includes('prazo')], [null, false]);
+  });
+  test('matchStatus ambíguo → null', () => eq(matchStatus('a', [{ name: 'abc' }, { name: 'abd' }]), null));
 });
 
 describe('tarefas · modelo v2 e registros', () => {
@@ -236,7 +272,7 @@ describe('tarefas · comandos', () => {
     S.ctx = 'tcc';
     await run('/t ler artigo >amanhã');
     const e = S.entries[0];
-    eq([e.kind, e.text, e.tags], ['tarefa', 'ler artigo #tcc', ['tcc']]);
+    eq([e.kind, e.text, e.tags, e.data.projeto], ['tarefa', 'ler artigo', ['tcc'], 'tcc']);
     ok(e.data.prazo && doneAt(e) === null);
   });
   test('/t com prazo errado dá E_PRAZO', async () => {
@@ -328,6 +364,49 @@ describe('tarefas · comandos', () => {
     await run('/projeto renomear tcc monografia');
     eq([ctx.reg().projects.includes('monografia'), S.entries[0].data.projeto], [true, 'monografia']);
   });
+  test('/t sem campos: regras decidem, marca auto e mostra a linha ↳ auto', async () => {
+    const { S, term, run } = setupTasks([]);
+    await run('/t comprar pão');
+    const d = S.entries[0].data;
+    eq([d.projeto, d.status, d.prioridade, d.auto.campos], ['pessoal', 'a fazer', 'média', ['projeto', 'status', 'prioridade', 'prazo']]);
+    ok(term.out.some(x => x[0] === 'PRINT' && x[2] === 'auto'), 'mostrou a linha auto');
+  });
+  test('/desfazer depois de /t apaga a tarefa criada', async () => {
+    const { S, run } = setupTasks([]);
+    await run('/t algo');
+    await run('/desfazer');
+    eq(S.entries.length, 0);
+  });
+  test('/editar muda só o informado e tira do auto', async () => {
+    const { S, run } = setupTasks([]);
+    await run('/t ligar pro joão');
+    await run('/editar t1 #weg !alta');
+    const d = S.entries[0].data;
+    eq([d.projeto, d.prioridade, d.status, d.auto.campos], ['weg', 'alta', 'a fazer', ['status', 'prazo']]);
+    await run('/editar t1 ligar pro joão amanhã');
+    eq(S.entries[0].text, 'ligar pro joão amanhã');
+    await run('/desfazer');
+    eq(S.entries[0].text, 'ligar pro joão');
+  });
+  test('/mover troca status; status final conclui', async () => {
+    const { S, run } = setupTasks([T('a', null, 1), T('b', null, 2)]);
+    await run('/mover t1 t2 fazendo');
+    eq(S.entries.map(e => statusOf(e)), ['fazendo', 'fazendo']);
+    await run('/mover t1 feito');
+    ok(doneAt(S.entries.find(e => e.text === 'a')));
+  });
+  test('/status novo cria antes do feito e já dá pra usar', async () => {
+    const { S, run, ctx } = setupTasks([]);
+    for (const e of seedEntries([], 'u')) await ctx.store.restore(e);
+    await run('/status novo revisão');
+    eq(ctx.reg().statuses.map(s => s.name), ['a fazer', 'fazendo', 'esperando', 'revisão', 'feito']);
+    await run('/t texto @revisao');
+    eq(statusOf(S.entries[0]), 'revisão');
+  });
+  test('/editar com status inexistente dá E_STATUS', async () => {
+    const { run } = setupTasks([T('a', null, 1)]);
+    await throws(() => run('/editar t1 @xyz'), 'E_STATUS');
+  });
   test('/ir tcc e /ir ~', async () => {
     const { S, run } = setupTasks([]);
     await run('/ir tcc');
@@ -374,7 +453,7 @@ describe('leitura da intenção (readIntent)', () => {
   test('atalho também casa', () => eq(r('/o').matches.map(c => c.name), ['feito']));
   test('comando completo com argumento', () => { const i = r('/feito t2'); eq([i.type, i.cmd.name, i.arg], ['command', 'feito', 't2']); });
   test('comando desconhecido sugere o mais perto', () => { const i = r('/tarefsa'); eq([i.type, i.near[0]?.name], ['unknown', 'tarefas']); });
-  test('"- " → tarefa com tags e prazo', () => { const i = r('- ler #tcc >hoje'); eq([i.type, i.text, i.tags], ['task', 'ler #tcc', ['tcc']]); ok(i.prazo); });
+  test('"- " → tarefa com o que foi informado + o que é auto', () => { const i = r('- ler #tcc >hoje'); eq([i.type, i.text, i.projeto, i.auto], ['task', 'ler', 'tcc', ['status', 'prioridade']]); ok(i.prazo); });
   test('"- " com prazo errado → task-error', () => eq(r('- ler >blabla').type, 'task-error'));
   test('texto livre → nota, com a tag da aba', () => eq(r('ideia solta', { ctx: 'tcc' }), { type: 'note', text: 'ideia solta #tcc', tags: ['tcc'] }));
 });

@@ -99,20 +99,89 @@ export const projName = s => {
   return /^[\p{L}\p{N}_-]+$/u.test(p) ? p : null;
 };
 
-// "revisar cap 2 #tcc >sex" (+ aba atual) → { text, tags, prazo } ou { error }
-export function parseTaskInput(raw, ctxProj = null, now = new Date()) {
-  let prazo = null;
+/* ---------- escrever: "revisar cap 2 #tcc @fazendo >sex !alta" ---------- */
+
+const PRIO_ALIASES = { alta: 'alta', a: 'alta', 1: 'alta', 'média': 'média', media: 'média', m: 'média', 2: 'média', baixa: 'baixa', b: 'baixa', 3: 'baixa' };
+const squash = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[\s_-]+/g, '');
+
+// "@fazendo", "@afazer", "@a-fazer", "@faz" → nome do status registrado (ou null)
+export function matchStatus(token, statuses) {
+  const q = squash(token);
+  if (!q) return null;
+  const exact = statuses.find(s => squash(s.name) === q);
+  if (exact) return exact.name;
+  const pre = statuses.filter(s => squash(s.name).startsWith(q));
+  return pre.length === 1 ? pre[0].name : null;
+}
+
+// Lê a linha da tarefa. Devolve o que foi INFORMADO (o resto fica null pras regras decidirem).
+//   projeto: a 1ª #tag que é projeto registrado (ou a aba atual) · as outras #tags ficam no texto
+//   allowEmpty: pro /editar, que pode mudar só um campo
+export function parseTaskInput(raw, { ctx = null, reg = registry([]), now = new Date(), allowEmpty = false } = {}) {
+  let prazo = null, prioridade = null, status = null, projeto = null;
   const words = [];
   for (const w of String(raw).trim().split(/\s+/)) {
+    if (!w) continue;
     if (w.startsWith('>') && w.length > 1) {
-      prazo = parseDue(w.slice(1), now);
-      if (!prazo) return { error: 'prazo', token: w };
-    } else if (w) words.push(w);
+      const sem = ['sem', 'nenhum', '-'].includes(w.slice(1).toLowerCase());
+      prazo = sem ? '' : parseDue(w.slice(1), now);
+      if (prazo === null) return { error: 'prazo', token: w };
+    } else if (w.startsWith('!') && w.length > 1) {
+      prioridade = PRIO_ALIASES[w.slice(1).toLowerCase()] || null;
+      if (!prioridade) return { error: 'prioridade', token: w };
+    } else if (w.startsWith('@') && w.length > 1) {
+      status = matchStatus(w.slice(1), reg.statuses);
+      if (!status) return { error: 'status', token: w };
+    } else if (/^#[\p{L}\p{N}_-]+$/u.test(w) && !projeto && reg.projects.includes(w.slice(1).toLowerCase())) {
+      projeto = w.slice(1).toLowerCase();
+    } else words.push(w);
   }
-  let text = words.join(' ');
-  if (!text) return { error: 'vazio' };
-  if (ctxProj && !tagsOf(text).includes(ctxProj)) text += ' #' + ctxProj;
-  return { text, tags: tagsOf(text), prazo };
+  const text = words.join(' ');
+  if (!text && !allowEmpty) return { error: 'vazio' };
+  if (!projeto && ctx) projeto = ctx; // dentro de uma aba, o projeto é o dela
+  const tags = [...new Set([...(projeto ? [projeto] : []), ...tagsOf(text)])];
+  return { text, tags, projeto, status, prazo, prioridade };
+}
+
+// palavras "de conteúdo" (3+ letras, sem acento, sem as muito comuns) pra comparar textos
+const STOP = new Set('pra para com que uma uns umas dos das por mais como sem sobre nao sim ate apos entre isso esse essa este esta tem ter ser fazer feito ver'.split(' '));
+const words3 = s => String(s).replace(/#[\p{L}\p{N}_-]+/gu, ' ')
+  .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  .split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !STOP.has(w));
+
+// Projeto mais provável pelo texto: nome do projeto no texto (+5) e palavras em comum com as tarefas de cada projeto.
+export function guessProject(text, { entries = [], reg = registry([]) } = {}) {
+  const mine = new Set(words3(text));
+  let best = null, bestScore = 0;
+  for (const p of reg.projects) {
+    let score = mine.has(squash(p)) ? 5 : 0;
+    for (const e of entries) {
+      if (!isTask(e) || projectOf(e, reg.projects) !== p) continue;
+      for (const w of new Set(words3(e.text))) if (mine.has(w)) score++;
+    }
+    if (score > bestScore) { best = p; bestScore = score; }
+  }
+  return best || (reg.projects.includes('pessoal') ? 'pessoal' : reg.projects[0] || null);
+}
+
+// prazo sugerido pela prioridade, em dias corridos: alta → amanhã · média → +3 · baixa → +7
+export const PRIO_DAYS = { alta: 1, 'média': 3, baixa: 7 };
+export function dueFor(prioridade, now = new Date()) {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (PRIO_DAYS[prioridade] ?? 3));
+  return dayKey(d);
+}
+
+// Regras simples: preenchem o que não foi informado. Devolve os valores + a lista do que foi automático.
+// (é também o "plano B" quando houver IA: se ela falhar, isto decide)
+export function fillByRules(parsed, { entries = [], reg = registry([]), now = new Date() } = {}) {
+  const auto = [];
+  const v = { projeto: parsed.projeto, status: parsed.status, prioridade: parsed.prioridade, prazo: parsed.prazo };
+  if (!v.projeto) { v.projeto = guessProject(parsed.text, { entries, reg }); auto.push('projeto'); }
+  if (!v.status) { v.status = firstStatus(reg); auto.push('status'); }
+  if (!v.prioridade) { v.prioridade = 'média'; auto.push('prioridade'); }
+  if (v.prazo === null || v.prazo === undefined) { v.prazo = dueFor(v.prioridade, now); auto.push('prazo'); }
+  if (v.prazo === '') v.prazo = null; // ">sem" = sem prazo, de propósito
+  return { values: v, auto };
 }
 
 export function newTask({ text, tags, prazo = null, projeto = null, status = 'a fazer', prioridade = 'média', auto = null }, now = new Date()) {

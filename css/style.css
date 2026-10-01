@@ -64,6 +64,7 @@ ul, dl, dd { margin: 0; padding: 0; list-style: none; }
 .app {
   height: 100vh;
   height: 100dvh;
+  height: var(--app-h, 100dvh); /* altura visível de verdade (com o teclado do celular aberto) */
   display: grid;
   grid-template-columns: 272px minmax(0, 1fr) 248px;
   grid-template-rows: auto minmax(0, 1fr) auto;

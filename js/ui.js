@@ -43,6 +43,23 @@ export function createUI(ctx) {
     return what === 'focus' ? layout.focus : layout.tele;
   }
 
+  // Celular: quando o teclado abre, o app encolhe pra área visível e o prompt fica à vista.
+  const vv = window.visualViewport;
+  if (vv) {
+    let lastH = vv.height;
+    const fit = () => {
+      if (Math.abs(vv.scale - 1) > 0.01) return; // zoom de pinça: não é o teclado, deixa como está
+      document.documentElement.style.setProperty('--app-h', vv.height + 'px');
+      window.scrollTo(0, 0);
+      // encolheu (teclado abriu): mostra a última linha do terminal
+      const out = document.getElementById('out');
+      if (out && vv.height < lastH - 80) out.scrollTop = out.scrollHeight;
+      lastH = vv.height;
+    };
+    vv.addEventListener('resize', fit);
+    fit();
+  }
+
   // ctrl+. alterna a telemetria
   document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key === '.') { e.preventDefault(); toggle('tele'); }

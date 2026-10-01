@@ -70,7 +70,9 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - [x] Supabase configurado (tabela + RLS, usuário criado, cadastro desligado, chave em js/config.js) · login testado e funcionando
   - [x] /apagar em lote e por texto · /painel (ctrl+.) e /foco · tempo real autenticado + sync entre abas
   - [x] testes automáticos (tests/) · js/dates.js pronto pra Fase 1 · README e docs/
+  - [x] erros inesperados viram `E_JS` no terminal · /importar (sem duplicar) · nuvem aceita colunas novas (`data`) · offline verificado com servidor desligado · prompt acima do teclado no celular
   - [ ] confirmar com o Vini que o tempo real funciona logado (RT `on` no rodapé, duas janelas)
+  - [ ] confirmar no celular de verdade que o prompt fica visível com o teclado aberto
   - [ ] publicar no GitHub Pages (docs/publicar.md) + atualizar Site URL no Supabase
   - [x] PWA (manifest, ícones, service worker, /instalar)
 - [ ] 1. Tarefas e projetos: tabs Hoje, TCC, WEG, Pessoal, prazos, concluir

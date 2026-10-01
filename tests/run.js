@@ -246,10 +246,30 @@ describe('acervo · comandos', () => {
     eq(S.entries[0].data.url, 'https://ex.com/artigo');
     term.out.length = 0;
     await run('/acervo links');
-    eq(term.out.filter(x => x[2] === 'ent').length, 1);
+    const cards = term.out.filter(x => x[2] === 'block').map(x => x[1]).join('');
+    eq((cards.match(/class="acard/g) || []).length, 1, 'um cartão de link');
     ok(term.text().includes('href="https://ex.com/artigo"') && term.text().includes('noopener'), 'link seguro');
     await run('/desfazer');
     eq(S.entries.length, 1, 'desfez o texto');
+  });
+  test('/inbox mostra só notas (nem tarefa nem acervo)', async () => {
+    const { term, run, ctx } = setup(['nota 1']);
+    await ctx.commands.addLink('https://x.com', fakeT);
+    await run('/t uma tarefa');
+    term.out.length = 0;
+    await run('/inbox');
+    eq(term.out.filter(x => x[2] === 'note').length, 1);
+  });
+  test('/apagar 2 = 2ª nota; /apagar a1 = 1º do acervo (mesmo misturados)', async () => {
+    const { S, run, ctx } = setup(['n1']);
+    await ctx.commands.addLink('https://x.com', fakeT);
+    await run('/t tarefa no meio');
+    await ctx.store.add({ kind: 'nota', text: 'n2', tags: [], ts: Date.now() + 5, day: 'x' });
+    await run('/apagar 2');
+    eq(S.entries.map(e => e.text).includes('n2'), false, 'apagou a 2ª nota');
+    await run('/apagar a1');
+    eq(S.entries.some(e => e.kind === 'link'), false, 'apagou o link');
+    eq(S.entries.filter(e => e.kind === 'tarefa').length, 1, 'tarefa intacta');
   });
   test('/guardar com link vira link', async () => {
     const { S, run } = setup([]);
@@ -261,7 +281,8 @@ describe('acervo · comandos', () => {
     await ctx.commands.addLink('https://docs.dev docs', fakeT);
     term.out.length = 0;
     await run('/buscar docs tipo:link');
-    eq(term.out.filter(x => x[2] === 'ent').length, 1);
+    eq(term.out.filter(x => x[2] === 'note').length, 0, 'a nota não aparece');
+    eq((term.out.filter(x => x[2] === 'block').map(x => x[1]).join('').match(/class="acard/g) || []).length, 1);
   });
 });
 
@@ -634,13 +655,13 @@ describe('comandos (com memória e terminal falsos)', () => {
   test('/buscar #tag acha só a tag exata', async () => {
     const { term, run } = setup(['ler #tcc', 'ler #tcc2', 'nada']);
     await run('/buscar #tcc');
-    const lines = term.out.filter(x => x[0] === 'PRINT' && x[2] === 'ent');
+    const lines = term.out.filter(x => x[0] === 'PRINT' && x[2] === 'note');
     eq(lines.length, 1);
   });
   test('/inbox 2 mostra só as 2 últimas', async () => {
     const { term, run } = setup(['a', 'b', 'c']);
     await run('/inbox 2');
-    eq(term.out.filter(x => x[2] === 'ent').length, 2);
+    eq(term.out.filter(x => x[2] === 'note').length, 2);
   });
   test('comando errado sugere o certo', () => {
     const { ctx } = setup([]);

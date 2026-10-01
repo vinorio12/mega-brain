@@ -5,9 +5,9 @@ import { esc, pad, dayKey, hhmm, ddmm, dur, DOW, VERSION } from './util.js';
 import { createCore } from './core.js';
 import { describe } from './weather.js';
 import { PHASES } from './commands.js';
-import { taskStats, groupTasks, projectOf, briefing, prioOf } from './tasks.js';
+import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary } from './tasks.js';
 import { fmtDue } from './dates.js';
-import { shortUrl } from './acervo.js';
+import { shortUrl, isAcervo, isLink, safeUrl } from './acervo.js';
 import { deriveState, describeState, readIntent, LISTEN_MS, FAULT_MS } from './state.js';
 
 const MODULES = [
@@ -152,6 +152,7 @@ export function createUI(ctx) {
     renderSats(E, T, key);
     renderCtx(E, now);
     renderFoot();
+    if (ovOpen) renderOverview(E, now);
     $('work-meta').textContent = ({ email: 'login · e-mail', password: 'login · senha', code: 'login · código' }[S.mode] || 'captura') + ' · ~' + (S.ctx ? '/' + S.ctx : '');
     $('f-state').textContent = st.label;
     $('f-desc').textContent = st.desc;
@@ -370,6 +371,69 @@ export function createUI(ctx) {
       `<span class="ff${tone ? ' is-' + tone : ''}"><i>${k}</i><b${id ? ` id="${id}"` : ''}>${esc(v)}</b></span>`).join('');
   }
 
+  /* ---------- /overview: o geral de tudo, no lugar do núcleo ---------- */
+  let ovOpen = false;
+  function toggleOverview(force) {
+    ovOpen = force ?? !ovOpen;
+    if (ovOpen) {
+      // a numeração t1, t2... do overview vale pros próximos comandos (/feito t1)
+      S.taskList = briefing(S.entries, { reg: ctx.reg(), proj: S.ctx, limit: 8 }).items.map(e => e.id);
+      core.pulse('int', 1);
+    }
+    app.classList.toggle('ov-open', ovOpen);
+    $('overview').hidden = !ovOpen;
+    renderNow();
+    return ovOpen;
+  }
+  $('ov-close').addEventListener('click', () => toggleOverview(false));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && ovOpen) toggleOverview(false); });
+
+  function renderOverview(E, now) {
+    const reg = ctx.reg();
+    const byId = new Map(E.map(e => [e.id, e]));
+    const b = briefing(E, { reg, now, proj: S.ctx, limit: 8 });
+    const isNote = e => e.kind !== 'tarefa' && !isAcervo(e);
+    const notes = E.filter(isNote), acv = E.filter(isAcervo);
+    const num = new Map();
+    notes.forEach((e, i) => num.set(e.id, '#' + (i + 1)));
+    acv.forEach((e, i) => num.set(e.id, 'a' + (i + 1)));
+    const when = ts => { const d = new Date(ts); return dayKey(d) === dayKey(now) ? hhmm(d) : ddmm(d); };
+
+    $('ov-meta').textContent = `${DOW[now.getDay()]} ${ddmm(now)} · ${hhmm(now)} · ~${S.ctx ? '/' + S.ctx : ''}`;
+
+    // tarefas: o essencial, na numeração aberta junto com o overview
+    const tasks = (S.taskList || []).map(id => byId.get(id)).filter(e => e && e.kind === 'tarefa');
+    const taskHtml = tasks.length ? tasks.map((e, i) => {
+      const due = e.data?.prazo ? fmtDue(e.data.prazo, now) : '';
+      const done = !!(e.data?.feito_em ?? e.data?.feito);
+      const tone = done ? 'c-meta' : due.startsWith('atrasada') ? 'c-warn' : due === 'hoje' ? 'c-act' : 'c-meta';
+      const hi = prioOf(e) === 'alta' && !done ? '<span class="c-warn">!</span> ' : '';
+      return `<div class="ov-row"><span class="n">t${i + 1}</span><span class="${done ? 'dim' : ''}" title="${esc(e.text)}">${done ? '✓ ' : ''}${hi}${esc(e.text)}</span><span class="r ${tone}">${esc(due)}</span></div>`;
+    }).join('') : '<div class="ov-empty">nada atrasado nem urgente</div>';
+
+    const noteHtml = notes.length ? notes.slice(-6).reverse().map(e =>
+      `<div class="ov-row"><span class="n">${when(e.ts)}</span><span title="${esc(e.text)}">${esc(e.text)}</span><span class="r dim">${num.get(e.id)}</span></div>`).join('')
+      : '<div class="ov-empty">nenhuma nota</div>';
+
+    const acvHtml = acv.length ? acv.slice(-5).reverse().map(e => {
+      const url = isLink(e) ? safeUrl(e.data?.url) : null;
+      const label = url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">↗ ${esc(shortUrl(url, 28))}</a>` : `<span class="dim">»</span> ${esc(e.text)}`;
+      return `<div class="ov-row"><span class="n">${num.get(e.id)}</span><span>${label}</span><span class="r dim">${when(e.ts)}</span></div>`;
+    }).join('') : '<div class="ov-empty">acervo vazio</div>';
+
+    const { projects } = projectsSummary(E, now, reg.projects);
+    const max = Math.max(1, ...projects.map(p => p.abertas));
+    const projHtml = projects.map(p =>
+      `<div class="ov-proj"><div class="top"><span class="c-act">#${esc(p.proj)}</span><span>${p.abertas}${p.atrasadas ? ` <span class="c-warn">· ${p.atrasadas}!</span>` : ''}</span></div>` +
+      `<div class="ov-bar"><i class="${p.atrasadas ? 'late' : ''}" style="width:${Math.round(p.abertas / max * 100)}%"></i></div></div>`).join('');
+
+    $('ov-grid').innerHTML =
+      `<div class="ov-b"><h3>tarefas <span>${b.abertas} abertas${b.atrasadas ? ` · <span class="c-warn">${b.atrasadas} atrasadas</span>` : ''}</span></h3>${taskHtml}</div>` +
+      `<div class="ov-b"><h3>notas <span>${notes.length}</span></h3>${noteHtml}</div>` +
+      `<div class="ov-b"><h3>acervo <span>${acv.length}</span></h3>${acvHtml}</div>` +
+      `<div class="ov-b"><h3>projetos <span>${projects.length}</span></h3>${projHtml}</div>`;
+  }
+
   const fmtMs = ms => ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(1) + 's';
   const ago = ms => ms < 60000 ? 'agora' : ms < 3600000 ? `há ${Math.floor(ms / 60000)} min` : `há ${Math.floor(ms / 3600000)} h`;
 
@@ -387,5 +451,5 @@ export function createUI(ctx) {
     if (d.getMinutes() !== lastMinute) { lastMinute = d.getMinutes(); renderNow(); }
   }
 
-  return { render, renderNow, tick, state, mem, toggle, pulse: core.pulse, core, onInput, onKey, onFault, onCtx, noteTasks };
+  return { render, renderNow, tick, state, mem, toggle, pulse: core.pulse, core, onInput, onKey, onFault, onCtx, noteTasks, toggleOverview, overviewOpen: () => ovOpen };
 }

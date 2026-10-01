@@ -97,6 +97,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - [x] 4 · visões (`js/views.js`): `/ver prazo|lista|status|kanban|calendario [proj] [mês]` (salva em `mb.view.v1`, `/tarefas` usa a atual) · kanban empilha no celular · calendário: grade no PC, agenda no celular, `/ver calendario +1`
   - [x] 6 · acervo (`js/acervo.js`): colar link (http/https) guarda com contexto, linha com aspas ou `/guardar` guarda texto, `/acervo [links|textos] [termo]`, `/buscar termo [tipo:link|texto|tarefa|nota]` em tudo, agrupado por tipo · visão atual em `S.view`
   - [x] 7 · README, ajuda agrupada, publicado
+- [x] 0.8. UX por módulo: notas = diário por dia (`/inbox` só notas, números #3) · acervo = cartões (a2) · tarefas = lista de execução (t1) · `/apagar 3 | a2 | t1` · `/overview` (`/ov`) no lugar do núcleo com tarefas, notas, acervo e projetos (esc fecha; outro comando fecha)
 - [ ] 2. IA intérprete: texto livre vira tarefa, gasto, treino etc.
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)

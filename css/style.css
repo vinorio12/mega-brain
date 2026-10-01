@@ -230,6 +230,32 @@ ul, ol, dl, dd { margin: 0; padding: 0; list-style: none; }
 .sat[data-side="top"]    { transform: translate(-50%, calc(-100% - 8px)); text-align: center; }
 .sat[hidden] { display: none; }
 
+/* OVERVIEW: o geral, no lugar do núcleo enquanto aberto */
+.overview { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 12px 18px 10px; overflow: hidden; }
+.overview[hidden] { display: none; }
+.app.ov-open .field-slot { height: clamp(300px, 54vh, 560px); transition: height .35s var(--ease); }
+.app.ov-open .field { visibility: hidden; }
+.ov-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line-2); font-size: 11px; color: var(--meta); }
+.ov-h b { color: var(--int); font-weight: 500; letter-spacing: .3em; margin-right: 1.5ch; }
+.ov-close { background: none; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--meta); font: inherit; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; padding: 1px 8px; cursor: pointer; }
+.ov-close:hover { color: var(--tx); border-color: var(--meta); }
+.ov-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.4fr 1fr 1fr .8fr; gap: 0 22px; padding-top: 10px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.ov-b { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ov-b h3 { margin: 0 0 4px; display: flex; justify-content: space-between; font-size: 10px; font-weight: 400; letter-spacing: .2em; text-transform: uppercase; color: var(--meta); }
+.ov-b h3 span { letter-spacing: .04em; text-transform: none; }
+.ov-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1ch; font-size: 12px; align-items: baseline; }
+.ov-row > :nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-row .n { color: var(--meta-2); }
+.ov-row .r { font-size: 11px; white-space: nowrap; }
+.ov-empty { color: var(--meta-2); font-size: 12px; }
+.ov-proj { display: grid; gap: 2px; font-size: 12px; }
+.ov-proj .top { display: flex; justify-content: space-between; gap: 8px; }
+.ov-bar { height: 2px; background: var(--line); }
+.ov-bar i { display: block; height: 100%; background: var(--act); }
+.ov-bar i.late { background: var(--warn); }
+.ov-b a { color: var(--int); text-decoration: none; }
+.ov-b a:hover { text-decoration: underline; }
+
 /* faixa do celular: estado ao lado do núcleo pequeno */
 .field-strip { display: none; }
 
@@ -304,6 +330,26 @@ ul, ol, dl, dd { margin: 0; padding: 0; list-style: none; }
 .task .done { color: var(--meta); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--meta) 70%, transparent); }
 .task .done .c-act { color: var(--meta); }
 .task .due { white-space: nowrap; text-align: right; }
+/* NOTAS: diário · dia como título, hora à esquerda, texto livre, número discreto à direita */
+.nday { margin-top: 10px; color: var(--tx); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; border-bottom: 1px solid var(--line); padding-bottom: 2px; }
+.note { display: grid; grid-template-columns: 6ch minmax(0, 1fr) auto; gap: 0 1.4ch; padding: 1px 0; }
+.note .nt { color: var(--meta-2); }
+.note .nx { color: var(--tx); }
+.note .nn { color: var(--meta-2); font-size: 11px; }
+
+/* ACERVO: cartões · link (domínio em destaque) · texto (citação) */
+.acv { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.acard { display: grid; gap: 3px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--bg-2); color: var(--tx); text-decoration: none; min-width: 0; transition: border-color .2s; }
+a.acard:hover { border-color: color-mix(in srgb, var(--int) 50%, transparent); }
+.acard .ah { display: flex; justify-content: space-between; gap: 10px; }
+.acard .ah b { font-weight: 500; color: var(--int); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acard .an { color: var(--meta); font-size: 11px; }
+.acard .ap { color: var(--meta); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acard .ac { overflow-wrap: anywhere; }
+.acard .ad { color: var(--meta-2); font-size: 10.5px; }
+.acard.is-snip .ah b { color: var(--meta); }
+.acard .aq { border-left: 2px solid var(--int-dim); padding-left: 10px; font-style: italic; overflow-wrap: anywhere; }
+
 /* blocos (kanban, calendário): ocupam a largura do terminal */
 .row.block { white-space: normal; margin: 6px 0 4px; }
 
@@ -495,6 +541,9 @@ ul, ol, dl, dd { margin: 0; padding: 0; list-style: none; }
   .field-strip b { font-weight: 300; font-size: 16px; letter-spacing: .18em; color: var(--tone, var(--tx)); }
   .field-strip span { color: var(--meta); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .field.is-boot .field-strip { display: none; }
+  .app.ov-open .field-slot { height: 62vh; }
+  .overview { padding: 10px 12px 8px; }
+  .ov-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
 
   .term { border-top: 0; }
   .term-h { display: none; }
@@ -504,6 +553,8 @@ ul, ol, dl, dd { margin: 0; padding: 0; list-style: none; }
   .ent { grid-template-columns: 4ch 11ch minmax(0, 1fr); gap: 0 1ch; }
   .tbl { grid-template-columns: 11ch minmax(0, 1fr); gap: 0 1.2ch; }
   .auto { padding-left: 4.5ch; }
+  .note { grid-template-columns: 5ch minmax(0, 1fr) auto; gap: 0 1ch; }
+  .acv { grid-template-columns: minmax(0, 1fr); }
   .kanban { grid-auto-flow: row; grid-auto-columns: auto; overflow-x: visible; gap: 14px; }
   .cal-wide { display: none !important; }
   .cal-narrow { display: grid !important; }

@@ -93,24 +93,68 @@ export function createCommands(ctx) {
   const { S, term } = ctx;
   const usage = (name, args) => new CmdError('E_ARG', 'shell', 'argumento faltando ou inválido', `uso: <span class="c-hud">/${name} ${esc(args)}</span>`);
 
-  const numberOf = () => new Map(S.entries.map((e, i) => [e.id, i + 1]));
+  // Números por módulo (estáveis, em ordem de criação): notas #1 #2 · acervo a1 a2 · tarefas t1 t2 (da última lista)
+  const isNote = e => !isTask(e) && !isAcervo(e);
+  const notesPool = () => S.entries.filter(isNote);
+  const acervoPool = () => S.entries.filter(isAcervo);
+  function nums() {
+    const m = new Map();
+    let n = 0, a = 0;
+    for (const e of S.entries) {
+      if (isNote(e)) m.set(e.id, '#' + ++n);
+      else if (isAcervo(e)) m.set(e.id, 'a' + ++a);
+    }
+    return m;
+  }
 
+  /* ---------- cada módulo com a sua cara ---------- */
+
+  // NOTAS: diário, separado por dia · hora · texto · número discreto à direita
+  function noteRows(items) {
+    const num = nums(), now = new Date();
+    const today = dayKey(now), yest = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+    let lastDay = null;
+    for (const e of items.slice().sort((a, b) => a.ts - b.ts)) {
+      const d = new Date(e.ts), k = dayKey(d);
+      if (k !== lastDay) {
+        lastDay = k;
+        term.print(`${k === today ? 'hoje · ' : k === yest ? 'ontem · ' : ''}${DOW[d.getDay()]} ${ddmm(d)}`, 'nday');
+      }
+      term.print(`<span class="nt">${hhmm(d)}</span><span class="nx">${hl(e.text)}</span><span class="nn">${num.get(e.id) || ''}</span>`, 'note');
+    }
+  }
+
+  // ACERVO: cartões · link com o domínio em destaque · texto como citação
+  function acervoCards(items) {
+    const num = nums();
+    const when = e => { const d = new Date(e.ts); return `${ddmm(d)} ${hhmm(d)}`; };
+    const cards = items.map(e => {
+      const n = num.get(e.id) || '';
+      if (isLink(e)) {
+        const url = safeUrl(e.data?.url);
+        let host = '', path = '';
+        try { const u = new URL(url); host = u.hostname.replace(/^www\./, ''); path = shortUrl(url, 60).slice(host.length) || '/'; } catch { host = shortUrl(e.text); }
+        const ctxText = e.data?.contexto || '';
+        const inner = `<span class="ah"><b>↗ ${esc(host)}</b><span class="an">${n}</span></span><span class="ap">${esc(path)}</span>` +
+          (ctxText ? `<span class="ac">${hl(ctxText)}</span>` : '') + `<span class="ad">${when(e)}</span>`;
+        return url ? `<a class="acard is-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : `<div class="acard is-link">${inner}</div>`;
+      }
+      return `<div class="acard is-snip"><span class="ah"><b>» texto</b><span class="an">${n}</span></span><span class="aq">${hl(e.text)}</span><span class="ad">${when(e)}</span></div>`;
+    }).join('');
+    term.print(`<div class="acv">${cards}</div>`, 'block');
+  }
+
+  // genérico: escolhe o desenho pelo tipo (usado pela busca e quando algo é ambíguo)
   function list(items, title) {
     if (!items.length) return term.say(`nada em ${esc(title)}.`);
     term.print(`── ${esc(title)} ${'─'.repeat(10)}`, 'sep');
-    listRows(items);
+    showByType(items);
   }
-
-  // as linhas: #n (número do /inbox) · data · marca · texto
-  function listRows(items) {
-    const num = numberOf();
-    for (const e of items) {
-      const d = new Date(e.ts);
-      // marcas: tarefa [ ] / [x] · link ↗ · texto guardado »
-      const box = isTask(e) ? (doneAt(e) ? '<span class="c-act">[x]</span> ' : '<span class="c-meta">[ ]</span> ')
-        : isLink(e) ? '<span class="c-int">↗</span> ' : isSnippet(e) ? '<span class="c-int">»</span> ' : '';
-      term.print(`<span class="n">#${num.get(e.id)}</span><span class="d">${ddmm(d)} ${hhmm(d)}</span><span>${box}${isLink(e) ? linkHtml(e) : hl(e.text)}</span>`, 'ent');
-    }
+  function showByType(items) {
+    const tasks = items.filter(isTask), notes = items.filter(isNote), acv = items.filter(isAcervo);
+    if (tasks.length) { S.taskList = tasks.map(e => e.id); tasks.forEach((e, i) => taskLine(i + 1, e)); }
+    if (notes.length) noteRows(notes);
+    if (acv.length) acervoCards(acv);
   }
 
   // link clicável (sempre http/https, abre em aba nova sem acesso ao app) + contexto
@@ -129,8 +173,7 @@ export function createCommands(ctx) {
     const e = await ctx.store.add({ kind: 'link', text: `${l.url}${l.contexto ? ' ' + l.contexto : ''}`, tags: l.tags, ts: now.getTime(), day: dayKey(now), data: { url: l.url, contexto: l.contexto } });
     S.undo.push({ label: 'link guardado', items: [], created: [e.id] });
     S.lastLatency = t.elapsed();
-    const n = S.entries.findIndex(x => x.id === e.id) + 1;
-    term.ok('acervo', `link guardado <span class="c-meta">#${n}</span> · ${linkHtml(e)} <span class="c-meta">· ${t.id} · /acervo lista</span>`);
+    term.ok('acervo', `link guardado <span class="c-meta">${nums().get(e.id) || ''}</span> · ${linkHtml(e)} <span class="c-meta">· ${t.id} · /acervo lista</span>`);
     ctx.ui.pulse('act');
   }
   async function addSnippet(text, t) {
@@ -140,18 +183,17 @@ export function createCommands(ctx) {
     const e = await ctx.store.add({ kind: 'trecho', text: s.text, tags: s.tags, ts: now.getTime(), day: dayKey(now), data: {} });
     S.undo.push({ label: 'texto guardado', items: [], created: [e.id] });
     S.lastLatency = t.elapsed();
-    const n = S.entries.findIndex(x => x.id === e.id) + 1;
-    term.ok('acervo', `texto guardado <span class="c-meta">#${n}</span> · ${hl(s.text)} <span class="c-meta">· ${t.id} · /acervo lista</span>`);
+    term.ok('acervo', `texto guardado <span class="c-meta">${nums().get(e.id) || ''}</span> · ${hl(s.text)} <span class="c-meta">· ${t.id} · /acervo lista</span>`);
     ctx.ui.pulse('act');
   }
 
-  // lista agrupada por tipo (busca e acervo), com os números do /inbox (#n) pra /apagar funcionar
+  // busca e acervo: um grupo por tipo, cada um com a sua cara
   function showSearch(res, title) {
     if (!res.total) return term.say(`nada encontrado${res.q ? ` pra "${esc(res.q)}"` : ''}${res.tipo ? ' em ' + esc(res.tipo) : ''}.`);
     term.print(`── ${esc(title)} · ${res.total} ${'─'.repeat(8)}`, 'sep');
     for (const g of res.groups) {
       term.print(`${esc(g.title)} <span class="c-meta">${g.items.length}</span>`, 'tgrp');
-      listRows(g.items);
+      showByType(g.items);
     }
   }
 
@@ -394,7 +436,7 @@ export function createCommands(ctx) {
         table([['qualquer texto', 'captura na inbox · use #tags: <span class="dim">ler cap 2</span> <span class="c-act">#tcc</span>']], 'cmd');
         table([['- texto #proj @status >prazo !prio', 'cria tarefa (igual ao /t) · o que faltar vira ↳ auto'], ['https://… contexto', 'guarda o link no acervo'], ['"texto', 'guarda o texto no acervo']], 'cmd');
         const groups = [
-          ['tarefas e projetos', c => ['inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
+          ['tarefas e projetos', c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
           ['acervo', c => ['acervo', 'guardar', 'buscar'].includes(c.name)],
           ['memória', c => c.data],
           ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
@@ -423,24 +465,38 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'inbox', data: true, alias: ['ls'], args: '[n]', desc: 'últimas n entradas (padrão 10)',
+      name: 'inbox', data: true, alias: ['ls', 'notas'], args: '[n]', desc: 'suas notas, em diário (últimas n, padrão 15)',
       run(arg) {
-        const n = Math.max(1, Math.min(500, parseInt(arg, 10) || 10));
-        const items = S.entries.slice(-n);
-        list(items, `inbox · ${items.length} de ${S.entries.length}`);
+        const n = Math.max(1, Math.min(500, parseInt(arg, 10) || 15));
+        const all = notesPool();
+        if (!all.length) return term.say('nenhuma nota ainda. escreva qualquer coisa pra capturar.');
+        const items = all.slice(-n);
+        term.print(`── inbox · notas · ${items.length} de ${all.length} ${'─'.repeat(8)}`, 'sep');
+        noteRows(items);
+        term.print('<span class="dim">tarefas: /tarefas · links e textos: /acervo · tudo: /overview</span>');
       },
     },
     {
-      name: 'hoje', data: true, desc: 'o que entrou hoje + tarefas de hoje e atrasadas',
+      name: 'hoje', data: true, desc: 'notas de hoje + tarefas de hoje e atrasadas',
       run() {
         const k = dayKey(new Date());
-        list(S.entries.filter(e => e.day === k), 'entrou hoje');
+        const notes = notesPool().filter(e => e.day === k);
+        if (notes.length) { term.print(`── notas de hoje ${'─'.repeat(10)}`, 'sep'); noteRows(notes); }
+        else term.say('nenhuma nota hoje.');
         const { groups } = groupTasks(S.entries, { proj: S.ctx, projects: ctx.reg().projects });
         const due = groups.filter(g => g.key === 'atrasadas' || g.key === 'hoje');
         if (due.length) {
           term.print(`── tarefas pra hoje ${'─'.repeat(10)}`, 'sep');
           showTaskGroups(due, due.flatMap(g => g.items.map(e => e.id)));
         }
+      },
+    },
+    {
+      name: 'overview', alias: ['ov', 'geral', 'tudo'], data: true,
+      desc: 'o geral de tudo (tarefas, notas, acervo, projetos) no lugar do núcleo · esc fecha',
+      run() {
+        const on = ctx.ui.toggleOverview();
+        term.say(on ? 'overview aberto no lugar do núcleo · os números t1, t2... valem pro /feito · <span class="c-int">esc</span> fecha' : 'overview fechado · núcleo de volta');
       },
     },
     {
@@ -740,7 +796,7 @@ export function createCommands(ctx) {
           return term.say('acervo vazio. cole um link (<span class="c-int">https://… contexto #tag</span>) ou use <span class="c-int">/guardar texto</span>.');
         }
         showSearch(searchAll(pool.slice().reverse(), words.join(' ')), `acervo${tipo ? ' · ' + (tipo === 'link' ? 'links' : 'textos') : ''}`);
-        term.print('<span class="dim">/apagar #n remove · /buscar termo procura em tudo</span>');
+        term.print('<span class="dim">toque no cartão pra abrir · /apagar a2 remove · /buscar termo procura em tudo</span>');
       },
     },
     {
@@ -753,8 +809,8 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'apagar', exec: true, data: true, alias: ['rm'], args: '<n> | <n n n> | <n-n> | <texto>',
-      desc: 'apaga por número (1 2 3 · 1-4) ou pelo texto (dá pra desfazer)', async: true,
+      name: 'apagar', exec: true, data: true, alias: ['rm'], args: '<3 | a2 | t1 | 1-4 | texto>',
+      desc: 'apaga: 3 = nota · a2 = acervo · t1 = tarefa · ou pelo texto (dá pra desfazer)', async: true,
       async run(arg, signal, t) {
         const raw = String(arg).trim();
 
@@ -770,31 +826,43 @@ export function createCommands(ctx) {
           return;
         }
 
-        const pick = pickTargets(raw, S.entries);
-        if (pick.mode === 'empty') throw usage('apagar', '1  ·  1 2 3  ·  1-4  ·  comprar café  ·  t2');
+        // acervo: a1 · a1 a3 · a2-a4  ·  notas: 3 · #3 · 1 2 · 1-4  ·  texto: procura em tudo
+        const isAcv = /^a\d/i.test(raw);
+        const numeric = s => s.split(/[\s,;]+/).filter(Boolean).every(x => /^#?\d+(-#?\d+)?$/.test(x));
+        let pick, prefix = '#';
+        if (isAcv) {
+          const n = raw.replace(/a/gi, '');
+          if (!numeric(n)) throw usage('apagar', 'a1  ·  a1 a3  ·  a2-a4');
+          pick = pickTargets(n, acervoPool());
+          prefix = 'a';
+        } else {
+          pick = pickTargets(raw, numeric(raw) ? notesPool() : S.entries);
+        }
+        if (pick.mode === 'empty') throw usage('apagar', '3 (nota)  ·  a2 (acervo)  ·  t1 (tarefa)  ·  texto');
         const { targets } = pick;
+        const label = e => nums().get(e.id) || (isTask(e) ? 'tarefa' : '');
 
         if (pick.mode === 'num') {
-          if (!targets.length) throw new CmdError('E_ARG', 'shell', `nenhuma entrada com ${pick.bad.length > 1 ? 'esses números' : 'esse número'}`, 'os números aparecem no <span class="c-hud">/inbox</span>');
-          if (pick.bad.length) term.warn('shell', `ignorados (não existem): ${pick.bad.map(n => '#' + esc(n)).join(' ')}`);
+          if (!targets.length) throw new CmdError('E_ARG', 'shell', `nada com ${pick.bad.length > 1 ? 'esses números' : 'esse número'}`, isAcv ? 'os números a1, a2... aparecem no <span class="c-int">/acervo</span>' : 'os números das notas aparecem no <span class="c-int">/inbox</span> · acervo usa a1 · tarefa usa t1');
+          if (pick.bad.length) term.warn('shell', `ignorados (não existem): ${pick.bad.map(n => prefix + esc(n)).join(' ')}`);
         } else {
-          // pelo texto: só apaga sozinho se UMA entrada bater
-          if (!targets.length) throw new CmdError('E_404', 'store', `nenhuma entrada contém "${raw}"`, 'confira com <span class="c-hud">/buscar</span>');
+          // pelo texto: só apaga sozinho se UMA coisa bater
+          if (!targets.length) throw new CmdError('E_404', 'store', `nada contém "${raw}"`, 'confira com <span class="c-int">/buscar</span>');
           if (targets.length > 1) {
-            list(targets.map(h => h.e), `"${raw}" bate com ${targets.length} entradas`);
-            term.say(`não apaguei nada, pra não sumir coisa errada. escolha pelos números, ex: <span class="c-hud">/apagar ${targets.slice(0, 3).map(h => h.n).join(' ')}</span>`);
+            list(targets.map(h => h.e), `"${raw}" bate com ${targets.length}`);
+            term.say('não apaguei nada, pra não sumir coisa errada. escolha pelo número: <span class="c-int">/apagar 3</span> (nota) · <span class="c-int">a2</span> (acervo) · <span class="c-int">t1</span> (tarefa)');
             return;
           }
         }
 
         for (const { e } of targets) await ctx.store.remove(e.id);
-        S.undo.push({ label: targets.length === 1 ? 'entrada apagada' : `${targets.length} entradas apagadas`, items: targets.map(x => x.e) }); // o lote inteiro volta com /desfazer
+        S.undo.push({ label: targets.length === 1 ? 'apagado' : `${targets.length} apagados`, items: targets.map(x => x.e) }); // o lote inteiro volta com /desfazer
         S.lastLatency = t.elapsed();
         const meta = `<span class="c-meta">· ${t.id} · ${S.lastLatency}ms · /desfazer recupera</span>`;
-        if (targets.length === 1) term.warn('store', `apagado #${targets[0].n} · ${hl(targets[0].e.text)} ${meta}`);
+        if (targets.length === 1) term.warn('store', `apagado ${esc(isAcv ? 'a' + targets[0].n : pick.mode === 'num' ? '#' + targets[0].n : label(targets[0].e))} · ${hl(targets[0].e.text)} ${meta}`);
         else {
-          term.warn('store', `apagadas ${targets.length} entradas ${meta}`);
-          targets.forEach(({ n, e }) => term.print(`<span class="n">#${n}</span><span class="d"></span><span class="dim">${hl(e.text)}</span>`, 'ent'));
+          term.warn('store', `apagados ${targets.length} ${meta}`);
+          targets.forEach(({ n, e }) => term.print(`<span class="nt">${esc(prefix + n)}</span><span class="nx dim">${hl(e.text)}</span><span class="nn"></span>`, 'note'));
         }
         ctx.ui.pulse('warn');
       },

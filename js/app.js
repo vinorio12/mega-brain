@@ -86,6 +86,8 @@ const { term, ui } = ctx;
 /* ================= executar o que foi digitado ================= */
 
 async function run(text) {
+  // com o overview aberto, qualquer outro comando fecha ele (o núcleo volta)
+  if (ui.overviewOpen() && !/^\/(overview|ov|geral|tudo)\b/i.test(text)) ui.toggleOverview(false);
   if (!text.startsWith('/')) {
     if (S.mode === 'email') return submitEmail(text);
     if (S.mode === 'password') return submitPassword(text);

@@ -94,26 +94,62 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'apagar', data: true, alias: ['rm'], args: '<n>', desc: 'apaga a entrada #n (dá pra desfazer)', async: true,
+      name: 'apagar', data: true, alias: ['rm'], args: '<n> | <n n n> | <n-n> | <texto>',
+      desc: 'apaga por número (1 2 3 · 1-4) ou pelo texto (dá pra desfazer)', async: true,
       async run(arg, signal, t) {
-        const n = parseInt(String(arg).replace('#', ''), 10);
-        const e = S.entries[n - 1];
-        if (!n || !e) throw usage('apagar', '<número>  · os números aparecem no /inbox');
-        await ctx.store.remove(e.id);
-        S.undo.push(e);
+        const raw = String(arg).trim();
+        if (!raw) throw usage('apagar', '1  ·  1 2 3  ·  1-4  ·  comprar café');
+        const tokens = raw.split(/[\s,;]+/).filter(Boolean);
+        let targets;
+
+        if (tokens.every(x => /^#?\d+(-#?\d+)?$/.test(x))) {
+          // por número: "1 2 3", "1,2,3", "1-4" (números do /inbox)
+          const nums = new Set(), bad = [];
+          for (const tk of tokens) {
+            const [a, b] = tk.replace(/#/g, '').split('-').map(Number);
+            const lo = Math.min(a, b ?? a), hi = Math.min(Math.max(a, b ?? a), S.entries.length);
+            if (lo < 1 || lo > hi) { bad.push(tk); continue; }
+            for (let n = lo; n <= hi; n++) nums.add(n);
+            const top = Math.max(a, b ?? a), from = S.entries.length + 1;
+            if (b != null && top >= from) bad.push(top === from ? from : `${from}-${top}`);
+          }
+          if (!nums.size) throw new CmdError('E_ARG', 'shell', `nenhuma entrada com ${bad.length > 1 ? 'esses números' : 'esse número'}`, 'os números aparecem no <span class="c-hud">/inbox</span>');
+          if (bad.length) term.warn('shell', `ignorados (não existem): ${bad.map(n => '#' + n).join(' ')}`);
+          targets = [...nums].sort((a, b) => a - b).map(n => ({ n, e: S.entries[n - 1] }));
+        } else {
+          // pelo texto: só apaga sozinho se UMA entrada bater
+          const q = raw.toLowerCase();
+          const hits = S.entries.map((e, i) => ({ n: i + 1, e })).filter(({ e }) => String(e.text).toLowerCase().includes(q));
+          if (!hits.length) throw new CmdError('E_404', 'store', `nenhuma entrada contém "${raw}"`, 'confira com <span class="c-hud">/buscar</span>');
+          if (hits.length > 1) {
+            list(hits.map(h => h.e), `"${raw}" bate com ${hits.length} entradas`);
+            term.say(`não apaguei nada, pra não sumir coisa errada. escolha pelos números, ex: <span class="c-hud">/apagar ${hits.slice(0, 3).map(h => h.n).join(' ')}</span>`);
+            return;
+          }
+          targets = hits;
+        }
+
+        for (const { e } of targets) await ctx.store.remove(e.id);
+        S.undo.push(targets.map(x => x.e)); // o lote inteiro volta com /desfazer
         S.lastLatency = t.elapsed();
-        term.warn('store', `apagado #${n} · ${hl(e.text)} <span class="c-meta">· ${t.id} · ${S.lastLatency}ms · /desfazer recupera</span>`);
+        const meta = `<span class="c-meta">· ${t.id} · ${S.lastLatency}ms · /desfazer recupera</span>`;
+        if (targets.length === 1) term.warn('store', `apagado #${targets[0].n} · ${hl(targets[0].e.text)} ${meta}`);
+        else {
+          term.warn('store', `apagadas ${targets.length} entradas ${meta}`);
+          targets.forEach(({ n, e }) => term.print(`<span class="n">#${n}</span><span class="d"></span><span class="dim">${hl(e.text)}</span>`, 'ent'));
+        }
         ctx.ui.pulse('warn');
       },
     },
     {
-      name: 'desfazer', data: true, alias: ['undo'], desc: 'recupera a última entrada apagada', async: true,
+      name: 'desfazer', data: true, alias: ['undo'], desc: 'recupera o que foi apagado por último', async: true,
       async run(arg, signal, t) {
-        const e = S.undo.pop();
-        if (!e) return term.say('nada pra desfazer.');
-        await ctx.store.restore(e);
+        const batch = S.undo.pop();
+        if (!batch) return term.say('nada pra desfazer.');
+        for (const e of batch) await ctx.store.restore(e);
         S.lastLatency = t.elapsed();
-        term.ok('store', `recuperado · ${hl(e.text)} <span class="c-meta">· ${t.id} · ${S.lastLatency}ms</span>`);
+        const what = batch.length === 1 ? hl(batch[0].text) : `${batch.length} entradas`;
+        term.ok('store', `recuperado · ${what} <span class="c-meta">· ${t.id} · ${S.lastLatency}ms</span>`);
         ctx.ui.pulse('act');
       },
     },

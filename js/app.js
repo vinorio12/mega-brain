@@ -11,6 +11,23 @@ import { createBootScreen } from './boot.js';
 import { savedPlace, fetchWeather } from './weather.js';
 
 const CLOUD = Boolean(SUPABASE_URL && SUPABASE_KEY);
+
+// O link do e-mail volta pro app com o resultado no endereço (depois do "#").
+// Lemos antes da biblioteca do Supabase limpar, pra poder explicar se deu erro.
+const AUTH_URL = (() => {
+  const p = new URLSearchParams(location.hash.slice(1) + '&' + location.search.slice(1));
+  const r = { token: p.has('access_token'), code: p.has('code'), error: p.get('error_code') || p.get('error'), desc: p.get('error_description') };
+  return r.token || r.code || r.error ? r : null;
+})();
+
+function linkError(r) {
+  if (r.error === 'otp_expired') {
+    return new CmdError('E_AUTH_LINK', 'auth', 'o link do e-mail expirou ou já foi usado',
+      'cada link vale uma vez, e só o do último e-mail pedido · digite seu e-mail de novo e clique só no link mais novo');
+  }
+  if (r.error) return new CmdError('E_AUTH_LINK', 'auth', `o login pelo link falhou: ${r.desc || r.error}`, 'digite seu e-mail de novo pra receber outro link');
+  return new CmdError('E_AUTH_LINK', 'auth', 'o link chegou, mas a sessão não abriu', 'digite seu e-mail de novo · se repetir, me mande esta mensagem');
+}
 const EMAIL_KEY = 'mb.email.v1';
 const MIGRATED_KEY = 'mb.migrated.v1';
 
@@ -345,6 +362,11 @@ async function boot() {
       screen.step('nuvem', 'supabase');
       ctx.cloud.onAuth(onAuthEvent);
       const session = await ctx.cloud.session();
+      if (AUTH_URL) {
+        if (session) term.ok('auth', 'login pelo link do e-mail');
+        else { ui.pulse('err'); term.error(linkError(AUTH_URL)); }
+        history.replaceState(null, '', location.pathname); // tira os dados do link da barra de endereço
+      }
       if (session) {
         await openSession(session);
         screen.step('sessão', session.user.email);

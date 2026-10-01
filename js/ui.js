@@ -165,7 +165,7 @@ export function createUI(ctx) {
     field('h-net', navigator.onLine ? 'ON' : 'OFF', navigator.onLine ? 'ok' : 'err');
     const [memText, memTone] = mem();
     field('h-mem', memText.toUpperCase(), memTone);
-    field('h-user', S.user ? S.user.email.split('@')[0] : (S.locked ? '—' : 'local'), S.user ? '' : 'na');
+    field('h-user', S.user ? (S.operator || S.user.email.split('@')[0]) : (S.locked ? '—' : 'local'), S.user ? '' : 'na');
     const wx = S.weather, wxEl = $('h-wx');
     wxEl.className = 'hf' + (wx ? '' : ' is-na');
     wxEl.querySelector('.k').textContent = wx ? describe(wx.code).icon : '◌';
@@ -236,7 +236,7 @@ export function createUI(ctx) {
     $(id + '-2').textContent = sub || '';
   }
   function intentWord(i) {
-    return { idle: 'aguardando', login: { email: 'e-mail', password: 'senha', code: 'código' }[i.field], note: 'nota', task: 'tarefa', 'task-error': 'prazo?', commands: 'comando', command: '/' + (i.cmd?.name || ''), unknown: 'desconhecido' }[i.type] || 'aguardando';
+    return { idle: 'aguardando', login: { email: 'usuário', password: 'senha', code: 'código' }[i.field], note: 'nota', task: 'tarefa', 'task-error': 'prazo?', commands: 'comando', command: '/' + (i.cmd?.name || ''), unknown: 'desconhecido' }[i.type] || 'aguardando';
   }
 
   // direita: o contexto do momento. Digitando → mostra o que o Enter vai fazer. Parado → tarefas relevantes.
@@ -248,7 +248,7 @@ export function createUI(ctx) {
     if (intent.type === 'login') {
       title = 'acesso';
       sub = 'memória bloqueada';
-      html = `<div class="empty">${{ email: 'digite o e-mail do operador', password: 'digite a senha · /codigo entra por e-mail', code: 'digite o código do e-mail' }[intent.field]}</div>`;
+      html = `<div class="empty">${{ email: 'digite o usuário (ex: vini)', password: 'digite a senha' + (S.operator ? ' do operador ' + esc(S.operator) : '') + ' · /entrar outro troca', code: 'digite o código do e-mail' }[intent.field]}</div>`;
     } else if (intent.type === 'commands') {
       title = 'comandos';
       sub = '/' + intent.query;

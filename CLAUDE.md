@@ -25,7 +25,7 @@ Não é um dashboard com terminal no meio: é uma inteligência com ambiente ope
 ## Alvo técnico (confirmado)
 - HTML/CSS/JS puros com módulos ES, sem build e sem Node.
 - PWA instalável no celular e no PC, com link próprio.
-- Supabase: banco Postgres + login por **e-mail + senha** (decisão do Vini; código por e-mail fica como opção `/codigo`, mas o SMTP via Resend ainda dá erro 500), cadastro desligado, regras RLS (cada linha só do dono). Usuário: hornburg.vinicius@gmail.com.
+- Supabase: banco Postgres + login por **usuário + senha** (usuário → e-mail via `OPERATORS` no config.js) (decisão do Vini; código por e-mail fica como opção `/codigo`, mas o SMTP via Resend ainda dá erro 500), cadastro desligado, regras RLS (cada linha só do dono). Usuário: hornburg.vinicius@gmail.com.
 - IA intérprete a partir da Fase 2 (chave guardada no Supabase, nunca no front).
 
 ## Como rodar localmente
@@ -86,7 +86,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - [x] 0.6. Redesign MB Core: núcleo vivo com estados reais, satélites, rails contextuais, boot cinematográfico · publicado
 - [ ] 1b. Tarefas v2, visões e acervo · plano em `docs/plano-tarefas-acervo.md` (decisões do Vini lá)
   - [x] 0 · plano aprovado, 0.6 publicado
-  - [ ] 0.5 · login usuário + senha · `/status` do sistema vira `/condition`
+  - [x] 0.5 · login usuário + senha (OPERATORS em config.js; tela bloqueada pede direto a senha; `/entrar outro`) · `/status` do sistema virou `/condition` (`/sys`)
   - [ ] 1 · modelo de dados (projeto, status, prazo, prioridade) + registros de projetos e status
   - [ ] 2 · escrever/editar com `#proj @status >prazo !prioridade` + regras automáticas + linha `↳ auto`
   - [ ] 3 · tela inicial (atrasadas, prioridade alta, vencem primeiro)

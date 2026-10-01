@@ -3,7 +3,7 @@
 import { esc, dayKey, tagsOf, sleep, uid, CmdError, VERSION } from './util.js';
 import { createLocalStore, LOCAL_KEY } from './store.js';
 import { createCloud, createCloudStore } from './cloud.js';
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
+import { SUPABASE_URL, SUPABASE_KEY, OPERATORS } from './config.js';
 import { createTerminal } from './terminal.js';
 import { createCommands } from './commands.js';
 import { createUI } from './ui.js';
@@ -28,7 +28,6 @@ function linkError(r) {
   if (r.error) return new CmdError('E_AUTH_LINK', 'auth', `o login pelo link falhou: ${r.desc || r.error}`, 'digite seu e-mail de novo pra receber outro link');
   return new CmdError('E_AUTH_LINK', 'auth', 'o link chegou, mas a sessão não abriu', 'digite seu e-mail de novo · se repetir, me mande esta mensagem');
 }
-const EMAIL_KEY = 'mb.email.v1';
 const MIGRATED_KEY = 'mb.migrated.v1';
 
 // Estado compartilhado do app.
@@ -152,6 +151,7 @@ async function openLocal() {
 async function openSession(session) {
   if (S.user?.id === session.user.id) return;
   S.user = { id: session.user.id, email: session.user.email };
+  S.operator = Object.keys(OPERATORS).find(k => OPERATORS[k] === S.user.email) || S.user.email.split('@')[0];
   S.locked = false;
   setMode(null);
 
@@ -228,42 +228,59 @@ async function migrate(t) {
 function setMode(mode) {
   S.mode = mode;
   input.value = '';
-  input.placeholder = { email: 'seu e-mail', password: 'sua senha · /codigo entra por e-mail', code: 'código do e-mail' }[mode] || PLACEHOLDER;
+  input.placeholder = { email: 'usuário', password: 'senha' + (S.operator ? ' · ' + S.operator : ''), code: 'código do e-mail' }[mode] || PLACEHOLDER;
   input.type = mode === 'password' ? 'password' : 'text';
-  input.inputMode = mode === 'code' ? 'numeric' : mode === 'email' ? 'email' : 'text';
+  input.inputMode = mode === 'code' ? 'numeric' : 'text';
   input.autocomplete = { code: 'one-time-code', email: 'username', password: 'current-password' }[mode] || 'off';
   ui.render();
 }
 
-function login() {
+// Login por usuário: "vini" → e-mail do Supabase (OPERATORS em config.js). Também aceita o e-mail direto.
+const OPERATOR_KEY = 'mb.operator.v1';
+function resolveOperator(name) {
+  const v = String(name).trim().toLowerCase();
+  if (v.includes('@')) return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? { operator: v.split('@')[0], email: v } : null;
+  return OPERATORS[v] ? { operator: v, email: OPERATORS[v] } : null;
+}
+
+// arg 'outro' = perguntar o usuário mesmo tendo um salvo
+function login(arg = '') {
   if (!ctx.cloud) {
-    return term.error(new CmdError('E_CLOUD_OFF', 'auth', 'nuvem não configurada', 'coloque a chave publishable em <span class="c-hud">js/config.js</span>'));
+    return term.error(new CmdError('E_CLOUD_OFF', 'auth', 'nuvem não configurada', 'coloque a chave publishable em <span class="c-int">js/config.js</span>'));
   }
-  if (S.user) return term.say(`você já está dentro como ${esc(S.user.email)}.`);
-  setMode('email');
-  term.say('memória bloqueada. digite seu e-mail pra entrar.');
-  try {
-    const saved = localStorage.getItem(EMAIL_KEY);
-    if (saved) input.value = saved;
-  } catch {}
+  if (S.user) return term.say(`você já está dentro como ${esc(S.operator || S.user.email)}.`);
+  let saved = null;
+  try { saved = localStorage.getItem(OPERATOR_KEY); } catch {}
+  const names = Object.keys(OPERATORS);
+  const known = arg !== 'outro' && resolveOperator(saved || (names.length === 1 ? names[0] : ''));
+  if (known) {
+    S.operator = known.operator;
+    S.email = known.email;
+    setMode('password');
+    term.say(`memória bloqueada · senha do operador <span class="c-act">${esc(known.operator)}</span> · <span class="c-int">/entrar outro</span> troca de usuário`);
+  } else {
+    setMode('email');
+    term.say('memória bloqueada · digite o usuário');
+  }
   term.focus();
 }
 
 async function submitEmail(text) {
-  const email = text.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return term.error(new CmdError('E_EMAIL', 'auth', 'e-mail inválido', 'ex: voce@gmail.com'));
+  const op = resolveOperator(text);
+  if (!op) {
+    return term.error(new CmdError('E_USER', 'auth', 'usuário desconhecido', `usuários: ${Object.keys(OPERATORS).map(esc).join(', ')} · ou digite o e-mail da conta`));
   }
-  S.email = email;
-  try { localStorage.setItem(EMAIL_KEY, email); } catch {}
+  S.operator = op.operator;
+  S.email = op.email;
   setMode('password');
-  term.say('digite sua senha · <span class="c-hud">/codigo</span> manda um código pro e-mail em vez disso');
+  term.say(`senha do operador <span class="c-act">${esc(op.operator)}</span>`);
 }
 
 async function submitPassword(text) {
   await term.task('entrar', async (signal, t) => {
     const session = await ctx.cloud.signInPassword(S.email, text);
-    term.ok('auth', `acesso liberado <span class="c-meta">· ${t.id} · ${t.elapsed()}ms</span>`);
+    try { localStorage.setItem(OPERATOR_KEY, S.operator || S.email); } catch {}
+    term.ok('auth', `acesso liberado · operador ${esc(S.operator || S.email)} <span class="c-meta">· ${t.id} · ${t.elapsed()}ms</span>`);
     await openSession(session);
     ui.pulse('act');
     term.say('pronto. memória aberta · escreva qualquer coisa pra capturar.');
@@ -273,7 +290,7 @@ async function submitPassword(text) {
 // alternativa à senha: código de uso único enviado por e-mail (precisa do SMTP funcionando)
 async function sendCode() {
   if (!ctx.cloud || S.user) return login();
-  if (!S.email) { setMode('email'); return term.say('digite seu e-mail primeiro.'); }
+  if (!S.email) { setMode('email'); return term.say('digite o usuário primeiro.'); }
   const email = S.email;
   await term.task('enviar código', async (signal, t) => {
     await ctx.cloud.sendCode(email);
@@ -457,7 +474,7 @@ async function boot() {
       }
       if (session) {
         await openSession(session);
-        seq.step('operator', esc(session.user.email.split('@')[0]));
+        seq.step('operator', esc(S.operator));
         seq.step('memory', `unlocked · ${S.entries.length} entradas`);
       } else {
         S.locked = true;

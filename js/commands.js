@@ -435,7 +435,7 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'status', alias: ['st'], desc: 'estado completo do sistema',
+      name: 'condition', alias: ['sys', 'sistema'], desc: 'condição completa do sistema (estado, memória, rede, sessão)',
       run() {
         const k = dayKey(new Date());
         const state = ctx.ui.state();
@@ -444,7 +444,7 @@ export function createCommands(ctx) {
         const st = ctx.store?.status;
         table([
           ['estado', `<span class="${state === 'ready' ? 'c-act' : state === 'busy' ? 'c-hud' : 'c-warn'}">${state.toUpperCase()}</span>`],
-          ['sessão', S.user ? esc(S.user.email) : S.locked ? '<span class="c-warn">bloqueada · digite seu e-mail</span>' : 'modo local'],
+          ['sessão', S.user ? esc((S.operator ? S.operator + ' · ' : '') + S.user.email) : S.locked ? '<span class="c-warn">bloqueada · digite a senha</span>' : 'modo local'],
           ['memória', `<span class="${memTone === 'ok' ? 'c-act' : memTone === 'na' ? 'c-meta' : 'c-warn'}">${memText}</span>` +
             (ctx.store?.kind === 'local' ? ' <span class="dim">· só neste navegador</span>' : '') +
             (st?.lastSync ? ` <span class="dim">· último sync ${hhmm(new Date(st.lastSync))}</span>` : '') +
@@ -512,8 +512,8 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'entrar', alias: ['login'], desc: 'entra na sua conta (e-mail e senha)',
-      run() { ctx.actions.login(); },
+      name: 'entrar', alias: ['login'], args: '[outro]', desc: 'entra na conta (usuário e senha) · "outro" troca de usuário',
+      run(arg) { ctx.actions.login(String(arg).trim().toLowerCase()); },
     },
     {
       name: 'codigo', alias: ['código', 'code'], desc: 'no login: manda um código pro e-mail em vez de usar senha', async: true,

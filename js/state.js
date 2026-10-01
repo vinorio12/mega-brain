@@ -38,7 +38,7 @@ export function describeState(key, { tasks = [], mode = null } = {}) {
   let desc = info.desc;
   const last = tasks[tasks.length - 1];
   if ((key === 'processing' || key === 'executing') && last) desc = `${info.desc} · ${last.label}`;
-  if (key === 'listening' && mode) desc = { email: 'recebendo e-mail', password: 'recebendo senha', code: 'recebendo código' }[mode] || desc;
+  if (key === 'listening' && mode) desc = { email: 'recebendo usuário', password: 'recebendo senha', code: 'recebendo código' }[mode] || desc;
   return { key, ...info, desc };
 }
 

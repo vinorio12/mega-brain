@@ -48,6 +48,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - `docs/publicar.md` · passo a passo do GitHub Pages
 - `docs/fase-1.md` · proposta da Fase 1 (feita)
 - `docs/plano-tarefas-acervo.md` · tarefas v2, visões e acervo (feito; Etapa 5 = IA no backlog)
+- `docs/plano-interprete.md` · Fase 2: intérprete por regras com IA encaixável, histórico e `montarContexto` (em execução)
 
 ## Estrutura
 - `index.html` estrutura da tela · `css/style.css` visual
@@ -98,14 +99,22 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - [x] 6 · acervo (`js/acervo.js`): colar link (http/https) guarda com contexto, linha com aspas ou `/guardar` guarda texto, `/acervo [links|textos] [termo]`, `/buscar termo [tipo:link|texto|tarefa|nota]` em tudo, agrupado por tipo · visão atual em `S.view`
   - [x] 7 · README, ajuda agrupada, publicado
 - [x] 0.8. UX por módulo: notas = diário por dia (`/inbox` só notas, números #3) · acervo = cartões (a2) · tarefas = lista de execução (t1) · `/apagar 3 | a2 | t1` · `/overview` (`/ov`) no lugar do núcleo com tarefas, notas, acervo e projetos (esc fecha; outro comando fecha)
-- [ ] 2. IA intérprete: texto livre vira tarefa, gasto, treino etc.
+- [ ] 2. Intérprete: tudo que escrevo passa por `interpretar(texto)` · plano em `docs/plano-interprete.md` (aprovado 01/10/2026)
+  - Motor por **regras** agora; IA (Haiku 4.5) fica **criada e desligada**, pra só encaixar depois. Ordem: regras primeiro → confiança baixa e IA ligada = IA → IA desligada = salva como nota e pergunta o que é (`/tipo`)
+  - Contrato fixo de resposta `{ tipo, campos, confianca, origem: regra|ia, auto, ... }` · provedores trocáveis · registro de tipos (cada fase futura registra o seu: agora tarefa, nota, link, trecho e, só com dado bruto, gasto, entrada, treino)
+  - Regras: leitor de datas em frases, leitor de valores (centavos), palavras-chave por projeto (`/palavras`) · linha "↳ entendi" depois de salvar · log de frases não entendidas (`/aprendizado`) · régua de frases de exemplo (`tests/frases.js`) que a IA também precisa passar
+  - Pra Fase 6: histórico de mudanças (registros `kind: evento`, append-only) e `montarContexto` (resumo enxuto do estado)
+  - [x] 0 · plano aprovado e roadmap atualizado
+  - [ ] 1 datas em frases · [ ] 2 valores · [ ] 3 contrato + registro de tipos · [ ] 4 régua + regras (nota, tarefa, link, trecho) · [ ] 5 gasto/entrada/treino brutos · [ ] 6 `interpretar()` + provedor de IA desligado · [ ] 7 palavras-chave por projeto · [ ] 8 histórico de mudanças · [ ] 9 ligar na tela (9a sem mudar nada, 9b texto livre + `/tipo`) · [ ] 10 aprendizado · [ ] 11 `montarContexto` · [ ] 12 fechamento
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)
 - [ ] 5. Dashboards: gráficos por área e tendências, só com dados reais
-- [ ] 6. Coach: resumo do dia, revisão semanal, incentivo gentil
+- [ ] 6. Coach: a IA vira assistente de verdade. Lê o contexto completo (`montarContexto` + histórico de mudanças + dados de todas as áreas) e sugere **next steps, updates e prioridades**, além do resumo do dia e da revisão semanal. Tom gentil, sem bronca. Depende do provedor de IA ligado (backlog) e dos dados da Fase 2 em diante.
 
 ## Backlog (ideias guardadas, sem data)
-- IA no servidor pras tarefas (Etapa 5 do plano) · antes, pesquisar a API de IA mais barata (sem cartão no momento)
+- **Ligar o provedor de IA do intérprete** com o Haiku 4.5 (`claude-haiku-4-5-20251001`, ou outro modelo escolhido): Edge Function `interpretar` no Supabase (chave só nos secrets) + **travas de custo**: limite diário de chamadas e cache de respostas. O cliente já nasce com os ganchos (`guard`, `cache`) na Fase 2. Sem cartão no momento.
+- IA no servidor pras tarefas (Etapa 5 do plano antigo, agora absorvida pelo item acima) · antes, pesquisar a API de IA mais barata
+- Arquivar eventos antigos do histórico se o cache local passar de ~2 MB
 - Login por biometria (passkey/WebAuthn) ou câmera, no celular e no PC
 - Título automático dos links do acervo
 - "Cofre"/"Vault" pra algo secreto

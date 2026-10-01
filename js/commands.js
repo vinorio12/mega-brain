@@ -23,11 +23,11 @@ export const PHASES = [
   ['0', 'esqueleto · terminal, hud, inbox', 'ok'],
   ['0.5', 'app próprio · pwa, nuvem, login', 'ok'],
   ['1', 'tarefas e projetos · hoje, tcc, weg, pessoal', 'wip'],
-  ['2', 'ia intérprete · escrever sem decorar comando', ''],
+  ['2', 'intérprete · escrever sem decorar comando (regras, ia depois)', 'wip'],
   ['3', 'finanças · gastos, entradas, saldo do mês', ''],
   ['4', 'corpo e hábitos · treino, saúde, padrão semanal', ''],
   ['5', 'dashboards · gráficos e tendências', ''],
-  ['6', 'coach · resumo do dia, revisão da semana', ''],
+  ['6', 'coach · ia lê tudo e sugere próximos passos, resumo do dia, revisão da semana', ''],
 ];
 
 // Decide quais entradas um "/apagar ..." está pedindo. Função pura (não apaga nada), testada em tests/.

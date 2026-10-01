@@ -9,6 +9,7 @@ import { createCommands } from './commands.js';
 import { createUI } from './ui.js';
 import { createBoot, bootMode } from './boot.js';
 import { savedPlace, fetchWeather } from './weather.js';
+import { isRecord, registry, seedEntries } from './tasks.js';
 
 const CLOUD = Boolean(SUPABASE_URL && SUPABASE_KEY);
 
@@ -38,7 +39,8 @@ const S = {
   mode: null,        // null | 'email' | 'code' (o que o prompt está pedindo)
   email: null,
   user: null,
-  entries: [],
+  entries: [],       // notas, tarefas e acervo
+  records: [],       // registros: projetos e status (veja js/tasks.js)
   undo: [],          // cada item: { label, items: [versões anteriores] }
   ctx: null,         // aba atual (projeto), ex: 'tcc' · null = inbox (~)
   taskList: null,    // ids na ordem dos números t1, t2... da última lista mostrada
@@ -47,7 +49,7 @@ const S = {
   startedAt: Date.now(),
 };
 
-const ctx = { S, store: null, cloud: null };
+const ctx = { S, store: null, cloud: null, reg: () => registry(S.records) };
 const input = document.getElementById('cmd');
 const PLACEHOLDER = input.placeholder;
 
@@ -61,7 +63,8 @@ ctx.term = createTerminal({
     tags: () => [...new Set(S.entries.flatMap(e => e.tags || []))].sort(),
   },
   // e-mail e código não vão pro histórico; o código aparece mascarado
-  privacy: () => (S.mode === 'code' || S.mode === 'password' ? 'mask' : S.mode === 'email' ? 'nohist' : null),
+  // (comandos com "/" aparecem normais mesmo no modo senha)
+  privacy: v => (v?.startsWith('/') ? null : S.mode === 'code' || S.mode === 'password' ? 'mask' : S.mode === 'email' ? 'nohist' : null),
   onSubmit: text => run(text),
   // sinais do terminal viram reações do núcleo
   onChange: (kind, value) => {
@@ -136,15 +139,30 @@ let unsubscribe = null;
 function attachStore(store) {
   unsubscribe?.();
   ctx.store = store;
-  unsubscribe = store.subscribe(list => { S.entries = list; ui.render(); });
+  // registros (projetos, status) ficam separados das notas/tarefas: não entram no /inbox nem nas contagens
+  unsubscribe = store.subscribe(list => {
+    S.entries = list.filter(e => !isRecord(e));
+    S.records = list.filter(isRecord);
+    ui.render();
+  });
+}
+
+// Cria os projetos (tcc, weg, pessoal) e status (a fazer, fazendo, esperando, feito) iniciais, se faltarem.
+// Só roda depois de a memória estar completa (nuvem sincronizada), pra não duplicar.
+async function ensureSeed() {
+  const missing = seedEntries(S.records, S.user?.id || 'local');
+  if (!missing.length) return;
+  for (const e of missing) await ctx.store.restore(e);
+  term.ok('store', `registros iniciais · ${missing.filter(e => e.kind === 'projeto').map(e => '#' + e.text).join(' ')} ${missing.filter(e => e.kind === 'status').map(e => '@' + esc(e.text)).join(' ')}`.trim());
 }
 
 async function openLocal() {
   const store = createLocalStore();
   attachStore(store);
   const n = await store.connect();
-  term.ok('store', `memória local · ${n} entradas`);
+  term.ok('store', `memória local · ${S.entries.length} entradas`);
   term.warn('store', 'modo local · os dados ficam só neste navegador');
+  await ensureSeed();
   return n;
 }
 
@@ -178,6 +196,7 @@ function closeSession(reason) {
   ctx.store = null;
   S.user = null;
   S.entries = [];
+  S.records = [];
   S.undo = [];
   S.locked = true;
   ui.render();
@@ -200,6 +219,7 @@ async function sync(t) {
   let n;
   try { n = await ctx.store.sync(); }
   catch (e) { throw dbError(e); }
+  await ensureSeed();
   const st = ctx.store.status;
   S.lastLatency = st.latency;
   const p = ctx.store.pending();

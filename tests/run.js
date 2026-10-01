@@ -9,7 +9,7 @@ import { createCloudStore } from '../js/cloud.js';
 import { createTerminal } from '../js/terminal.js';
 import { parseDue, fmtDue } from '../js/dates.js';
 import { deriveState, describeState, readIntent } from '../js/state.js';
-import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName } from '../js/tasks.js';
+import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord } from '../js/tasks.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -66,9 +66,10 @@ function memStore(list) {
 function setup(texts) {
   const S = { entries: entries(texts), undo: [], startedAt: Date.now() };
   const term = fakeTerm();
-  const ctx = { S, term, ui: { pulse() {}, render() {}, state: () => 'ready', mem: () => ['local', 'warn'] } };
+  S.records = [];
+  const ctx = { S, term, reg: () => registry(S.records), ui: { pulse() {}, render() {}, state: () => 'ready', mem: () => ['local', 'warn'] } };
   ctx.store = memStore(S.entries);
-  ctx.store.subscribe(l => { S.entries = l; });
+  ctx.store.subscribe(l => { S.entries = l.filter(e => !isRecord(e)); S.records = l.filter(isRecord); });
   ctx.commands = createCommands(ctx);
   const run = async (line) => {
     const [name, ...rest] = line.slice(1).split(/\s+/);
@@ -165,9 +166,12 @@ describe('tarefas · lógica (tasks.js)', () => {
     eq(h.groups.map(g => g.key), ['2026-09-30', '2026-09-29']);
     eq(doneHistory(E, { days: 60, now }).total, 3);
   });
-  test('projectsSummary conta abertas, atrasadas e notas', () => {
-    const E = [T('a #tcc', '2026-09-01', null, 1), T('b #tcc', null, null, 2), T('c #tcc', null, 5, 3), entry('nota #tcc', 4), entry('x #weg', 5)];
-    eq(projectsSummary(E, now)[0], { proj: 'tcc', abertas: 2, atrasadas: 1, notas: 1 });
+  test('projectsSummary: projetos registrados + tags soltas', () => {
+    const E = [T('a #tcc', '2026-09-01', null, 1), T('b #tcc', null, null, 2), T('c #tcc', null, 5, 3), entry('nota #tcc', 4), entry('x #weg #solta', 5)];
+    const r = projectsSummary(E, now, ['tcc', 'weg', 'pessoal']);
+    eq(r.projects[0], { proj: 'tcc', abertas: 2, atrasadas: 1, notas: 1, registrado: true });
+    eq(r.projects.map(p => p.proj), ['tcc', 'weg', 'pessoal']);
+    eq(r.tags.map(x => x.tag), ['solta']);
   });
   test('taskStats', () => {
     const E = [T('a', '2026-09-30', null, 1), T('b', '2026-09-01', null, 2), T('c', null, null, 3), T('d', null, now.getTime(), 4)];
@@ -177,13 +181,52 @@ describe('tarefas · lógica (tasks.js)', () => {
   test('projName limpa e valida', () => eq([projName('#TCC'), projName('fase-1'), projName('a b'), projName('')], ['tcc', 'fase-1', null, null]));
 });
 
+describe('tarefas · modelo v2 e registros', () => {
+  const old = (feito = null) => ({ id: 'o', text: 'velha #tcc', tags: ['tcc'], kind: 'tarefa', ts: 1, day: 'x', data: { prazo: null, feito } });
+  test('tarefa antiga: status e conclusão lidos do formato velho', () => {
+    eq([statusOf(old()), statusOf(old(5)), doneAt(old(5))], ['a fazer', 'feito', 5]);
+  });
+  test('tarefa antiga: projeto vem da #tag registrada', () => eq(projectOf(old(), ['tcc']), 'tcc'));
+  test('tarefa nova: campos próprios valem', () => {
+    const e = { kind: 'tarefa', tags: ['tcc'], data: { projeto: 'weg', status: 'fazendo', prioridade: 'alta', feito_em: null } };
+    eq([projectOf(e, ['tcc', 'weg']), statusOf(e), prioOf(e)], ['weg', 'fazendo', 'alta']);
+  });
+  test('prioridade inválida/ausente = média', () => eq([prioOf({ data: {} }), prioOf({ data: { prioridade: 'urgente' } })], ['média', 'média']));
+  test('registry sem registros usa os padrões', () => {
+    const r = registry([]);
+    eq([r.projects, r.statuses.map(s => s.name), r.seeded], [['tcc', 'weg', 'pessoal'], ['a fazer', 'fazendo', 'esperando', 'feito'], false]);
+  });
+  test('seedEntries cria 3 projetos + 4 status, e nada se já existirem', () => {
+    const seed = seedEntries([], 'u1', new Date(2026, 9, 1));
+    eq(seed.map(e => e.kind + ':' + e.text), ['projeto:tcc', 'projeto:weg', 'projeto:pessoal', 'status:a fazer', 'status:fazendo', 'status:esperando', 'status:feito']);
+    eq(seedEntries(seed, 'u1').length, 0);
+    const r = registry(seed);
+    eq([r.seeded, r.statuses.find(s => s.final).name], [true, 'feito']);
+  });
+  test('seedId é fixo, no formato uuid e diferente por dono', () => {
+    const a = seedId('u1:projeto:tcc');
+    eq(a, seedId('u1:projeto:tcc'));
+    ok(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/.test(a), a);
+    ok(a !== seedId('u2:projeto:tcc'));
+  });
+  test('registry respeita ordem, arquivado e não duplica nomes', () => {
+    const rec = (text, ordem, extra = {}) => ({ kind: 'projeto', text, ts: ordem, data: { ordem, ...extra } });
+    eq(registry([rec('b', 2), rec('a', 1), rec('a', 3), rec('z', 4, { arquivado: true })]).projects, ['a', 'b']);
+  });
+  test('statusChange: final grava a hora, aberto limpa', () => {
+    const reg = registry([]);
+    eq(statusChange(reg, 'feito', 9), { status: 'feito', feito_em: 9, feito: null });
+    eq(statusChange(reg, 'fazendo', 9), { status: 'fazendo', feito_em: null, feito: null });
+  });
+});
+
 describe('tarefas · comandos', () => {
   const T = (text, prazo = null, i = 0) => ({ id: 'tk' + i, text, tags: tagsOf(text), kind: 'tarefa', ts: 1000 + i, day: '2026-09-30', data: { prazo, feito: null } });
   function setupTasks(list) {
     const s = setup([]);
     s.S.entries = list;
     s.ctx.store = memStore(list);
-    s.ctx.store.subscribe(l => { s.S.entries = l; });
+    s.ctx.store.subscribe(l => { s.S.entries = l.filter(e => !isRecord(e)); s.S.records = l.filter(isRecord); });
     s.ctx.actions = { setCtx: p => { s.S.ctx = p; s.S.taskList = null; } };
     return s;
   }
@@ -194,7 +237,7 @@ describe('tarefas · comandos', () => {
     await run('/t ler artigo >amanhã');
     const e = S.entries[0];
     eq([e.kind, e.text, e.tags], ['tarefa', 'ler artigo #tcc', ['tcc']]);
-    ok(e.data.prazo && e.data.feito === null);
+    ok(e.data.prazo && doneAt(e) === null);
   });
   test('/t com prazo errado dá E_PRAZO', async () => {
     const { run } = setupTasks([]);
@@ -204,33 +247,33 @@ describe('tarefas · comandos', () => {
     const { S, run } = setupTasks([T('primeira', null, 1), T('segunda', null, 2)]);
     await run('/tarefas');
     await run('/feito t2');
-    eq(S.entries.find(e => e.text === 'segunda').data.feito > 0, true);
-    eq(S.entries.find(e => e.text === 'primeira').data.feito, null);
+    eq(doneAt(S.entries.find(e => e.text === 'segunda')) > 0, true);
+    eq(doneAt(S.entries.find(e => e.text === 'primeira')), null);
   });
   test('/feito pelo texto', async () => {
     const { S, run } = setupTasks([T('ligar pro joão', null, 1), T('outra', null, 2)]);
     await run('/feito joão');
-    ok(S.entries.find(e => e.text === 'ligar pro joão').data.feito);
+    ok(doneAt(S.entries.find(e => e.text === 'ligar pro joão')));
   });
   test('/feito em lote e /desfazer volta todas', async () => {
     const { S, run } = setupTasks([T('a', null, 1), T('b', null, 2), T('c', null, 3)]);
     await run('/feito t1-t3');
-    eq(S.entries.filter(e => e.data.feito).length, 3);
+    eq(S.entries.filter(e => doneAt(e)).length, 3);
     await run('/desfazer');
-    eq(S.entries.filter(e => e.data.feito).length, 0);
+    eq(S.entries.filter(e => doneAt(e)).length, 0);
   });
   test('números continuam valendo depois de concluir (riscada fica na lista)', async () => {
     const { S, run } = setupTasks([T('a', null, 1), T('b', null, 2)]);
     await run('/tarefas');
     await run('/feito t1');
     await run('/feito t2');
-    eq(S.entries.filter(e => e.data.feito).length, 2);
+    eq(S.entries.filter(e => doneAt(e)).length, 2);
   });
   test('/reabrir', async () => {
     const { S, run } = setupTasks([T('a', null, 1)]);
     await run('/feito t1');
     await run('/reabrir t1');
-    eq(S.entries[0].data.feito, null);
+    eq(doneAt(S.entries[0]), null);
   });
   test('/adiar muda e remove prazo', async () => {
     const { S, run } = setupTasks([T('a', null, 1)]);
@@ -253,7 +296,7 @@ describe('tarefas · comandos', () => {
     await run('/apagar t1');
     await throws(() => run('/feito t1'), 'E_ARG'); // t1 sumiu: não pode concluir a "b" por engano
     await run('/feito t3');
-    ok(S.entries.find(e => e.text === 'c').data.feito);
+    ok(doneAt(S.entries.find(e => e.text === 'c')));
   });
   test('/tarefas tcc mostra só o projeto', async () => {
     const { term, run } = setupTasks([T('a #tcc', null, 1), T('b #weg', null, 2)]);
@@ -266,6 +309,24 @@ describe('tarefas · comandos', () => {
     term.out.length = 0;
     await run('/feitas');
     eq(term.out.filter(x => x[2] === 'task').length, 1);
+  });
+  test('/feito grava status final e /reabrir volta pro primeiro', async () => {
+    const { S, run } = setupTasks([T('a', null, 1)]);
+    await run('/feito t1');
+    eq(statusOf(S.entries[0]), 'feito');
+    await run('/reabrir t1');
+    eq([statusOf(S.entries[0]), doneAt(S.entries[0])], ['a fazer', null]);
+  });
+  test('/projeto novo, renomear (leva as tarefas) e /desfazer', async () => {
+    const { S, run, ctx } = setupTasks([{ ...T('x', null, 1), data: { projeto: 'tcc', status: 'a fazer', prazo: null } }]);
+    await run('/projeto novo faculdade');
+    ok(ctx.reg().projects.includes('faculdade'), 'criou');
+    await run('/desfazer');
+    ok(!ctx.reg().projects.includes('faculdade'), 'desfez a criação');
+    S.records.push({ id: 'p1', kind: 'projeto', text: 'tcc', ts: 1, data: { ordem: 1 } });
+    await ctx.store.restore(S.records[0]);
+    await run('/projeto renomear tcc monografia');
+    eq([ctx.reg().projects.includes('monografia'), S.entries[0].data.projeto], [true, 'monografia']);
   });
   test('/ir tcc e /ir ~', async () => {
     const { S, run } = setupTasks([]);

@@ -11,4 +11,4 @@ export const SUPABASE_URL = 'https://xfvfgidvqrubdtogtczy.supabase.co';
 // Com um operador só, a tela bloqueada pede direto a senha.
 export const OPERATORS = { vini: 'hornburg.vinicius@gmail.com' };
 
-export const SUPABASE_KEY ='sb_publishable__83oomHbJQto-1Z_l5X1xA_Ee-EHveM';
+export const SUPABASE_KEY = 'sb_publishable__83oomHbJQto-1Z_l5X1xA_Ee-EHveM';

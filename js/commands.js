@@ -12,7 +12,10 @@
 import { esc, hl, dayKey, hhmm, ddmm, dur, lev, kb, tagsOf, uid, CmdError, VERSION, DOW } from './util.js';
 import { geocode, locate, fetchWeather, savedPlace, describe } from './weather.js';
 import { fmtDue, parseDue } from './dates.js';
-import { isTask, doneAt, projName, parseTaskInput, newTask, groupTasks, doneHistory, projectsSummary, taskNumbers, taskStats } from './tasks.js';
+import {
+  isTask, doneAt, projName, parseTaskInput, newTask, groupTasks, doneHistory, projectsSummary, taskNumbers, taskStats,
+  projectOf, statusChange, finalStatus, firstStatus,
+} from './tasks.js';
 
 export const PHASES = [
   ['0', 'esqueleto · terminal, hud, inbox', 'ok'],
@@ -130,7 +133,7 @@ export function createCommands(ctx) {
 
   // a lista que os números t1, t2... estão usando agora (a última mostrada, ou a padrão da aba)
   function taskPool() {
-    if (!S.taskList?.length) S.taskList = groupTasks(S.entries, { proj: S.ctx }).list;
+    if (!S.taskList?.length) S.taskList = groupTasks(S.entries, { proj: S.ctx, projects: ctx.reg().projects }).list;
     const byId = new Map(S.entries.map(e => [e.id, e]));
     // mantém as posições: se uma tarefa sumiu, os números das outras não mudam
     return S.taskList.map(id => byId.get(id) || { id: null, text: '', missing: true });
@@ -175,7 +178,7 @@ export function createCommands(ctx) {
     if (p.error === 'prazo') throw new CmdError('E_PRAZO', 'task', `não entendi o prazo ${p.token}`, 'use <span class="c-hud">>hoje >amanhã >sex >15/10 >+3</span>');
     const e = await ctx.store.add(newTask(p));
     // entra no fim da lista atual, pra já ter um número
-    if (!S.taskList?.length) S.taskList = groupTasks(S.entries, { proj: S.ctx }).list;
+    if (!S.taskList?.length) S.taskList = groupTasks(S.entries, { proj: S.ctx, projects: ctx.reg().projects }).list;
     else if (!S.taskList.includes(e.id)) S.taskList.push(e.id);
     const n = S.taskList.indexOf(e.id) + 1;
     S.lastLatency = t.elapsed();
@@ -205,7 +208,7 @@ export function createCommands(ctx) {
         table([['qualquer texto', 'captura na inbox · use #tags: <span class="dim">ler cap 2</span> <span class="c-act">#tcc</span>']], 'cmd');
         table([['- texto #proj >sex', 'cria tarefa (igual ao /t)']], 'cmd');
         const groups = [
-          ['tarefas e projetos', c => ['t', 'tarefas', 'feito', 'reabrir', 'adiar', 'feitas', 'projetos', 'ir'].includes(c.name)],
+          ['tarefas e projetos', c => ['t', 'tarefas', 'feito', 'reabrir', 'adiar', 'feitas', 'projeto', 'ir'].includes(c.name)],
           ['memória', c => c.data],
           ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
           ['tela', c => ['painel', 'foco', 'limpar', 'log', 'historico', 'boot'].includes(c.name)],
@@ -245,7 +248,7 @@ export function createCommands(ctx) {
       run() {
         const k = dayKey(new Date());
         list(S.entries.filter(e => e.day === k), 'entrou hoje');
-        const { groups } = groupTasks(S.entries, { proj: S.ctx });
+        const { groups } = groupTasks(S.entries, { proj: S.ctx, projects: ctx.reg().projects });
         const due = groups.filter(g => g.key === 'atrasadas' || g.key === 'hoje');
         if (due.length) {
           term.print(`── tarefas pra hoje ${'─'.repeat(10)}`, 'sep');
@@ -266,7 +269,7 @@ export function createCommands(ctx) {
         const a = String(arg).trim().toLowerCase();
         const proj = !a ? S.ctx : ['todas', 'tudo', '*', '~'].includes(a) ? null : projName(a);
         if (a && proj === null && !['todas', 'tudo', '*', '~'].includes(a)) throw usage('tarefas', '[projeto] · ex: /tarefas tcc');
-        const { groups, list: ids } = groupTasks(S.entries, { proj });
+        const { groups, list: ids } = groupTasks(S.entries, { proj, projects: ctx.reg().projects });
         if (!groups.length) {
           S.taskList = [];
           return term.say(`nenhuma tarefa em ${esc(projLabel(proj))}. crie com <span class="c-hud">- revisar cap 2${proj ? ' #' + esc(proj) : ''} >sex</span>`);
@@ -284,7 +287,7 @@ export function createCommands(ctx) {
         if (!targets) return;
         const open = targets.filter(x => !doneAt(x.e));
         if (!open.length) return term.say('essas já estavam concluídas.');
-        await updateTasks(open, () => ({ feito: Date.now() }), open.length === 1 ? 'conclusão' : `${open.length} conclusões`);
+        await updateTasks(open, () => statusChange(ctx.reg(), finalStatus(ctx.reg())), open.length === 1 ? 'conclusão' : `${open.length} conclusões`);
         S.lastLatency = t.elapsed();
         term.ok('task', `concluída${open.length > 1 ? 's ' + open.length : ''} · ${open.map(x => `t${x.n} ${hl(x.e.text)}`).join(' · ')} <span class="c-meta">· ${t.id} · ${S.lastLatency}ms</span>`);
         const s = taskStats(S.entries);
@@ -300,7 +303,7 @@ export function createCommands(ctx) {
         if (!targets) return;
         const done = targets.filter(x => doneAt(x.e));
         if (!done.length) return term.say('essas já estão abertas.');
-        await updateTasks(done, () => ({ feito: null }), 'reabertura');
+        await updateTasks(done, () => statusChange(ctx.reg(), firstStatus(ctx.reg())), 'reabertura');
         term.ok('task', `reaberta${done.length > 1 ? 's ' + done.length : ''} · ${done.map(x => `t${x.n} ${hl(x.e.text)}`).join(' · ')} <span class="c-meta">· ${t.id}</span>`);
         ctx.ui.pulse('hud');
       },
@@ -333,7 +336,7 @@ export function createCommands(ctx) {
           else if (['todas', 'tudo', '*', '~'].includes(w.toLowerCase())) proj = null;
           else proj = projName(w);
         }
-        const h = doneHistory(S.entries, { proj, days });
+        const h = doneHistory(S.entries, { proj, days, projects: ctx.reg().projects });
         if (!h.total) return term.say(`nenhuma tarefa concluída em ${esc(projLabel(proj))} nos últimos ${days} dias.`);
         term.print(`── feitas · ${esc(projLabel(proj))} · ${days} dias · ${h.total} ${'─'.repeat(6)}`, 'sep');
         const label = key => { const [y, m, d] = key.split('-').map(Number); const dt = new Date(y, m - 1, d); return `${DOW[dt.getDay()]} ${ddmm(dt)}`; };
@@ -342,16 +345,56 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'projetos', alias: ['proj'], data: true, desc: 'cada #tag com tarefas abertas, atrasadas e notas',
-      run() {
-        const rows = projectsSummary(S.entries);
-        if (!rows.length) return term.say('nenhum projeto ainda. use #tags: <span class="c-hud">- revisar cap 2 #tcc</span>');
+      name: 'projeto', alias: ['projetos', 'proj'], data: true, async: true, exec: true,
+      args: '[novo nome | renomear velho novo | arquivar nome]',
+      desc: 'lista os projetos · cria, renomeia ou arquiva',
+      async run(arg, signal, t) {
+        const [sub, a, b] = String(arg).trim().toLowerCase().split(/\s+/);
+        const reg = ctx.reg();
+        const rec = name => S.records.find(e => e.kind === 'projeto' && e.text === name);
+
+        if (sub === 'novo' || sub === 'criar') {
+          const name = projName(a);
+          if (!name) throw usage('projeto', 'novo nome');
+          if (reg.projects.includes(name)) return term.say(`#${esc(name)} já existe.`);
+          const e = await ctx.store.add({ kind: 'projeto', text: name, tags: [], ts: Date.now(), day: dayKey(new Date()), data: { ordem: reg.projects.length + 1, arquivado: false } });
+          S.undo.push({ label: 'projeto criado', items: [], created: [e.id] });
+          term.ok('task', `projeto criado · <span class="c-act">#${esc(name)}</span> <span class="c-meta">· ${t.id}</span>`);
+          return ctx.ui.pulse('act');
+        }
+        if (sub === 'renomear') {
+          const from = projName(a), to = projName(b);
+          if (!from || !to) throw usage('projeto', 'renomear velho novo');
+          const r = rec(from);
+          if (!r) throw new CmdError('E_404', 'task', `projeto #${from} não existe`, 'veja a lista com <span class="c-int">/projeto</span>');
+          if (reg.projects.includes(to)) throw new CmdError('E_ARG', 'task', `#${to} já existe`, 'escolha outro nome');
+          const tasks = S.entries.filter(e => isTask(e) && projectOf(e, reg.projects) === from);
+          S.undo.push({ label: 'projeto renomeado', items: [r, ...tasks] });
+          await ctx.store.restore({ ...r, text: to });
+          for (const e of tasks) await ctx.store.restore({ ...e, data: { ...(e.data || {}), projeto: to } });
+          if (S.ctx === from) ctx.actions.setCtx(to, { quiet: true });
+          term.ok('task', `#${esc(from)} → <span class="c-act">#${esc(to)}</span> · ${plural(tasks.length, 'tarefa')} movidas <span class="c-meta">· ${t.id}</span>`);
+          return ctx.ui.pulse('act');
+        }
+        if (sub === 'arquivar') {
+          const name = projName(a);
+          const r = name && rec(name);
+          if (!r) throw usage('projeto', 'arquivar nome');
+          S.undo.push({ label: 'projeto arquivado', items: [r] });
+          await ctx.store.restore({ ...r, data: { ...(r.data || {}), arquivado: true } });
+          term.warn('task', `#${esc(name)} arquivado · as tarefas dele continuam existindo · /desfazer volta`);
+          return ctx.ui.pulse('warn');
+        }
+        if (sub && sub !== 'lista') throw usage('projeto', '[novo nome | renomear velho novo | arquivar nome]');
+
+        const { projects, tags } = projectsSummary(S.entries, new Date(), reg.projects);
         term.print(`── projetos ${'─'.repeat(10)}`, 'sep');
-        rows.forEach(p => term.print(
+        projects.forEach(p => term.print(
           `<span class="k c-act">#${esc(p.proj)}</span><span>${plural(p.abertas, 'aberta')}` +
           (p.atrasadas ? ` · <span class="c-warn">${plural(p.atrasadas, 'atrasada')}</span>` : '') +
-          ` <span class="dim">· ${plural(p.notas, 'nota')}</span></span>`, 'tbl'));
-        term.print('<span class="dim">/tarefas tcc lista um projeto · /ir tcc entra nele</span>');
+          ` <span class="dim">· ${plural(p.notas, 'nota')}${p.registrado ? '' : ' · não registrado'}</span></span>`, 'tbl'));
+        if (tags.length) term.print(`<span class="dim">tags soltas: ${tags.slice(0, 12).map(x => '#' + esc(x.tag)).join(' ')}</span>`);
+        term.print('<span class="dim">/tarefas tcc lista um projeto · /ir tcc entra nele · /projeto novo nome cria</span>');
       },
     },
     {
@@ -424,12 +467,15 @@ export function createCommands(ctx) {
     {
       name: 'desfazer', exec: true, data: true, alias: ['undo'], desc: 'desfaz a última mudança (apagar, concluir, adiar...)', async: true,
       async run(arg, signal, t) {
-        // cada item guarda as versões ANTERIORES; restaurar = voltar no tempo
+        // cada passo guarda as versões ANTERIORES (items) e o que foi criado (created);
+        // desfazer = restaurar as versões antigas e apagar o que foi criado
         const step = S.undo.pop();
         if (!step) return term.say('nada pra desfazer.');
+        for (const id of step.created || []) await ctx.store.remove(id);
         for (const e of step.items) await ctx.store.restore(e);
         S.lastLatency = t.elapsed();
-        const what = step.items.length === 1 ? hl(step.items[0].text) : `${step.items.length} itens`;
+        const n = step.items.length + (step.created?.length || 0);
+        const what = step.items.length === 1 && !step.created?.length ? hl(step.items[0].text) : `${n} ${n === 1 ? 'item' : 'itens'}`;
         term.ok('store', `desfeito · ${esc(step.label)} · ${what} <span class="c-meta">· ${t.id} · ${S.lastLatency}ms</span>`);
         ctx.ui.pulse('act');
       },
@@ -502,7 +548,7 @@ export function createCommands(ctx) {
     {
       name: 'exportar', data: true, alias: ['export'], desc: 'baixa uma cópia de todas as entradas (.json)',
       run() {
-        const blob = new Blob([JSON.stringify({ app: 'mega-brain', version: VERSION, exportedAt: new Date().toISOString(), entries: S.entries }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ app: 'mega-brain', version: VERSION, exportedAt: new Date().toISOString(), entries: [...S.entries, ...(S.records || [])] }, null, 2)], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = `mega-brain-${dayKey(new Date())}.json`;
@@ -549,7 +595,7 @@ export function createCommands(ctx) {
             let json;
             try { json = JSON.parse(await file.text()); }
             catch { throw new CmdError('E_IMPORT', 'store', 'o arquivo não é um JSON válido', 'use o arquivo gerado pelo <span class="c-hud">/exportar</span>'); }
-            const plan = prepareImport(json, S.entries);
+            const plan = prepareImport(json, [...S.entries, ...(S.records || [])]);
             if (!plan) throw new CmdError('E_IMPORT', 'store', 'não achei uma lista de entradas no arquivo', 'use o arquivo gerado pelo <span class="c-hud">/exportar</span>');
             for (const e of plan.toAdd) await ctx.store.restore(e);
             S.lastLatency = t.elapsed();

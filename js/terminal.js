@@ -216,7 +216,7 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
     input.value = '';
     changed();
     if (!v) return;
-    const priv = privacy?.(); // 'mask' = esconde na tela · 'nohist' = só não guarda no histórico
+    const priv = privacy?.(v); // 'mask' = esconde na tela · 'nohist' = só não guarda no histórico
     if (!priv && hist[hist.length - 1] !== v) {
       hist.push(v);
       hist = hist.slice(-200);

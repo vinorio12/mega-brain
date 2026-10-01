@@ -5,7 +5,7 @@ import { esc, pad, dayKey, hhmm, ddmm, dur, DOW, VERSION } from './util.js';
 import { createCore } from './core.js';
 import { describe } from './weather.js';
 import { PHASES } from './commands.js';
-import { taskStats, groupTasks } from './tasks.js';
+import { taskStats, groupTasks, projectOf } from './tasks.js';
 import { fmtDue } from './dates.js';
 import { deriveState, describeState, readIntent, LISTEN_MS, FAULT_MS } from './state.js';
 
@@ -109,6 +109,9 @@ export function createUI(ctx) {
     }
     render();
   }
+  // a entrada pertence à aba atual? (projeto da tarefa ou #tag)
+  const inCtx = e => projectOf(e, ctx.reg().projects) === S.ctx || (e.tags || []).includes(S.ctx);
+
   const taskList = () => {
     const T = [...ctx.term.tasks.values()];
     return T.length ? T : recent && Date.now() < recent.until ? [recent] : [];
@@ -207,7 +210,7 @@ export function createUI(ctx) {
   function renderSats(E, T, key) {
     const proc = T.filter(t => t.kind !== 'exec'), exec = T.filter(t => t.kind === 'exec');
     const pending = ctx.store?.pending?.() || 0;
-    const ctxTasks = taskStats(S.ctx ? E.filter(e => (e.tags || []).includes(S.ctx)) : E);
+    const ctxTasks = taskStats(S.ctx ? E.filter(e => inCtx(e)) : E);
     const [memText] = mem();
     const st = ctx.store?.status;
     const intent = readIntent(inputValue, { mode: S.mode, ctx: S.ctx, catalog: ctx.commands.catalog() });
@@ -288,8 +291,8 @@ export function createUI(ctx) {
       short = `→ nota${intent.tags.length ? ' · #' + intent.tags.join(' #') : ''}`;
     } else {
       // parado: tarefas que importam agora (atrasadas, hoje, próximas)
-      const { groups } = groupTasks(E, { proj: S.ctx, now });
-      const s = taskStats(S.ctx ? E.filter(e => (e.tags || []).includes(S.ctx)) : E, now);
+      const { groups } = groupTasks(E, { proj: S.ctx, now, projects: ctx.reg().projects });
+      const s = taskStats(S.ctx ? E.filter(e => inCtx(e)) : E, now);
       sub = `${S.ctx ? '#' + S.ctx : 'todas'} · ${s.abertas} abertas`;
       const relevant = groups.filter(g => g.key !== 'feitas');
       let shownN = 0;

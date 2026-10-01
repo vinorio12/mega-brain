@@ -87,7 +87,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - [ ] 1b. Tarefas v2, visões e acervo · plano em `docs/plano-tarefas-acervo.md` (decisões do Vini lá)
   - [x] 0 · plano aprovado, 0.6 publicado
   - [x] 0.5 · login usuário + senha (OPERATORS em config.js; tela bloqueada pede direto a senha; `/entrar outro`) · `/status` do sistema virou `/condition` (`/sys`)
-  - [ ] 1 · modelo de dados (projeto, status, prazo, prioridade) + registros de projetos e status
+  - [x] 1 · modelo de dados v2 (`data: { projeto, status, prazo, prioridade, feito_em }`, lê o formato antigo) · registros `kind: projeto|status` separados das notas (`S.records`) · semente com ids fixos (`seedId`) · `/projeto [novo|renomear|arquivar]` · `/desfazer` desfaz criação
   - [ ] 2 · escrever/editar com `#proj @status >prazo !prioridade` + regras automáticas + linha `↳ auto`
   - [ ] 3 · tela inicial (atrasadas, prioridade alta, vencem primeiro)
   - [ ] 4 · visões `/ver lista|status|kanban|calendario`

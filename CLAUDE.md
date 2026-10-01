@@ -46,7 +46,8 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 
 ## Documentos
 - `docs/publicar.md` · passo a passo do GitHub Pages
-- `docs/fase-1.md` · proposta da Fase 1 com 4 perguntas pro Vini
+- `docs/fase-1.md` · proposta da Fase 1 (feita)
+- `docs/plano-tarefas-acervo.md` · tarefas v2, visões e acervo (feito; Etapa 5 = IA no backlog)
 
 ## Estrutura
 - `index.html` estrutura da tela · `css/style.css` visual
@@ -62,8 +63,10 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - `supabase/*.sql` banco (rodar no SQL Editor) · `tools/icons.ps1` gera os PNGs dos ícones
 - `.mcp.json` conecta o MCP do Supabase (projeto xfvfgidvqrubdtogtczy)
 
-## Formato de uma entrada (protótipo)
-{ text, tags[], kind: "nota", ts (epoch ms), day "AAAA-MM-DD" }
+## Formato das entradas (tabela `entries`)
+{ id, text, tags[], kind, ts (epoch ms), day "AAAA-MM-DD", data {} }
+- kind `nota` · `tarefa` (data: projeto, status, prazo, prioridade, feito_em, auto) · `link` (data: url, contexto) · `trecho`
+- registros: kind `projeto` (data: ordem, arquivado) · `status` (data: ordem, final), ficam em `S.records`, fora das listas
 
 ## Roadmap
 - [x] 0. Esqueleto (protótipo no Cowork): terminal, HUD (hoje, semana, ano, memória, tags, módulos), inbox, comandos /ajuda /inbox /hoje /buscar /apagar /desfazer /status /roadmap /limpar
@@ -85,7 +88,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - [x] HUD: telemetria "tarefas" (da aba), "pendentes" real no núcleo, módulo tarefas online · 104 testes
   - [x] 002_data.sql rodado · publicado
 - [x] 0.6. Redesign MB Core: núcleo vivo com estados reais, satélites, rails contextuais, boot cinematográfico · publicado
-- [ ] 1b. Tarefas v2, visões e acervo · plano em `docs/plano-tarefas-acervo.md` (decisões do Vini lá)
+- [x] 1b. Tarefas v2, visões e acervo · plano em `docs/plano-tarefas-acervo.md` (decisões do Vini lá) · publicado
   - [x] 0 · plano aprovado, 0.6 publicado
   - [x] 0.5 · login usuário + senha (OPERATORS em config.js; tela bloqueada pede direto a senha; `/entrar outro`) · `/status` do sistema virou `/condition` (`/sys`)
   - [x] 1 · modelo de dados v2 (`data: { projeto, status, prazo, prioridade, feito_em }`, lê o formato antigo) · registros `kind: projeto|status` separados das notas (`S.records`) · semente com ids fixos (`seedId`) · `/projeto [novo|renomear|arquivar]` · `/desfazer` desfaz criação
@@ -93,7 +96,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - [x] 3 · tela inicial `/inicio` (`briefing`: atrasadas → !alta → vencem primeiro, até 6 linhas) depois do boot e do login · painel da direita usa a mesma regra
   - [x] 4 · visões (`js/views.js`): `/ver prazo|lista|status|kanban|calendario [proj] [mês]` (salva em `mb.view.v1`, `/tarefas` usa a atual) · kanban empilha no celular · calendário: grade no PC, agenda no celular, `/ver calendario +1`
   - [x] 6 · acervo (`js/acervo.js`): colar link (http/https) guarda com contexto, linha com aspas ou `/guardar` guarda texto, `/acervo [links|textos] [termo]`, `/buscar termo [tipo:link|texto|tarefa|nota]` em tudo, agrupado por tipo · visão atual em `S.view`
-  - [ ] 7 · fechamento e publicação
+  - [x] 7 · README, ajuda agrupada, publicado
 - [ ] 2. IA intérprete: texto livre vira tarefa, gasto, treino etc.
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)

@@ -723,6 +723,7 @@ describe('memória na nuvem (Supabase falso)', () => {
     sb.fail = false;
     await st2.sync();
     eq(sb.rows.size, 1);
+    st1.forget(); // desliga a primeira também (senão ela continua gravando no navegador)
     st2.forget();
     clean();
   });

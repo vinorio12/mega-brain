@@ -1,6 +1,6 @@
 # Plano · Tarefas v2, visões, inteligência e acervo
 
-> Status: **aprovado em 01/10/2026, em execução nesta mesma sessão.** A Etapa 5 (IA) foi pro backlog (sem cartão no momento).
+> Status: **executado em 01/10/2026** (etapas 0, 0.5, 1, 2, 3, 4, 6 e 7). A Etapa 5 (IA) está no backlog (sem cartão no momento).
 > Para quem for executar (Sonnet ou outra sessão): leia o `CLAUDE.md` inteiro antes, siga o "Manual de manutenção"
 > e faça **uma etapa por vez**. No fim de cada etapa: testes verdes (`/tests/`), teste no navegador (mobile primeiro),
 > commit em português, atualizar `CLAUDE.md` (roadmap + estrutura). Explique ao Vini o que vai fazer antes de fazer.

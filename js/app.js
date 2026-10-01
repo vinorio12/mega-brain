@@ -44,6 +44,7 @@ const S = {
   undo: [],          // cada item: { label, items: [versões anteriores] }
   ctx: null,         // aba atual (projeto), ex: 'tcc' · null = inbox (~)
   taskList: null,    // ids na ordem dos números t1, t2... da última lista mostrada
+  view: (() => { try { return localStorage.getItem('mb.view.v1'); } catch { return null; } })(), // visão das tarefas (/ver)
   lastLatency: null,
   weather: null,
   startedAt: Date.now(),
@@ -90,6 +91,9 @@ async function run(text) {
     if (S.mode === 'password') return submitPassword(text);
     if (S.mode === 'code') return submitCode(text);
     if (!ctx.store) return lockedError();
+    // colou um link → acervo · começou com aspas → texto guardado no acervo
+    if (/^https?:\/\/\S/i.test(text)) return term.task('guardar link', (signal, t) => ctx.commands.addLink(text, t), { kind: 'exec' });
+    if (/^["“]\s*\S/.test(text)) return term.task('guardar texto', (signal, t) => ctx.commands.addSnippet(text, t), { kind: 'exec' });
     // "- revisar cap 2 #tcc >sex" vira tarefa
     if (/^-\s+\S/.test(text)) return term.task('nova tarefa', (signal, t) => ctx.commands.addTask(text.replace(/^-\s+/, ''), t), { kind: 'exec' });
     return capture(text);

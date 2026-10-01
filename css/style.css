@@ -294,6 +294,8 @@ ul, ol, dl, dd { margin: 0; padding: 0; list-style: none; }
 .tbl .k { color: var(--meta); }
 .tbl.cmd .k { color: var(--act); }
 .opts { color: var(--meta); }
+.lnk { color: var(--int); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--int) 35%, transparent); text-underline-offset: 2px; }
+.lnk:hover { text-decoration-color: var(--int); }
 
 /* tarefas */
 .task { display: grid; grid-template-columns: 5ch 3ch minmax(0, 1fr) auto; gap: 0 1.4ch; }

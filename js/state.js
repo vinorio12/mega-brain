@@ -2,6 +2,7 @@
 
 import { tagsOf, lev } from './util.js';
 import { parseTaskInput, fillByRules, registry } from './tasks.js';
+import { parseLink, parseSnippet } from './acervo.js';
 
 // Cada estado: rótulo, descrição curta e tom de cor (token do CSS)
 export const STATE_INFO = {
@@ -61,6 +62,12 @@ export function readIntent(text, { mode = null, ctx = null, catalog = [], reg = 
     const near = catalog.map(c => [c, lev(n, c.name)]).filter(([, d]) => d <= 2).sort((a, b) => a[1] - b[1]).map(([c]) => c);
     return { type: 'unknown', query: n, near: near.slice(0, 3) };
   }
+
+  // acervo: link colado ou texto entre aspas
+  const link = parseLink(v);
+  if (link) return { type: 'link', ...link };
+  const snip = parseSnippet(v);
+  if (snip) return { type: 'trecho', ...snip };
 
   if (/^-\s+\S/.test(v)) {
     const p = parseTaskInput(v.replace(/^-\s+/, ''), { ctx, reg });

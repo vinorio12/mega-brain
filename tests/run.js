@@ -10,6 +10,7 @@ import { createTerminal } from '../js/terminal.js';
 import { parseDue, fmtDue } from '../js/dates.js';
 import { deriveState, describeState, readIntent } from '../js/state.js';
 import { viewName, viewGroups, calendarModel, parseMonth } from '../js/views.js';
+import { parseLink, parseSnippet, shortUrl, searchAll } from '../js/acervo.js';
 import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord, guessProject, dueFor, fillByRules, matchStatus, briefing } from '../js/tasks.js';
 
 /* ---------------- mini framework ---------------- */
@@ -216,6 +217,52 @@ describe('tarefas · regras automáticas', () => {
     eq([r.values.prazo, r.auto.includes('prazo')], [null, false]);
   });
   test('matchStatus ambíguo → null', () => eq(matchStatus('a', [{ name: 'abc' }, { name: 'abd' }]), null));
+});
+
+describe('acervo (acervo.js)', () => {
+  test('parseLink: url + contexto + tags', () => eq(parseLink('https://ex.com/a artigo bom #tcc'), { url: 'https://ex.com/a', contexto: 'artigo bom #tcc', tags: ['tcc'] }));
+  test('parseLink: só http e https', () => eq(['javascript:alert(1)', 'ftp://x.com', 'data:text/html,x', 'texto normal', 'http://ok.com'].map(s => !!parseLink(s)), [false, false, false, false, true]));
+  test('parseSnippet: aspas retas e curvas', () => eq([parseSnippet('"frase boa"'), parseSnippet('“outra #ideia”')], [{ text: 'frase boa', tags: [] }, { text: 'outra #ideia', tags: ['ideia'] }]));
+  test('parseSnippet: sem aspas ou vazio → null', () => eq([parseSnippet('nada'), parseSnippet('""'), parseSnippet("'simples'")], [null, null, null]));
+  test('shortUrl encurta', () => { eq(shortUrl('https://www.ex.com/'), 'ex.com'); ok(shortUrl('https://ex.com/' + 'a'.repeat(80)).length <= 42); });
+  const E = [
+    { id: '1', kind: 'nota', text: 'ideia sobre RAG #tcc', tags: ['tcc'] },
+    { id: '2', kind: 'link', text: 'https://rag.dev guia de RAG', tags: [], data: { url: 'https://rag.dev', contexto: 'guia de RAG' } },
+    { id: '3', kind: 'trecho', text: 'citação #tcc', tags: ['tcc'] },
+    { id: '4', kind: 'tarefa', text: 'ler sobre rag', tags: [], data: {} },
+  ];
+  test('searchAll procura em tudo e agrupa por tipo', () => eq(searchAll(E, 'rag').groups.map(g => [g.key, g.items.map(e => e.id)]), [['tarefa', ['4']], ['nota', ['1']], ['link', ['2']]]));
+  test('searchAll com tipo:link', () => eq(searchAll(E, 'rag tipo:link').groups.map(g => g.key), ['link']));
+  test('searchAll por #tag', () => eq(searchAll(E, '#tcc').total, 2));
+});
+
+describe('acervo · comandos', () => {
+  const fakeT = { id: 'T1', elapsed: () => 1 };
+  test('guardar link e texto, listar no /acervo, apagar e desfazer', async () => {
+    const { S, term, run, ctx } = setup([]);
+    await ctx.commands.addLink('https://ex.com/artigo leitura pro tcc #tcc', fakeT);
+    await run('/guardar frase pra lembrar');
+    eq(S.entries.map(e => e.kind), ['link', 'trecho']);
+    eq(S.entries[0].data.url, 'https://ex.com/artigo');
+    term.out.length = 0;
+    await run('/acervo links');
+    eq(term.out.filter(x => x[2] === 'ent').length, 1);
+    ok(term.text().includes('href="https://ex.com/artigo"') && term.text().includes('noopener'), 'link seguro');
+    await run('/desfazer');
+    eq(S.entries.length, 1, 'desfez o texto');
+  });
+  test('/guardar com link vira link', async () => {
+    const { S, run } = setup([]);
+    await run('/guardar https://x.com');
+    eq(S.entries[0].kind, 'link');
+  });
+  test('/buscar tipo:link acha só links', async () => {
+    const { term, run, ctx } = setup(['nota com docs']);
+    await ctx.commands.addLink('https://docs.dev docs', fakeT);
+    term.out.length = 0;
+    await run('/buscar docs tipo:link');
+    eq(term.out.filter(x => x[2] === 'ent').length, 1);
+  });
 });
 
 describe('visões (views.js)', () => {

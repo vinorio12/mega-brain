@@ -13,6 +13,7 @@ import { esc, hl, dayKey, hhmm, ddmm, dur, lev, kb, tagsOf, uid, CmdError, VERSI
 import { geocode, locate, fetchWeather, savedPlace, describe } from './weather.js';
 import { fmtDue, parseDue } from './dates.js';
 import { VIEWS, viewName, viewGroups, calendarModel, parseMonth } from './views.js';
+import { isLink, isSnippet, isAcervo, safeUrl, parseLink, parseSnippet, shortUrl, searchAll } from './acervo.js';
 import {
   isTask, doneAt, projName, parseTaskInput, newTask, groupTasks, doneHistory, projectsSummary, taskNumbers, taskStats,
   projectOf, statusChange, finalStatus, firstStatus, fillByRules, matchStatus, statusOf, prioOf, isFinalStatus, briefing,
@@ -97,12 +98,60 @@ export function createCommands(ctx) {
   function list(items, title) {
     if (!items.length) return term.say(`nada em ${esc(title)}.`);
     term.print(`── ${esc(title)} ${'─'.repeat(10)}`, 'sep');
+    listRows(items);
+  }
+
+  // as linhas: #n (número do /inbox) · data · marca · texto
+  function listRows(items) {
     const num = numberOf();
     for (const e of items) {
       const d = new Date(e.ts);
-      // tarefas aparecem com a caixinha [ ] / [x]
-      const box = isTask(e) ? (doneAt(e) ? '<span class="c-act">[x]</span> ' : '<span class="c-meta">[ ]</span> ') : '';
-      term.print(`<span class="n">#${num.get(e.id)}</span><span class="d">${ddmm(d)} ${hhmm(d)}</span><span>${box}${hl(e.text)}</span>`, 'ent');
+      // marcas: tarefa [ ] / [x] · link ↗ · texto guardado »
+      const box = isTask(e) ? (doneAt(e) ? '<span class="c-act">[x]</span> ' : '<span class="c-meta">[ ]</span> ')
+        : isLink(e) ? '<span class="c-int">↗</span> ' : isSnippet(e) ? '<span class="c-int">»</span> ' : '';
+      term.print(`<span class="n">#${num.get(e.id)}</span><span class="d">${ddmm(d)} ${hhmm(d)}</span><span>${box}${isLink(e) ? linkHtml(e) : hl(e.text)}</span>`, 'ent');
+    }
+  }
+
+  // link clicável (sempre http/https, abre em aba nova sem acesso ao app) + contexto
+  function linkHtml(e) {
+    const url = safeUrl(e.data?.url);
+    if (!url) return hl(e.text);
+    const ctxText = e.data?.contexto || '';
+    return `<a class="lnk" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(shortUrl(url, 32))}</a>${ctxText ? ' ' + hl(ctxText) : ''}`;
+  }
+
+  // Acervo: guardar link e texto (mesma fila, nuvem e desfazer de tudo)
+  async function addLink(line, t) {
+    const l = parseLink(line);
+    if (!l) throw new CmdError('E_LINK', 'acervo', 'link inválido', 'só http:// e https://');
+    const now = new Date();
+    const e = await ctx.store.add({ kind: 'link', text: `${l.url}${l.contexto ? ' ' + l.contexto : ''}`, tags: l.tags, ts: now.getTime(), day: dayKey(now), data: { url: l.url, contexto: l.contexto } });
+    S.undo.push({ label: 'link guardado', items: [], created: [e.id] });
+    S.lastLatency = t.elapsed();
+    const n = S.entries.findIndex(x => x.id === e.id) + 1;
+    term.ok('acervo', `link guardado <span class="c-meta">#${n}</span> · ${linkHtml(e)} <span class="c-meta">· ${t.id} · /acervo lista</span>`);
+    ctx.ui.pulse('act');
+  }
+  async function addSnippet(text, t) {
+    const s = parseSnippet('"' + String(text).replace(/^["“”]/, ''));
+    if (!s) throw usage('guardar', 'texto curto pra guardar');
+    const now = new Date();
+    const e = await ctx.store.add({ kind: 'trecho', text: s.text, tags: s.tags, ts: now.getTime(), day: dayKey(now), data: {} });
+    S.undo.push({ label: 'texto guardado', items: [], created: [e.id] });
+    S.lastLatency = t.elapsed();
+    const n = S.entries.findIndex(x => x.id === e.id) + 1;
+    term.ok('acervo', `texto guardado <span class="c-meta">#${n}</span> · ${hl(s.text)} <span class="c-meta">· ${t.id} · /acervo lista</span>`);
+    ctx.ui.pulse('act');
+  }
+
+  // lista agrupada por tipo (busca e acervo), com os números do /inbox (#n) pra /apagar funcionar
+  function showSearch(res, title) {
+    if (!res.total) return term.say(`nada encontrado${res.q ? ` pra "${esc(res.q)}"` : ''}${res.tipo ? ' em ' + esc(res.tipo) : ''}.`);
+    term.print(`── ${esc(title)} · ${res.total} ${'─'.repeat(8)}`, 'sep');
+    for (const g of res.groups) {
+      term.print(`${esc(g.title)} <span class="c-meta">${g.items.length}</span>`, 'tgrp');
+      listRows(g.items);
     }
   }
 
@@ -170,9 +219,8 @@ export function createCommands(ctx) {
 
   const VIEW_KEY = 'mb.view.v1';
   const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-  function currentView() {
-    try { return viewName(localStorage.getItem(VIEW_KEY)) || 'prazo'; } catch { return 'prazo'; }
-  }
+  // a visão atual fica no estado (S.view); o app carrega/salva no navegador (mb.view.v1)
+  const currentView = () => viewName(S.view) || 'prazo';
 
   function showView(view, proj = S.ctx, month = null) {
     if (view === 'calendario') return showCalendar(proj, month);
@@ -344,9 +392,10 @@ export function createCommands(ctx) {
           return;
         }
         table([['qualquer texto', 'captura na inbox · use #tags: <span class="dim">ler cap 2</span> <span class="c-act">#tcc</span>']], 'cmd');
-        table([['- texto #proj @status >prazo !prio', 'cria tarefa (igual ao /t) · o que faltar vira ↳ auto']], 'cmd');
+        table([['- texto #proj @status >prazo !prio', 'cria tarefa (igual ao /t) · o que faltar vira ↳ auto'], ['https://… contexto', 'guarda o link no acervo'], ['"texto', 'guarda o texto no acervo']], 'cmd');
         const groups = [
           ['tarefas e projetos', c => ['inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
+          ['acervo', c => ['acervo', 'guardar', 'buscar'].includes(c.name)],
           ['memória', c => c.data],
           ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
           ['tela', c => ['painel', 'foco', 'limpar', 'log', 'historico', 'boot'].includes(c.name)],
@@ -450,6 +499,7 @@ export function createCommands(ctx) {
           return term.print('<span class="dim">/ver kanban troca · /tarefas usa a visão atual</span>');
         }
         view = view || currentView();
+        S.view = view;
         try { localStorage.setItem(VIEW_KEY, view); } catch {}
         showView(view, proj, month);
       },
@@ -671,13 +721,35 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'buscar', data: true, alias: ['grep', 'b'], args: '<termo>', desc: 'procura nas entradas (texto ou #tag)',
+      name: 'buscar', data: true, alias: ['grep', 'b'], args: '<termo | #tag> [tipo:link|texto|tarefa|nota]',
+      desc: 'procura em tudo (notas, tarefas, links, textos) · ex: /buscar rag tipo:link',
       run(arg) {
-        if (!arg) throw usage('buscar', '<termo>');
-        const q = arg.toLowerCase();
-        const tag = q.startsWith('#') ? q.slice(1) : null;
-        const hits = S.entries.filter(e => tag ? (e.tags || []).includes(tag) : String(e.text).toLowerCase().includes(q));
-        list(hits, `busca "${arg}" · ${hits.length}`);
+        if (!String(arg).trim()) throw usage('buscar', 'rag  ·  #tcc  ·  rag tipo:link');
+        showSearch(searchAll(S.entries, arg), `busca "${arg}"`);
+      },
+    },
+    {
+      name: 'acervo', alias: ['ac'], data: true, args: '[links | textos] [termo]',
+      desc: 'links e textos guardados · cole um link pra guardar · /guardar texto',
+      run(arg) {
+        const words = String(arg).trim().split(/\s+/).filter(Boolean);
+        const tipo = { links: 'link', link: 'link', textos: 'trecho', texto: 'trecho', trechos: 'trecho' }[(words[0] || '').toLowerCase()];
+        if (tipo) words.shift();
+        const pool = S.entries.filter(e => isAcervo(e) && (!tipo || (tipo === 'link' ? isLink(e) : isSnippet(e))));
+        if (!pool.length) {
+          return term.say('acervo vazio. cole um link (<span class="c-int">https://… contexto #tag</span>) ou use <span class="c-int">/guardar texto</span>.');
+        }
+        showSearch(searchAll(pool.slice().reverse(), words.join(' ')), `acervo${tipo ? ' · ' + (tipo === 'link' ? 'links' : 'textos') : ''}`);
+        term.print('<span class="dim">/apagar #n remove · /buscar termo procura em tudo</span>');
+      },
+    },
+    {
+      name: 'guardar', alias: ['g', 'salvar'], exec: true, data: true, async: true, args: '<texto>',
+      desc: 'guarda um texto curto no acervo (ou comece a linha com aspas ")',
+      async run(arg, signal, t) {
+        if (!String(arg).trim()) throw usage('guardar', 'texto curto pra guardar');
+        const l = parseLink(arg);
+        return l ? addLink(arg, t) : addSnippet(arg, t);
       },
     },
     {
@@ -940,6 +1012,8 @@ export function createCommands(ctx) {
     get,
     notFound,
     addTask,
+    addLink,
+    addSnippet,
     // lista leve dos comandos (nome, atalhos, uso, descrição) pro painel de contexto
     catalog: () => defs.map(c => ({ name: c.name, alias: c.alias || [], args: c.args || '', desc: c.desc })),
     names: () => defs.map(c => c.name),

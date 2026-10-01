@@ -7,6 +7,7 @@ import { describe } from './weather.js';
 import { PHASES } from './commands.js';
 import { taskStats, groupTasks, projectOf, briefing, prioOf } from './tasks.js';
 import { fmtDue } from './dates.js';
+import { shortUrl } from './acervo.js';
 import { deriveState, describeState, readIntent, LISTEN_MS, FAULT_MS } from './state.js';
 
 const MODULES = [
@@ -239,7 +240,7 @@ export function createUI(ctx) {
     $(id + '-2').textContent = sub || '';
   }
   function intentWord(i) {
-    return { idle: 'aguardando', login: { email: 'usuário', password: 'senha', code: 'código' }[i.field], note: 'nota', task: 'tarefa', 'task-error': 'prazo?', commands: 'comando', command: '/' + (i.cmd?.name || ''), unknown: 'desconhecido' }[i.type] || 'aguardando';
+    return { idle: 'aguardando', login: { email: 'usuário', password: 'senha', code: 'código' }[i.field], note: 'nota', task: 'tarefa', link: 'link', trecho: 'texto', 'task-error': 'prazo?', commands: 'comando', command: '/' + (i.cmd?.name || ''), unknown: 'desconhecido' }[i.type] || 'aguardando';
   }
 
   // direita: o contexto do momento. Digitando → mostra o que o Enter vai fazer. Parado → tarefas relevantes.
@@ -288,6 +289,18 @@ export function createUI(ctx) {
         ? `<div class="c-warn">não entendi o prazo ${esc(intent.token || '')}</div><div class="ctx-hint">use >hoje >amanhã >sex >15/10 >+3</div>`
         : '<div class="empty">escreva o texto da tarefa</div>';
       short = intent.error === 'prazo' ? `✕ prazo ${intent.token} não entendido` : '';
+    } else if (intent.type === 'link') {
+      title = 'novo link';
+      sub = 'enter guarda no acervo';
+      html = `<dl class="ctx-intent"><dt>link</dt><dd class="c-int">${esc(shortUrl(intent.url))}</dd>` +
+        `<dt>contexto</dt><dd>${intent.contexto ? esc(intent.contexto) : '<span class="dim">— (opcional)</span>'}</dd>` +
+        `<dt>tags</dt><dd class="c-act">${intent.tags.length ? intent.tags.map(t => '#' + esc(t)).join(' ') : '<span class="dim">—</span>'}</dd></dl>`;
+      short = `→ link · ${shortUrl(intent.url, 30)}`;
+    } else if (intent.type === 'trecho') {
+      title = 'novo texto';
+      sub = 'enter guarda no acervo';
+      html = `<dl class="ctx-intent"><dt>texto</dt><dd>${esc(intent.text)}</dd><dt>tags</dt><dd class="c-act">${intent.tags.length ? intent.tags.map(t => '#' + esc(t)).join(' ') : '<span class="dim">—</span>'}</dd></dl>`;
+      short = '→ texto guardado no acervo';
     } else if (intent.type === 'note') {
       title = 'nova nota';
       sub = 'enter captura';

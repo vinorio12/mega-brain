@@ -20,6 +20,9 @@ function authError(e) {
   const msg = String(e?.message || e).toLowerCase();
   if (msg.includes('signups not allowed') || msg.includes('user not found'))
     return new CmdError('E_AUTH_USER', 'auth', 'este e-mail não tem acesso', 'o Mega Brain só aceita o usuário criado no painel do Supabase');
+  if (msg.includes('not authorized') || msg.includes('not allowed for this'))
+    return new CmdError('E_AUTH_SMTP', 'auth', 'o e-mail padrão do Supabase não entrega pra este endereço',
+      'use o e-mail da sua conta Supabase, ou ative o SMTP próprio em Authentication → Emails');
   if (msg.includes('api key') || msg.includes('apikey'))
     return new CmdError('E_CLOUD_KEY', 'auth', 'chave do Supabase inválida', 'confira a chave publishable em <span class="c-hud">js/config.js</span>');
   if (msg.includes('token') || msg.includes('otp') || msg.includes('expired'))

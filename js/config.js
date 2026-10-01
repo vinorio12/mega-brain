@@ -7,4 +7,4 @@
 // Com SUPABASE_KEY vazia, o app roda em modo local (só neste navegador).
 
 export const SUPABASE_URL = 'https://xfvfgidvqrubdtogtczy.supabase.co';
-export const SUPABASE_KEY = '';
+export const SUPABASE_KEY = 'sb_publishable__83oomHbJQto-1Z_l5X1xA_Ee-EHveM';

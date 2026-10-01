@@ -9,7 +9,7 @@
 //   async  true se demora (ganha ID de tarefa e pode ser cancelado com ctrl+c)
 //   run    a função
 
-import { esc, hl, dayKey, hhmm, ddmm, dur, lev, kb, CmdError, VERSION } from './util.js';
+import { esc, hl, dayKey, hhmm, ddmm, dur, lev, kb, tagsOf, uid, CmdError, VERSION } from './util.js';
 import { geocode, locate, fetchWeather, savedPlace, describe } from './weather.js';
 
 export const PHASES = [
@@ -47,6 +47,39 @@ export function pickTargets(raw, entries) {
   const q = String(raw).trim().toLowerCase();
   const targets = entries.map((e, i) => ({ n: i + 1, e })).filter(({ e }) => String(e.text).toLowerCase().includes(q));
   return { mode: 'text', targets, bad: [] };
+}
+
+// Decide o que entra num /importar. Função pura, testada em tests/.
+// Aceita o arquivo do /exportar ({ entries: [...] }) ou uma lista simples.
+// Nunca sobrescreve: pula o que já existe (mesmo id, ou mesmo texto no mesmo horário).
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function prepareImport(json, existing) {
+  const list = Array.isArray(json) ? json : Array.isArray(json?.entries) ? json.entries : null;
+  if (!list) return null;
+  const ids = new Set(existing.map(e => e.id));
+  const sigs = new Set(existing.map(e => e.ts + '|' + e.text));
+  const toAdd = [];
+  let skipped = 0, invalid = 0;
+  for (const r of list) {
+    const text = typeof r?.text === 'string' ? r.text.trim() : '';
+    const ts = Number(r?.ts);
+    if (!text || text.length > 10000 || !Number.isFinite(ts) || ts <= 0) { invalid++; continue; }
+    const sig = ts + '|' + text;
+    if (ids.has(r.id) || sigs.has(sig)) { skipped++; continue; }
+    const e = {
+      id: UUID.test(r.id || '') ? r.id : uid(),
+      text,
+      tags: Array.isArray(r.tags) ? r.tags.map(String) : tagsOf(text),
+      kind: typeof r.kind === 'string' ? r.kind : 'nota',
+      ts,
+      day: /^\d{4}-\d{2}-\d{2}$/.test(r.day || '') ? r.day : dayKey(new Date(ts)),
+    };
+    if (r.data && typeof r.data === 'object') e.data = r.data;
+    ids.add(e.id);
+    sigs.add(sig);
+    toAdd.push(e);
+  }
+  return { toAdd, skipped, invalid };
 }
 
 export function createCommands(ctx) {
@@ -278,6 +311,34 @@ export function createCommands(ctx) {
     {
       name: 'instalar', alias: ['install'], desc: 'instala o Mega Brain como app neste aparelho',
       run() { ctx.actions.install(); },
+    },
+    {
+      name: 'importar', alias: ['import'], data: true, desc: 'restaura notas de um backup .json (do /exportar) sem duplicar',
+      run() {
+        // o seletor de arquivo precisa abrir direto do Enter (o navegador exige um gesto seu)
+        const pick = document.createElement('input');
+        pick.type = 'file';
+        pick.accept = '.json,application/json';
+        pick.onchange = () => {
+          const file = pick.files?.[0];
+          if (!file) return;
+          term.task(`/importar ${file.name}`, async (signal, t) => {
+            let json;
+            try { json = JSON.parse(await file.text()); }
+            catch { throw new CmdError('E_IMPORT', 'store', 'o arquivo não é um JSON válido', 'use o arquivo gerado pelo <span class="c-hud">/exportar</span>'); }
+            const plan = prepareImport(json, S.entries);
+            if (!plan) throw new CmdError('E_IMPORT', 'store', 'não achei uma lista de entradas no arquivo', 'use o arquivo gerado pelo <span class="c-hud">/exportar</span>');
+            for (const e of plan.toAdd) await ctx.store.restore(e);
+            S.lastLatency = t.elapsed();
+            term.ok('store', `importadas ${plan.toAdd.length} · já existiam ${plan.skipped}` +
+              (plan.invalid ? ` · <span class="c-warn">ignoradas ${plan.invalid} inválidas</span>` : '') +
+              ` <span class="c-meta">· ${esc(file.name)} · ${t.id} · ${S.lastLatency}ms</span>`);
+            ctx.ui.pulse('act');
+          }, { announce: true });
+        };
+        pick.click();
+        term.say('escolha o arquivo .json do backup.');
+      },
     },
     {
       name: 'roadmap', desc: 'fases do projeto',

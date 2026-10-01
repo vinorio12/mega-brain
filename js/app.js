@@ -350,6 +350,27 @@ async function refreshWeather() {
   });
 }
 
+/* ================= erros inesperados ================= */
+
+// Qualquer bug vira uma linha E_JS no terminal (com arquivo e linha), em vez de falhar calado.
+const seenErrors = new Set();
+function reportBug(message, where) {
+  const key = message + where;
+  if (seenErrors.has(key)) return; // não repete o mesmo erro
+  seenErrors.add(key);
+  ui.pulse('err');
+  term.error(new CmdError('E_JS', 'core', `${message}${where ? ' · ' + where : ''}`, 'se repetir, me manda esta linha'));
+}
+addEventListener('error', e => {
+  if (!e.message) return; // falha de carregar imagem/fonte, não é bug
+  reportBug(e.message, e.filename ? `${e.filename.split('/').pop()}:${e.lineno}` : '');
+});
+addEventListener('unhandledrejection', e => {
+  const r = e.reason;
+  if (r?.name === 'AbortError') return; // cancelamento com ctrl+c, normal
+  reportBug(String(r?.message || r), '');
+});
+
 /* ================= rede ================= */
 
 addEventListener('online', () => { term.ok('net', 'conexão restabelecida'); ui.pulse('act'); ui.render(); refreshWeather(); });

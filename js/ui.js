@@ -85,7 +85,15 @@ export function createUI(ctx) {
 
   /* ---------- render completo (chamado quando algo muda) ---------- */
 
+  // Vários eventos seguidos (ex: boot, sync) viram UM redesenho por quadro.
+  let queued = false;
   function render() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; renderNow(); });
+  }
+
+  function renderNow() {
     const now = new Date(), tk = dayKey(now), E = S.entries;
     const st = state();
     app.dataset.state = st;
@@ -237,7 +245,7 @@ export function createUI(ctx) {
     const k = $('k-up'); if (k) k.textContent = up;
     const f = $('f-sess'); if (f) f.textContent = up;
     document.querySelectorAll('[data-t0]').forEach(el => { el.textContent = fmtMs(performance.now() - +el.dataset.t0); });
-    if (d.getMinutes() !== lastMinute) { lastMinute = d.getMinutes(); render(); }
+    if (d.getMinutes() !== lastMinute) { lastMinute = d.getMinutes(); renderNow(); }
   }
 
   return { render, tick, state, mem, toggle, pulse: core.pulse };

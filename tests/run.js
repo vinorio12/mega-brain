@@ -3,7 +3,7 @@
 // Regra: nenhum teste toca nas suas notas (usa chaves "mb.test.*") nem na nuvem (usa um Supabase falso).
 
 import { esc, tagsOf, hl, dayKey, dur, lev, kb, CmdError } from '../js/util.js';
-import { pickTargets, createCommands } from '../js/commands.js';
+import { pickTargets, prepareImport, createCommands } from '../js/commands.js';
 import { createLocalStore } from '../js/store.js';
 import { createCloudStore } from '../js/cloud.js';
 import { createTerminal } from '../js/terminal.js';
@@ -149,6 +149,26 @@ describe('/apagar · escolha do que apagar (pickTargets)', () => {
   test('texto ignora maiúsculas', () => eq(ns(pickTargets('JOÃO', E)), [4]));
   test('texto com número no meio é texto', () => eq(pickTargets('cap 2', E).mode, 'text'));
   test('vazio', () => eq(pickTargets('  ', E).mode, 'empty'));
+});
+
+describe('/importar · o que entra (prepareImport)', () => {
+  const have = [{ id: '11111111-1111-1111-1111-111111111111', text: 'já tenho', ts: 100 }];
+  test('aceita o formato do /exportar', () => eq(prepareImport({ entries: [{ text: 'a', ts: 1 }] }, []).toAdd.length, 1));
+  test('aceita lista simples', () => eq(prepareImport([{ text: 'a', ts: 1 }], []).toAdd.length, 1));
+  test('arquivo sem lista → null', () => eq(prepareImport({ nada: 1 }, []), null));
+  test('pula mesmo id', () => eq(prepareImport([{ id: have[0].id, text: 'outro', ts: 5 }], have).skipped, 1));
+  test('pula mesmo texto no mesmo horário', () => eq(prepareImport([{ text: 'já tenho', ts: 100 }], have).skipped, 1));
+  test('não duplica dentro do próprio arquivo', () => eq(prepareImport([{ text: 'a', ts: 1 }, { text: 'a', ts: 1 }], []).toAdd.length, 1));
+  test('ignora inválidas (sem texto, sem horário)', () => eq(prepareImport([{ ts: 1 }, { text: 'x' }, { text: '', ts: 1 }, null], []).invalid, 4));
+  test('completa tags, kind e day que faltam', () => {
+    const [e] = prepareImport([{ text: 'ler #TCC', ts: new Date(2026, 0, 5, 10).getTime() }], []).toAdd;
+    eq([e.tags, e.kind, e.day], [['tcc'], 'nota', '2026-01-05']);
+  });
+  test('id que não é uuid ganha um novo (o banco exige uuid)', () => {
+    const [e] = prepareImport([{ id: 'local-123', text: 'a', ts: 1 }], []).toAdd;
+    ok(e.id !== 'local-123' && e.id.length >= 20);
+  });
+  test('mantém uuid válido', () => eq(prepareImport([{ id: '22222222-2222-2222-2222-222222222222', text: 'a', ts: 1 }], []).toAdd[0].id, '22222222-2222-2222-2222-222222222222'));
 });
 
 describe('comandos (com memória e terminal falsos)', () => {
@@ -298,6 +318,21 @@ describe('memória na nuvem (Supabase falso)', () => {
     sb.fail = false;
     await st.sync();
     eq(sb.rows.size, 0, 'apagou no servidor');
+    st.forget();
+    clean();
+  });
+  test('coluna nova no banco (data) chega no app sem quebrar', async () => {
+    clean();
+    const sb = fakeSb();
+    sb.rows.set('a', { id: 'a', user_id: 'u', text: 'tarefa', tags: [], kind: 'tarefa', ts: '5', day: 'x', created_at: 'z', data: { prazo: '2026-10-02' } });
+    sb.rows.set('b', { id: 'b', user_id: 'u', text: 'nota', tags: null, kind: 'nota', ts: 6, day: 'x', data: {} });
+    const st = createCloudStore(sb, user);
+    let seen = [];
+    st.subscribe(l => { seen = l; });
+    await st.connect();
+    await st.sync();
+    eq(seen[0], { id: 'a', text: 'tarefa', tags: [], kind: 'tarefa', ts: 5, day: 'x', data: { prazo: '2026-10-02' } });
+    eq(seen[1], { id: 'b', text: 'nota', tags: [], kind: 'nota', ts: 6, day: 'x' }, 'data vazio não aparece');
     st.forget();
     clean();
   });

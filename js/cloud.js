@@ -12,7 +12,7 @@
 import { uid, CmdError } from './util.js';
 
 const CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
-const COLS = 'id,text,tags,kind,ts,day';
+const COLS = '*'; // tudo o que existir; clean() escolhe o que o app usa
 
 /* ---------------- login ---------------- */
 
@@ -110,7 +110,13 @@ export function createCloudStore(sb, user, { onSync } = {}) {
     subs.forEach(fn => fn(entries));
   }
 
-  const clean = r => ({ id: r.id, text: r.text, tags: r.tags || [], kind: r.kind, ts: Number(r.ts), day: r.day });
+  // Converte a linha do banco no formato do app. Campos extras (ex: `data`, que chega na Fase 1)
+  // passam adiante quando existem, então o banco pode ganhar colunas sem quebrar esta versão.
+  const clean = r => {
+    const e = { id: r.id, text: r.text, tags: r.tags || [], kind: r.kind, ts: Number(r.ts), day: r.day };
+    if (r.data && Object.keys(r.data).length) e.data = r.data;
+    return e;
+  };
 
   async function pull() {
     const t0 = performance.now();

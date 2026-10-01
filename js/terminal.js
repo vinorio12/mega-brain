@@ -71,6 +71,7 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
     const src = err.src || 'core';
     const hintHtml = err.hint ? `<span class="hint">→ ${err.hint}</span>` : '';
     emit('ERR', src, `<b class="code">${esc(code)}</b> ${esc(err.message || 'erro inesperado')}${hintHtml}`);
+    onChange('fault', err);
     if (!(err instanceof CmdError) && !err.code) console.error(err);
   }
 
@@ -81,11 +82,12 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
 
   /* ---------- tarefas assíncronas (com ID e cancelamento) ---------- */
 
-  async function task(label, fn, { announce = false } = {}) {
+  // kind: 'proc' = processando (rede, leitura) · 'exec' = executando (grava na memória)
+  async function task(label, fn, { announce = false, kind = 'proc' } = {}) {
     const id = 'T' + pad(++seq, 4);
     const ctrl = new AbortController();
     const t0 = performance.now();
-    const t = { id, label, t0, ctrl, elapsed: () => Math.round(performance.now() - t0) };
+    const t = { id, label, kind, t0, ctrl, elapsed: () => Math.round(performance.now() - t0) };
     tasks.set(id, t);
     onChange('task');
     if (announce) emit('INF', 'task', `<span class="c-meta">${id}</span> ▸ ${esc(label)} <span class="c-meta">· ctrl+c cancela</span>`);
@@ -154,6 +156,7 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
       const head = before.slice(0, before.length - prefix.length) + fill;
       input.value = head + after;
       input.setSelectionRange(head.length, head.length);
+      changed();
     } else {
       print(hits.map(h => `<span class="c-hud">${esc(h)}</span>`).join('   '), 'opts');
     }
@@ -161,15 +164,57 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
 
   /* ---------- teclado ---------- */
 
+  /* ---------- cursor de bloco (estilo Unix) ---------- */
+  // Fonte monoespaçada: a posição do cursor é (letras antes dele × largura de uma letra).
+  // Em tela de toque, ou quando não dá pra calcular, fica o cursor nativo do navegador.
+  const cursor = form.querySelector('.cursor');
+  const fine = matchMedia('(pointer: fine)').matches;
+  let charW = 0;
+  function measure() {
+    const cs = getComputedStyle(input);
+    const c = document.createElement('canvas').getContext('2d');
+    c.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    charW = c.measureText('M').width;
+  }
+  function placeCursor() {
+    if (!cursor || !fine) return;
+    if (!charW) measure();
+    const pos = input.selectionStart ?? input.value.length;
+    const sel = input.selectionStart !== input.selectionEnd;
+    const x = input.offsetLeft + pos * charW - input.scrollLeft;
+    const fits = x >= input.offsetLeft && x <= input.offsetLeft + input.clientWidth - charW;
+    cursor.style.transform = `translateX(${x}px)`;
+    cursor.style.width = charW + 'px';
+    const on = document.activeElement === input && !sel && fits;
+    form.classList.toggle('block-cursor', on);
+    // reinicia o piscar a cada movimento: o cursor fica aceso enquanto você digita
+    cursor.classList.remove('blink');
+    void cursor.offsetWidth;
+    cursor.classList.add('blink');
+  }
+  if (fine) {
+    for (const ev of ['input', 'click', 'focus', 'blur', 'select', 'keyup']) input.addEventListener(ev, placeCursor);
+    input.addEventListener('keydown', () => requestAnimationFrame(placeCursor));
+    addEventListener('resize', () => { charW = 0; placeCursor(); });
+    document.fonts?.ready.then(() => { charW = 0; placeCursor(); });
+  }
+
+  // avisa o app quando você digita (o núcleo entra em LISTENING e reage às teclas)
+  const changed = () => { onChange('input', input.value); placeCursor(); };
+  input.addEventListener('input', changed);
+  input.addEventListener('keydown', e => { if (e.key.length === 1 || e.key === 'Backspace') onChange('key'); });
+
   const setInput = v => {
     input.value = v;
-    requestAnimationFrame(() => input.setSelectionRange(v.length, v.length));
+    changed();
+    requestAnimationFrame(() => { input.setSelectionRange(v.length, v.length); placeCursor(); });
   };
 
   form.addEventListener('submit', ev => {
     ev.preventDefault();
     const v = input.value.trim();
     input.value = '';
+    changed();
     if (!v) return;
     const priv = privacy?.(); // 'mask' = esconde na tela · 'nohist' = só não guarda no histórico
     if (!priv && hist[hist.length - 1] !== v) {
@@ -200,6 +245,7 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
       complete();
     } else if (e.key === 'Escape') {
       input.value = '';
+      changed();
     }
   });
 
@@ -219,7 +265,7 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
       if ((sel && sel.toString()) || inInput) return;
       e.preventDefault();
       if (tasks.size) cancelLast();
-      else if (input.value) { print(`<span class="dim">${esc(input.value)}^C</span>`); input.value = ''; }
+      else if (input.value) { print(`<span class="dim">${esc(input.value)}^C</span>`); input.value = ''; changed(); }
       return;
     }
     // digitou fora do prompt: volta o foco pra ele
@@ -244,6 +290,7 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
     warn: (src, html) => emit('WRN', src, html),
     history: () => hist,
     renderHint,
-    focus: () => input.focus({ preventScroll: true }),
+    placeCursor,
+    focus: () => { input.focus({ preventScroll: true }); placeCursor(); },
   };
 }

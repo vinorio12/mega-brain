@@ -7,7 +7,7 @@ import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { createTerminal } from './terminal.js';
 import { createCommands } from './commands.js';
 import { createUI } from './ui.js';
-import { createBootScreen } from './boot.js';
+import { createBoot, bootMode } from './boot.js';
 import { savedPlace, fetchWeather } from './weather.js';
 
 const CLOUD = Boolean(SUPABASE_URL && SUPABASE_KEY);
@@ -64,9 +64,13 @@ ctx.term = createTerminal({
   // e-mail e código não vão pro histórico; o código aparece mascarado
   privacy: () => (S.mode === 'code' || S.mode === 'password' ? 'mask' : S.mode === 'email' ? 'nohist' : null),
   onSubmit: text => run(text),
-  onChange: kind => {
+  // sinais do terminal viram reações do núcleo
+  onChange: (kind, value) => {
     if (!ctx.ui) return;
-    if (kind === 'task') ctx.term.renderHint();
+    if (kind === 'input') return ctx.ui.onInput(value);
+    if (kind === 'key') return ctx.ui.onKey();
+    if (kind === 'fault') return ctx.ui.onFault();
+    if (kind === 'task') { ctx.term.renderHint(); return ctx.ui.noteTasks(); }
     ctx.ui.render();
   },
 });
@@ -85,7 +89,7 @@ async function run(text) {
     if (S.mode === 'code') return submitCode(text);
     if (!ctx.store) return lockedError();
     // "- revisar cap 2 #tcc >sex" vira tarefa
-    if (/^-\s+\S/.test(text)) return term.task('tarefa', (signal, t) => ctx.commands.addTask(text.replace(/^-\s+/, ''), t));
+    if (/^-\s+\S/.test(text)) return term.task('nova tarefa', (signal, t) => ctx.commands.addTask(text.replace(/^-\s+/, ''), t), { kind: 'exec' });
     return capture(text);
   }
 
@@ -96,9 +100,9 @@ async function run(text) {
   if (cmd.data && !ctx.store) return lockedError();
 
   if (cmd.async) {
-    await term.task('/' + cmd.name + (arg ? ' ' + arg : ''), (signal, t) => cmd.run(arg, signal, t), { announce: cmd.announce });
+    await term.task('/' + cmd.name + (arg ? ' ' + arg : ''), (signal, t) => cmd.run(arg, signal, t), { announce: cmd.announce, kind: cmd.exec ? 'exec' : 'proc' });
   } else {
-    try { cmd.run(arg); ui.pulse('hud'); }
+    try { cmd.run(arg); ui.pulse('int', 0.9); }
     catch (e) { ui.pulse('err'); term.error(e); }
   }
 }
@@ -124,7 +128,7 @@ async function capture(text) {
     term[queued ? 'warn' : 'ok']('store',
       `${queued ? 'capturado · na fila, sobe quando a rede voltar' : 'capturado'} <span class="c-meta">#${n}</span>${tagHtml} <span class="c-meta">· ${t.id} · ${S.lastLatency}ms</span>`);
     ui.pulse(queued ? 'warn' : 'act');
-  });
+  }, { kind: 'exec' });
 }
 
 /* ================= memória ================= */
@@ -372,9 +376,9 @@ function setCtx(proj, { quiet = false } = {}) {
   ui.render();
   if (!quiet) {
     term.say(S.ctx
-      ? `aba <span class="c-act">~/${esc(S.ctx)}</span> · o que você escrever aqui ganha <span class="c-act">#${esc(S.ctx)}</span> · <span class="c-hud">/tarefas</span> lista as daqui · <span class="c-hud">/ir ~</span> volta`
+      ? `aba <span class="c-act">~/${esc(S.ctx)}</span> · o que você escrever aqui ganha <span class="c-act">#${esc(S.ctx)}</span> · <span class="c-int">/tarefas</span> lista as daqui · <span class="c-int">/ir ~</span> volta`
       : 'aba <span class="c-act">~</span> · inbox geral');
-    ui.pulse('hud');
+    ui.onCtx(); // o satélite CONTEXT acende
   }
 }
 
@@ -415,29 +419,35 @@ addEventListener('offline', () => { term.warn('net', 'sem conexão · o que voc�
 /* ================= boot ================= */
 
 async function boot() {
-  const screen = createBootScreen(6);
+  // o MESMO núcleo da interface nasce em tela cheia (veja js/boot.js)
+  const mode = bootMode();
+  const seq = createBoot({
+    core: ui.core, app: document.getElementById('app'),
+    field: document.getElementById('field'), slot: document.getElementById('field-slot'), mode,
+  });
   ui.tick();
   setInterval(ui.tick, 1000);
   ui.render();
 
-  term.print(`<b>MEGA BRAIN</b><span>cybernetic intelligence terminal · v${VERSION}</span>`, 'title');
+  seq.head(`v${VERSION}`, mode === 'full' ? 'cold boot' : 'warm boot');
+  term.print(`<b>MB <i>CORE</i></b><span>ambiente operacional de inteligência · v${VERSION}</span>`, 'title');
   const coreMs = Math.round(performance.now());
-  screen.step('núcleo', `${coreMs}ms`);
-  term.ok('core', `núcleo carregado · ${coreMs}ms`);
+  seq.step('kernel', `módulos carregados · ${coreMs}ms`);
+  term.ok('core', `kernel · ${coreMs}ms`);
 
   await Promise.race([document.fonts.ready, sleep(1500)]);
-  screen.step('interface', 'jetbrains mono · 3 painéis');
-  term.ok('ui', 'interface · núcleo, terminal, telemetria');
+  const canvasInfo = `canvas ${Math.min(2, devicePixelRatio || 1)}x`;
+  seq.step('interface', `jetbrains mono · ${canvasInfo}`);
+  term.ok('ui', `interface · núcleo, terminal, contexto · ${canvasInfo}`);
 
   let needLogin = false;
   if (!CLOUD) {
     const n = await openLocal();
-    screen.step('memória', `local · ${n}`, 'warn');
-    screen.step('sessão', 'modo local', 'warn');
+    seq.step('memory', `local · ${n} entradas`, 'warn');
   } else {
     try {
       ctx.cloud = await createCloud(SUPABASE_URL, SUPABASE_KEY);
-      screen.step('nuvem', 'supabase');
+      seq.step('memory net', 'supabase · postgres · rls');
       ctx.cloud.onAuth(onAuthEvent);
       const session = await ctx.cloud.session();
       if (AUTH_URL) {
@@ -447,36 +457,35 @@ async function boot() {
       }
       if (session) {
         await openSession(session);
-        screen.step('sessão', session.user.email);
-        screen.step('memória', `cache · ${S.entries.length}`);
+        seq.step('operator', esc(session.user.email.split('@')[0]));
+        seq.step('memory', `unlocked · ${S.entries.length} entradas`);
       } else {
         S.locked = true;
         needLogin = true;
         term.warn('auth', 'memória bloqueada · precisa entrar');
-        screen.step('sessão', 'bloqueada', 'warn');
-        screen.step('memória', 'bloqueada', 'warn');
+        seq.step('memory', 'LOCKED · aguardando operador', 'lock');
       }
     } catch (e) {
       console.error(e);
       S.degraded = true;
       term.error(new CmdError('E_CLOUD_LOAD', 'cloud', 'não consegui carregar a nuvem', 'confira a internet e recarregue · usando memória local por enquanto'));
-      screen.step('nuvem', 'falhou', 'err');
+      seq.step('memory net', 'falhou · modo local', 'err');
       const n = await openLocal();
-      screen.step('memória', `local · ${n}`, 'warn');
+      seq.step('memory', `local · ${n} entradas`, 'warn');
     }
   }
 
   const online = navigator.onLine;
-  screen.step('rede', online ? 'online' : 'offline', online ? 'ok' : 'warn');
+  seq.step('network', online ? 'online' : 'offline · fila local ativa', online ? 'ok' : 'warn');
   term[online ? 'ok' : 'warn']('net', online ? 'rede online' : 'rede offline');
 
   // volta na última aba usada neste aparelho
   try { const saved = localStorage.getItem(CTX_KEY); if (saved) setCtx(saved, { quiet: true }); } catch {}
+  seq.step('context', '~' + (S.ctx ? '/' + esc(S.ctx) : ''), 'int');
 
-  S.booting = false;
-  ui.render();
-  await screen.done();
-  ui.pulse('hud');
+  // declaração + montagem; o estado sai de INITIALIZING na hora do "CORE ONLINE"
+  await seq.finish({ locked: S.locked, onOnline: () => { S.booting = false; ui.render(); } });
+  term.ok('core', `core online · ${S.locked ? 'memory locked' : 'intelligence ready'} · boot ${mode === 'full' ? 'completo' : mode === 'short' ? 'rápido' : 'instantâneo'}`);
 
   if (needLogin) login();
   else term.say('pronto. escreva qualquer coisa pra capturar · <span class="c-act">- texto >sex</span> cria tarefa · <span class="c-act">/ajuda</span> mostra os comandos.' +

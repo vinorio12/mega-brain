@@ -208,7 +208,7 @@ export function createCommands(ctx) {
           ['tarefas e projetos', c => ['t', 'tarefas', 'feito', 'reabrir', 'adiar', 'feitas', 'projetos', 'ir'].includes(c.name)],
           ['memória', c => c.data],
           ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
-          ['tela', c => ['painel', 'foco', 'limpar', 'log', 'historico'].includes(c.name)],
+          ['tela', c => ['painel', 'foco', 'limpar', 'log', 'historico', 'boot'].includes(c.name)],
         ];
         const used = new Set();
         const section = (title, pick) => {
@@ -226,7 +226,7 @@ export function createCommands(ctx) {
           ['↑ ↓', 'navega no histórico'],
           ['ctrl+c', 'cancela a tarefa em andamento'],
           ['ctrl+k', 'limpa a tela (o log continua)'],
-          ['ctrl+.', 'mostra/esconde a telemetria'],
+          ['ctrl+.', 'mostra/esconde o painel de contexto'],
           ['alt+1..4', 'abas: ~ · tcc · weg · pessoal'],
           ['esc', 'apaga a linha'],
         ]);
@@ -255,7 +255,7 @@ export function createCommands(ctx) {
     },
     /* ---------- tarefas e projetos (Fase 1) ---------- */
     {
-      name: 't', alias: ['tarefa', 'todo'], data: true, async: true, args: '<texto> [#projeto] [>prazo]',
+      name: 't', exec: true, alias: ['tarefa', 'todo'], data: true, async: true, args: '<texto> [#projeto] [>prazo]',
       desc: 'cria tarefa · ex: revisar cap 2 #tcc >sex (ou comece a linha com "- ")',
       async run(arg, signal, t) { await addTask(arg, t); },
     },
@@ -277,7 +277,7 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'feito', alias: ['ok', 'x', 'done'], data: true, async: true, args: '<t1 t2 | t1-t3 | texto>',
+      name: 'feito', exec: true, alias: ['ok', 'x', 'done'], data: true, async: true, args: '<t1 t2 | t1-t3 | texto>',
       desc: 'conclui tarefas (fica riscada até o fim do dia)',
       async run(arg, signal, t) {
         const targets = resolveTasks(arg, 'feito', 't1  ·  t1 t3  ·  t1-t4');
@@ -293,7 +293,7 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'reabrir', alias: ['reopen'], data: true, async: true, args: '<t1 ...>',
+      name: 'reabrir', exec: true, alias: ['reopen'], data: true, async: true, args: '<t1 ...>',
       desc: 'desfaz a conclusão de uma tarefa',
       async run(arg, signal, t) {
         const targets = resolveTasks(arg, 'reabrir', 't1');
@@ -306,7 +306,7 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'adiar', alias: ['prazo'], data: true, async: true, args: '<t1 ...> <prazo | sem>',
+      name: 'adiar', exec: true, alias: ['prazo'], data: true, async: true, args: '<t1 ...> <prazo | sem>',
       desc: 'muda o prazo · ex: /adiar t2 sex · /adiar t1 t3 +2 · /adiar t4 sem',
       async run(arg, signal, t) {
         const words = String(arg).trim().split(/\s+/);
@@ -375,7 +375,7 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'apagar', data: true, alias: ['rm'], args: '<n> | <n n n> | <n-n> | <texto>',
+      name: 'apagar', exec: true, data: true, alias: ['rm'], args: '<n> | <n n n> | <n-n> | <texto>',
       desc: 'apaga por número (1 2 3 · 1-4) ou pelo texto (dá pra desfazer)', async: true,
       async run(arg, signal, t) {
         const raw = String(arg).trim();
@@ -422,7 +422,7 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'desfazer', data: true, alias: ['undo'], desc: 'desfaz a última mudança (apagar, concluir, adiar...)', async: true,
+      name: 'desfazer', exec: true, data: true, alias: ['undo'], desc: 'desfaz a última mudança (apagar, concluir, adiar...)', async: true,
       async run(arg, signal, t) {
         // cada item guarda as versões ANTERIORES; restaurar = voltar no tempo
         const step = S.undo.pop();
@@ -528,7 +528,7 @@ export function createCommands(ctx) {
       async run(arg, signal, t) { await ctx.actions.sync(t); },
     },
     {
-      name: 'migrar', desc: 'envia pra nuvem as notas que ficaram no modo local', async: true, announce: true, data: true,
+      name: 'migrar', exec: true, desc: 'envia pra nuvem as notas que ficaram no modo local', async: true, announce: true, data: true,
       async run(arg, signal, t) { await ctx.actions.migrate(t); },
     },
     {
@@ -557,10 +557,28 @@ export function createCommands(ctx) {
               (plan.invalid ? ` · <span class="c-warn">ignoradas ${plan.invalid} inválidas</span>` : '') +
               ` <span class="c-meta">· ${esc(file.name)} · ${t.id} · ${S.lastLatency}ms</span>`);
             ctx.ui.pulse('act');
-          }, { announce: true });
+          }, { announce: true, kind: 'exec' });
         };
         pick.click();
         term.say('escolha o arquivo .json do backup.');
+      },
+    },
+    {
+      name: 'boot', args: '[completo | curto]', desc: 'repete a inicialização completa · "completo" deixa sempre a longa',
+      run(arg) {
+        const a = String(arg).trim().toLowerCase();
+        if (a === 'completo' || a === 'longo') {
+          try { localStorage.setItem('mb.boot.v1', 'full'); } catch {}
+          return term.say('a inicialização completa (~5s) vai rodar sempre que o MB Core abrir. <span class="c-int">/boot curto</span> volta pra rápida.');
+        }
+        if (a === 'curto' || a === 'rapido' || a === 'rápido') {
+          try { localStorage.setItem('mb.boot.v1', 'auto'); } catch {}
+          return term.say('inicialização rápida (~1,5s) a partir da próxima abertura.');
+        }
+        if (a) throw usage('boot', '[completo | curto]');
+        try { sessionStorage.setItem('mb.boot.once', 'full'); } catch {}
+        term.say('reiniciando o núcleo…');
+        setTimeout(() => location.reload(), 350);
       },
     },
     {
@@ -573,14 +591,14 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'painel', alias: ['tele'], desc: 'mostra/esconde a telemetria (ctrl+.)',
+      name: 'painel', alias: ['tele'], desc: 'mostra/esconde o painel de contexto (ctrl+.)',
       run() {
         const on = ctx.ui.toggle('tele');
         term.say(on ? 'telemetria visível.' : 'telemetria escondida · <span class="c-hud">/painel</span> ou ctrl+. traz de volta.');
       },
     },
     {
-      name: 'foco', alias: ['zen'], desc: 'deixa só o terminal na tela (de novo pra voltar)',
+      name: 'foco', alias: ['zen'], desc: 'só núcleo e terminal na tela (de novo pra voltar)',
       run() {
         const on = ctx.ui.toggle('focus');
         term.say(on ? 'modo foco · <span class="c-hud">/foco</span> de novo traz os painéis.' : 'painéis de volta.');
@@ -613,6 +631,8 @@ export function createCommands(ctx) {
     get,
     notFound,
     addTask,
+    // lista leve dos comandos (nome, atalhos, uso, descrição) pro painel de contexto
+    catalog: () => defs.map(c => ({ name: c.name, alias: c.alias || [], args: c.args || '', desc: c.desc })),
     names: () => defs.map(c => c.name),
   };
 }

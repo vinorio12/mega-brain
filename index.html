@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<meta name="theme-color" content="#030405">
+<meta name="theme-color" content="#020304">
 <meta name="color-scheme" content="dark">
-<meta name="description" content="Terminal pessoal · segundo cérebro">
-<title>Mega Brain</title>
+<meta name="description" content="MB Core · ambiente operacional de inteligência pessoal">
+<title>MB Core</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/icon-32.png" sizes="32x32" type="image/png">
@@ -14,41 +14,36 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Mega Brain">
+<meta name="apple-mobile-web-app-title" content="MB Core">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap">
 <link rel="stylesheet" href="css/style.css">
 <script type="module" src="js/app.js"></script>
 </head>
 <body>
-<!-- Tela de boot (some sozinha depois das checagens). -->
+<!--
+  MB Core em três camadas:
+    1. terminal      · interação e logs brutos (centro, embaixo)
+    2. inteligência  · o núcleo vivo e seus satélites (centro, em cima)
+    3. periferia     · estado cognitivo (esquerda) · contexto, ambiente e módulos (direita)
+  O boot usa o MESMO núcleo: ele nasce em tela cheia e depois viaja até o lugar dele.
+-->
+
+<!-- camada do boot: logs de inicialização e a declaração final (o núcleo é o #field, lá embaixo) -->
 <div class="boot" id="boot" aria-hidden="true">
-  <div class="boot-in">
-    <svg class="boot-core" viewBox="-60 -60 120 120">
-      <circle r="56" pathLength="1" class="b1"/>
-      <circle r="44" pathLength="1" class="b2"/>
-      <circle r="30" pathLength="1" class="b3"/>
-      <circle r="14" pathLength="1" class="b4"/>
-      <line x1="0" y1="-60" x2="0" y2="60" class="bx"/>
-      <line x1="-60" y1="0" x2="60" y2="0" class="bx"/>
-      <circle r="4" class="b5"/>
-    </svg>
-    <div class="boot-title"><b>MB</b><i>//</i>CORE</div>
-    <ol class="boot-log" id="boot-log"></ol>
-    <div class="boot-bar"><i id="boot-bar"></i></div>
-    <div class="boot-skip">qualquer tecla pula</div>
-  </div>
+  <ol class="boot-log" id="boot-log"></ol>
+  <div class="boot-decl" id="boot-decl"></div>
+  <div class="boot-skip">qualquer tecla pula</div>
 </div>
 
-<!-- Estrutura: cabeçalho, 3 áreas (núcleo | terminal | telemetria) e rodapé de status. -->
-<div class="app" id="app" data-state="boot">
+<div class="app" id="app" data-state="initializing">
 
   <header class="head">
-    <div class="ident"><b>MB</b><i>//</i><span>CORE</span><small id="h-ver"></small></div>
+    <div class="ident"><i class="ident-mark" aria-hidden="true"></i><b>MB</b><span>CORE</span><small id="h-ver"></small></div>
     <div class="head-fields">
-      <span class="hf hf-state" id="h-state" title="estado da aplicação"><i class="dot"></i><b>BOOT</b></span>
-      <span class="hf hf-user" id="h-user" title="sessão"><span class="k">◈</span><b>—</b></span>
+      <span class="hf hf-state" id="h-state" title="estado do núcleo"><i class="dot"></i><b>INITIALIZING</b></span>
+      <span class="hf hf-user" id="h-user" title="operador"><span class="k">◈</span><b>—</b></span>
       <span class="hf" id="h-net" title="rede"><span class="k">⇅</span><b>NA</b></span>
       <span class="hf" id="h-mem" title="memória"><span class="k">◫</span><b>NA</b></span>
       <span class="hf" id="h-wx" title="clima"><span class="k">◌</span><b>NA</b></span>
@@ -56,70 +51,72 @@
     </div>
   </header>
 
-  <aside class="intel" aria-label="Núcleo">
-    <div class="ph"><span>núcleo</span></div>
-    <div class="core-wrap"><svg id="core" viewBox="-100 -100 200 200" aria-hidden="true"></svg></div>
-    <dl class="kv" id="core-kv"></dl>
-    <div class="intel-more">
-      <div class="ph"><span>atividade · 30 min</span><span class="ph-r" id="act-sum">0</span></div>
-      <div class="spark" id="spark"></div>
-      <div class="ph"><span>processos</span><span class="ph-r" id="proc-n">0</span></div>
-      <ul class="rows" id="procs"></ul>
-      <div class="ph"><span>eventos</span><span class="ph-r" id="ev-n">0</span></div>
-      <ul class="rows ev" id="events"></ul>
-    </div>
+  <!-- esquerda: estado cognitivo e operacional -->
+  <aside class="rail cog" aria-label="Estado cognitivo">
+    <section class="cog-state">
+      <div class="lbl"><span>núcleo</span><span id="c-since"></span></div>
+      <div class="state-word" id="c-state">INITIALIZING</div>
+      <div class="state-desc" id="c-desc">inicializando o núcleo</div>
+    </section>
+    <section>
+      <div class="lbl"><span>atenção</span></div>
+      <div class="focus"><span class="focus-path" id="c-focus">~</span><span class="focus-mode" id="c-mode">captura</span></div>
+    </section>
+    <section>
+      <div class="lbl"><span>processos</span><span id="c-proc-n">0</span></div>
+      <ul class="rows" id="c-procs"></ul>
+    </section>
+    <section class="grow">
+      <div class="lbl"><span>fluxo</span><span id="c-ev-n">0</span></div>
+      <ul class="stream" id="c-stream"></ul>
+    </section>
+    <section>
+      <div class="lbl"><span>atividade · 30 min</span><span id="c-act">0</span></div>
+      <div class="spark" id="c-spark"></div>
+    </section>
   </aside>
 
-  <main class="work">
-    <div class="work-h"><span>terminal</span><span class="work-meta" id="work-meta"></span></div>
-    <div class="out" id="out" role="log" aria-live="polite"></div>
-    <form class="prompt" id="form" autocomplete="off">
-      <label for="cmd" class="ps"><span class="ps-who">vini@core</span><span class="ps-path">:~</span><span class="ps-caret">›</span></label>
-      <input id="cmd" name="cmd" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" placeholder="escreva qualquer coisa · /ajuda">
-      <span class="hint" id="hint"></span>
-    </form>
+  <main class="center">
+    <!-- camada de inteligência -->
+    <div class="field-slot" id="field-slot">
+      <div class="field" id="field">
+        <canvas id="core" aria-hidden="true"></canvas>
+        <div class="sat" data-sat="context"><b>CONTEXT</b><span id="s-context">~</span><small id="s-context-2"></small></div>
+        <div class="sat" data-sat="memory"><b>MEMORY</b><span id="s-memory">NA</span><small id="s-memory-2"></small></div>
+        <div class="sat" data-sat="network"><b>NETWORK</b><span id="s-network">NA</span><small id="s-network-2"></small></div>
+        <div class="sat" data-sat="process"><b>PROCESS</b><span id="s-process">ocioso</span><small id="s-process-2"></small></div>
+        <div class="sat" data-sat="input"><b>INPUT</b><span id="s-input">aguardando</span><small id="s-input-2"></small></div>
+        <div class="field-strip" aria-hidden="true"><b id="f-state">INITIALIZING</b><span id="f-desc"></span></div>
+      </div>
+    </div>
+
+    <!-- camada do terminal -->
+    <section class="term" aria-label="Terminal">
+      <div class="term-h"><span>terminal</span><span class="term-meta" id="work-meta"></span></div>
+      <div class="out" id="out" role="log" aria-live="polite"></div>
+      <div class="intent-line" id="intent-line" aria-live="polite"></div>
+      <form class="prompt" id="form" autocomplete="off">
+        <label for="cmd" class="ps"><span class="ps-who">vini@core</span><span class="ps-path">:~</span><span class="ps-caret">›</span></label>
+        <input id="cmd" name="cmd" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" placeholder="escreva qualquer coisa · /ajuda">
+        <span class="cursor" aria-hidden="true"></span>
+        <span class="hint" id="hint"></span>
+      </form>
+    </section>
   </main>
 
-  <aside class="tele" aria-label="Telemetria">
-    <section>
-      <div class="ph"><span>hoje</span><span class="ph-r" id="t-date"></span></div>
-      <div class="big" id="t-today">0</div>
-      <div class="sub">entradas capturadas</div>
+  <!-- direita: contexto, ambiente e módulos -->
+  <aside class="rail ctx" aria-label="Contexto">
+    <section class="ctx-main">
+      <div class="lbl"><span id="x-title">contexto</span><span id="x-sub"></span></div>
+      <div class="ctx-body" id="x-body"></div>
     </section>
     <section>
-      <div class="ph"><span>tarefas</span><span class="ph-r" id="t-ctx">todas</span></div>
-      <ul class="list">
-        <li><span>abertas</span><b id="t-open">0</b></li>
-        <li><span>pra hoje</span><b id="t-due">0</b></li>
-        <li><span>atrasadas</span><b id="t-late">0</b></li>
-        <li><span>feitas hoje</span><b id="t-doneday">0</b></li>
-      </ul>
+      <div class="lbl"><span>ambiente</span></div>
+      <ul class="list" id="x-env"></ul>
     </section>
     <section>
-      <div class="ph"><span>semana</span><span class="ph-r" id="t-week-sum">0</span></div>
-      <div class="week" id="t-week"></div>
-    </section>
-    <section>
-      <div class="ph"><span id="t-year-title">ano</span><span class="ph-r" id="t-year-pct"></span></div>
-      <div class="meter"><i id="t-year-bar"></i></div>
-      <div class="sub" id="t-year"></div>
-    </section>
-    <section>
-      <div class="ph"><span>memória</span></div>
-      <ul class="list">
-        <li><span>entradas</span><b id="t-total">0</b></li>
-        <li><span>desde</span><b id="t-since">NA</b></li>
-        <li><span>tamanho</span><b id="t-size">NA</b></li>
-        <li><span>sync</span><b id="t-dest">NA</b></li>
-      </ul>
-    </section>
-    <section>
-      <div class="ph"><span>tags</span></div>
-      <ul class="list" id="t-tags"></ul>
-    </section>
-    <section>
-      <div class="ph"><span>módulos</span></div>
-      <ul class="list mods" id="t-mods"></ul>
+      <div class="lbl"><span>módulos</span></div>
+      <ul class="list mods" id="x-mods"></ul>
     </section>
   </aside>
 

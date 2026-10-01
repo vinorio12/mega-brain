@@ -8,6 +8,7 @@ import { createLocalStore } from '../js/store.js';
 import { createCloudStore } from '../js/cloud.js';
 import { createTerminal } from '../js/terminal.js';
 import { parseDue, fmtDue } from '../js/dates.js';
+import { deriveState, describeState, readIntent } from '../js/state.js';
 import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName } from '../js/tasks.js';
 
 /* ---------------- mini framework ---------------- */
@@ -273,6 +274,48 @@ describe('tarefas · comandos', () => {
     await run('/ir ~');
     eq(S.ctx, null);
   });
+});
+
+describe('estado do núcleo (deriveState)', () => {
+  const base = { booting: false, now: 10_000, online: true };
+  test('parado → READY', () => eq(deriveState(base), 'ready'));
+  test('boot → INITIALIZING (vence tudo)', () => eq(deriveState({ ...base, booting: true, tasks: [{ kind: 'exec' }] }), 'initializing'));
+  test('gravando → EXECUTING', () => eq(deriveState({ ...base, tasks: [{ kind: 'exec' }, { kind: 'proc' }] }), 'executing'));
+  test('rede/leitura → PROCESSING', () => eq(deriveState({ ...base, tasks: [{ kind: 'proc' }] }), 'processing'));
+  test('tecla recente → LISTENING', () => eq(deriveState({ ...base, lastKey: 9_000 }), 'listening'));
+  test('tecla antiga não conta', () => eq(deriveState({ ...base, lastKey: 1_000 }), 'ready'));
+  test('erro recente → FAULT', () => eq(deriveState({ ...base, faultUntil: 11_000, tasks: [{ kind: 'proc' }] }), 'fault'));
+  test('bloqueado → LOCKED, mas digitar vira LISTENING', () => {
+    eq(deriveState({ ...base, locked: true }), 'locked');
+    eq(deriveState({ ...base, locked: true, lastKey: 9_500 }), 'listening');
+  });
+  test('falhas → DEGRADED · sem rede → OFFLINE', () => {
+    eq(deriveState({ ...base, degraded: true }), 'degraded');
+    eq(deriveState({ ...base, online: false }), 'offline');
+  });
+  test('descrição traz o detalhe', () => {
+    eq(describeState('executing', { tasks: [{ label: 'captura' }] }).desc, 'executando · captura');
+    eq(describeState('listening', { mode: 'password' }).desc, 'recebendo senha');
+    eq(describeState('ready').label, 'READY');
+  });
+});
+
+describe('leitura da intenção (readIntent)', () => {
+  const catalog = [
+    { name: 'feito', alias: ['ok'], args: '<t1>', desc: 'conclui' },
+    { name: 'feitas', alias: [], args: '', desc: 'histórico' },
+    { name: 'tarefas', alias: ['ts'], args: '', desc: 'lista' },
+  ];
+  const r = (t, o = {}) => readIntent(t, { catalog, ...o });
+  test('vazio → idle', () => eq(r('   ').type, 'idle'));
+  test('login vence o texto', () => eq(r('qualquer', { mode: 'email' }), { type: 'login', field: 'email' }));
+  test('"/fe" lista comandos que começam assim', () => eq(r('/fe').matches.map(c => c.name), ['feito', 'feitas']));
+  test('atalho também casa', () => eq(r('/o').matches.map(c => c.name), ['feito']));
+  test('comando completo com argumento', () => { const i = r('/feito t2'); eq([i.type, i.cmd.name, i.arg], ['command', 'feito', 't2']); });
+  test('comando desconhecido sugere o mais perto', () => { const i = r('/tarefsa'); eq([i.type, i.near[0]?.name], ['unknown', 'tarefas']); });
+  test('"- " → tarefa com tags e prazo', () => { const i = r('- ler #tcc >hoje'); eq([i.type, i.text, i.tags], ['task', 'ler #tcc', ['tcc']]); ok(i.prazo); });
+  test('"- " com prazo errado → task-error', () => eq(r('- ler >blabla').type, 'task-error'));
+  test('texto livre → nota, com a tag da aba', () => eq(r('ideia solta', { ctx: 'tcc' }), { type: 'note', text: 'ideia solta #tcc', tags: ['tcc'] }));
 });
 
 describe('/apagar · escolha do que apagar (pickTargets)', () => {
@@ -590,5 +633,5 @@ for (const t of tests) {
 const sum = document.getElementById('sum');
 sum.className = fail ? 'bad' : 'ok';
 sum.textContent = fail ? `${fail} falharam · ${pass} passaram` : `todos os ${pass} testes passaram`;
-document.title = (fail ? `✕ ${fail} · ` : `✓ ${pass} · `) + 'Mega Brain testes';
+document.title = (fail ? `✕ ${fail} · ` : `✓ ${pass} · `) + 'MB Core testes';
 window.__results = { pass, fail };

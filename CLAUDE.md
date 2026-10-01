@@ -8,14 +8,17 @@ Terminal pessoal estilo "segundo cérebro" do Vini. Centraliza tarefas, projetos
 - Mudanças pequenas e testáveis. Me diga como testar o que foi feito.
 - Nunca apague dados salvos do usuário sem pedir.
 
-## Visual: "Cybernetic Intelligence Terminal"
-Terminal cru, underground. Fundo quase preto, uma fonte monoespaçada (JetBrains Mono), sensação de acesso direto ao núcleo.
-- Regra de ouro: 85–90% da tela em silêncio. Destaque por contraste, não por excesso de efeito (efeitos sutis são bem-vindos).
-- 6 cores (tokens em `css/style.css`): texto `--tx`, metadados marrom-acinzentado `--meta`, atividade verde `--act`, HUD/inteligência azul-bebê `--hud`, aviso amarelo `--warn`, erro vermelho `--err`.
-- Raio 0–4px, bordas 1px cinza-azulado de baixa opacidade, sem sombras de card. Brilho só em elementos ativos.
-- Estados nunca só por cor: sempre com texto (OK/WRN/ERR, READY/BUSY...) ou forma.
-- Só dados reais. Sem dado → "NA", mas o campo não some.
-- Layout: cabeçalho de sistema · núcleo (esq.) · terminal (centro) · telemetria (dir.) · rodapé de infraestrutura. No celular: cabeçalho, faixa do núcleo, terminal, rodapé.
+## Visual: MB Core · AI operating environment (v0.6)
+Nome do app: **MB Core** (repositório continua `mega-brain`). Matrix na austeridade, Jarvis na inteligência, Unix na interação.
+Não é um dashboard com terminal no meio: é uma inteligência com ambiente operacional próprio.
+- Regra de ouro: 85–90% da tela em silêncio. Sem glitch, scanlines, partículas ou enfeite. Tudo funcional e deliberado.
+- Cores (tokens em `css/style.css`): ciano `--int` = inteligência/processamento · verde `--act` = atividade/confirmação · cinza `--meta` = metadados · âmbar `--warn` = atenção · vermelho `--err` = erro · texto `--tx`.
+- Três camadas: **terminal** (painel elevado, logs brutos) · **inteligência** (o núcleo, único elemento com brilho) · **periferia** (rails e barras, baixo contraste).
+- Layout: cabeçalho · esquerda = estado cognitivo (estado, atenção, processos, fluxo, atividade) · centro = núcleo + 5 satélites em cima, terminal embaixo · direita = contexto (o que o Enter vai fazer, ou tarefas relevantes), ambiente, módulos · rodapé de infraestrutura. Celular: cabeçalho, faixa do núcleo, terminal, rodapé.
+- **Núcleo** (`js/core.js`, canvas): nucleus · raios · reator · rede neural · órbitas · anel HUD (progresso do dia) · conectores pros satélites CONTEXT, MEMORY, NETWORK, INPUT, PROCESS. Reage a dados reais: conector acende quando o subsistema trabalha; cada tecla manda uma faísca do INPUT.
+- **Estados** (`js/state.js`, `deriveState`): INITIALIZING · LOCKED · READY · LISTENING (tecla nos últimos 2,5s) · PROCESSING (tarefa `proc`: rede, leitura) · EXECUTING (tarefa `exec`: grava) · DEGRADED · OFFLINE · FAULT (2,2s após erro). Ação rápida fica visível no mínimo 550ms. Comando novo que grava: `exec: true` no `defs`.
+- **Boot** (`js/boot.js`): o MESMO núcleo nasce em tela cheia, satélites aparecem, "CORE ONLINE" → "INTELLIGENCE READY"/"MEMORY LOCKED", o núcleo voa pro lugar e a interface se monta; terminal por último com cursor de bloco piscando. Primeira vez ~5s, depois ~1,3s; qualquer tecla pula; `/boot` repete; `/boot completo` deixa sempre o longo.
+- Estados nunca só por cor: sempre com texto ou forma. Só dados reais; sem dado → "NA", mas o campo não some.
 - O terminal não executa comandos do sistema operacional: é uma linguagem própria (`js/commands.js`).
 - Protótipo original guardado em `prototipo/mega-brain-fase0.html`.
 
@@ -48,10 +51,10 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 ## Estrutura
 - `index.html` estrutura da tela · `css/style.css` visual
 - `js/app.js` boot e ligação das peças · `js/terminal.js` saída, log, tarefas, teclado
-- `js/commands.js` comandos · `js/ui.js` painéis · `js/core.js` visualização do núcleo
+- `js/commands.js` comandos · `js/ui.js` periferia + liga estado, núcleo e satélites · `js/core.js` núcleo (canvas) · `js/state.js` estados e leitura da intenção
 - `js/store.js` memória local · `js/cloud.js` login + memória na nuvem (mesma interface, com cache e fila offline)
 - `js/config.js` URL e chave publishable do Supabase (vazia = modo local)
-- `js/boot.js` tela de boot · `js/weather.js` clima (Open-Meteo, padrão Jaraguá do Sul)
+- `js/boot.js` sequência de boot (usa o mesmo núcleo) · `js/weather.js` clima (Open-Meteo, padrão Jaraguá do Sul)
 - `js/dates.js` datas faladas → AAAA-MM-DD (`parseDue`, `fmtDue`), pronto pra prazos da Fase 1
 - `tests/` testes no navegador · `docs/` passo a passo e planos
 - `sw.js` + `manifest.webmanifest` + `icons/` PWA (ao mudar arquivos do app, aumentar `CACHE` no sw.js)
@@ -79,7 +82,8 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - [x] `js/tasks.js` (funções puras) · tarefa = entrada `kind: 'tarefa'` com `data: { prazo, feito }`
   - [x] comandos: /t, "- ", /tarefas [proj], /feito, /reabrir, /adiar, /feitas [proj] [dias], /projetos, /ir (alt+1..4), /apagar t1, /desfazer de qualquer mudança
   - [x] HUD: telemetria "tarefas" (da aba), "pendentes" real no núcleo, módulo tarefas online · 104 testes
-  - [ ] Vini rodar `supabase/002_data.sql` → publicar (git push) → Vini testar no celular
+  - [x] 002_data.sql rodado · publicado
+- [ ] 0.6. Redesign MB Core: núcleo vivo com estados reais, satélites, rails contextuais, boot cinematográfico (feito, aguardando aprovação do Vini antes de publicar)
 - [ ] 2. IA intérprete: texto livre vira tarefa, gasto, treino etc.
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)

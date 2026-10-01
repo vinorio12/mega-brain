@@ -20,6 +20,10 @@ function authError(e) {
   const msg = String(e?.message || e).toLowerCase();
   if (msg.includes('signups not allowed') || msg.includes('user not found'))
     return new CmdError('E_AUTH_USER', 'auth', 'este e-mail não tem acesso', 'o Mega Brain só aceita o usuário criado no painel do Supabase');
+  if (msg.includes('invalid login credentials'))
+    return new CmdError('E_AUTH_PASS', 'auth', 'e-mail ou senha incorretos', 'digite a senha de novo · <span class="c-hud">/codigo</span> entra por código no e-mail');
+  if (msg.includes('email not confirmed'))
+    return new CmdError('E_AUTH_CONFIRM', 'auth', 'usuário ainda não confirmado', 'no Supabase: Authentication → Users → confirme o usuário');
   if (msg.includes('error sending'))
     return new CmdError('E_AUTH_SMTP', 'auth', 'o servidor de e-mail (SMTP) recusou o envio',
       'confira host, porta, usuário, senha e remetente em Authentication → Emails → SMTP · detalhe em Logs → Auth');
@@ -56,6 +60,11 @@ export async function createCloud(url, key) {
         options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname },
       });
       if (error) throw authError(error);
+    },
+    async signInPassword(email, password) {
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw authError(error);
+      return data.session;
     },
     async verify(email, token) {
       const { data, error } = await sb.auth.verifyOtp({ email, token, type: 'email' });

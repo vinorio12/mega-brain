@@ -60,7 +60,7 @@ ctx.term = createTerminal({
     tags: () => [...new Set(S.entries.flatMap(e => e.tags || []))].sort(),
   },
   // e-mail e código não vão pro histórico; o código aparece mascarado
-  privacy: () => (S.mode === 'code' ? 'mask' : S.mode === 'email' ? 'nohist' : null),
+  privacy: () => (S.mode === 'code' || S.mode === 'password' ? 'mask' : S.mode === 'email' ? 'nohist' : null),
   onSubmit: text => run(text),
   onChange: kind => {
     if (!ctx.ui) return;
@@ -70,7 +70,7 @@ ctx.term = createTerminal({
 });
 ctx.commands = createCommands(ctx);
 ctx.ui = createUI(ctx);
-ctx.actions = { login, logout, sync, migrate, install };
+ctx.actions = { login, logout, sync, migrate, install, sendCode };
 
 const { term, ui } = ctx;
 
@@ -79,6 +79,7 @@ const { term, ui } = ctx;
 async function run(text) {
   if (!text.startsWith('/')) {
     if (S.mode === 'email') return submitEmail(text);
+    if (S.mode === 'password') return submitPassword(text);
     if (S.mode === 'code') return submitCode(text);
     if (!ctx.store) return lockedError();
     return capture(text);
@@ -214,9 +215,11 @@ async function migrate(t) {
 
 function setMode(mode) {
   S.mode = mode;
-  input.placeholder = { email: 'seu e-mail', code: 'código do e-mail' }[mode] || PLACEHOLDER;
+  input.value = '';
+  input.placeholder = { email: 'seu e-mail', password: 'sua senha · /codigo entra por e-mail', code: 'código do e-mail' }[mode] || PLACEHOLDER;
+  input.type = mode === 'password' ? 'password' : 'text';
   input.inputMode = mode === 'code' ? 'numeric' : mode === 'email' ? 'email' : 'text';
-  input.autocomplete = mode === 'code' ? 'one-time-code' : mode === 'email' ? 'email' : 'off';
+  input.autocomplete = { code: 'one-time-code', email: 'username', password: 'current-password' }[mode] || 'off';
   ui.render();
 }
 
@@ -226,7 +229,7 @@ function login() {
   }
   if (S.user) return term.say(`você já está dentro como ${esc(S.user.email)}.`);
   setMode('email');
-  term.say('memória bloqueada. digite seu e-mail pra receber o acesso.');
+  term.say('memória bloqueada. digite seu e-mail pra entrar.');
   try {
     const saved = localStorage.getItem(EMAIL_KEY);
     if (saved) input.value = saved;
@@ -239,10 +242,29 @@ async function submitEmail(text) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return term.error(new CmdError('E_EMAIL', 'auth', 'e-mail inválido', 'ex: voce@gmail.com'));
   }
+  S.email = email;
+  try { localStorage.setItem(EMAIL_KEY, email); } catch {}
+  setMode('password');
+  term.say('digite sua senha · <span class="c-hud">/codigo</span> manda um código pro e-mail em vez disso');
+}
+
+async function submitPassword(text) {
+  await term.task('entrar', async (signal, t) => {
+    const session = await ctx.cloud.signInPassword(S.email, text);
+    term.ok('auth', `acesso liberado <span class="c-meta">· ${t.id} · ${t.elapsed()}ms</span>`);
+    await openSession(session);
+    ui.pulse('act');
+    term.say('pronto. memória aberta · escreva qualquer coisa pra capturar.');
+  }, { announce: true });
+}
+
+// alternativa à senha: código de uso único enviado por e-mail (precisa do SMTP funcionando)
+async function sendCode() {
+  if (!ctx.cloud || S.user) return login();
+  if (!S.email) { setMode('email'); return term.say('digite seu e-mail primeiro.'); }
+  const email = S.email;
   await term.task('enviar código', async (signal, t) => {
     await ctx.cloud.sendCode(email);
-    S.email = email;
-    try { localStorage.setItem(EMAIL_KEY, email); } catch {}
     setMode('code');
     term.ok('auth', `e-mail de acesso enviado pra ${esc(email)} <span class="c-meta">· ${t.id} · ${t.elapsed()}ms</span>`);
     term.say('digite aqui o código que chegou no e-mail. (o link do e-mail também funciona) · <span class="c-hud">/entrar</span> recomeça');

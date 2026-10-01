@@ -197,7 +197,7 @@ export function createUI(ctx) {
     ];
     $('foot').innerHTML = f.map(([k, v, tone, id]) =>
       `<span class="ff${tone ? ' is-' + tone : ''}"><i>${k}</i><b${id ? ` id="${id}"` : ''}>${esc(v)}</b></span>`).join('');
-    $('work-meta').textContent = { email: 'login · e-mail', code: 'login · código' }[S.mode] || 'captura';
+    $('work-meta').textContent = { email: 'login · e-mail', password: 'login · senha', code: 'login · código' }[S.mode] || 'captura';
   }
 
   const fmtMs = ms => ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(1) + 's';

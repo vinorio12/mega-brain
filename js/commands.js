@@ -197,6 +197,10 @@ export function createCommands(ctx) {
       run() { ctx.actions.login(); },
     },
     {
+      name: 'codigo', alias: ['código', 'code'], desc: 'no login: manda um código pro e-mail em vez de usar senha', async: true,
+      async run() { await ctx.actions.sendCode(); },
+    },
+    {
       name: 'sair', alias: ['logout'], desc: 'sai da conta e apaga a cópia deste aparelho', async: true,
       async run(arg, signal, t) { await ctx.actions.logout(t); },
     },

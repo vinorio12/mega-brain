@@ -5,10 +5,11 @@ import { esc, pad, dayKey, hhmm, ddmm, dur, kb, DOW, VERSION } from './util.js';
 import { createCore } from './core.js';
 import { describe } from './weather.js';
 import { PHASES } from './commands.js';
+import { taskStats } from './tasks.js';
 
 const MODULES = [
   { name: 'inbox', on: true, phase: '0' },
-  { name: 'tarefas', phase: '1' },
+  { name: 'tarefas', on: true, phase: '1' },
   { name: 'ia intérprete', phase: '2' },
   { name: 'finanças', phase: '3' },
   { name: 'corpo e hábitos', phase: '4' },
@@ -139,7 +140,7 @@ export function createUI(ctx) {
       ['memória', memText, memTone === 'na' ? '' : memTone],
       ['entradas', E.length, ''],
       ['processos', ctx.term.tasks.size, ctx.term.tasks.size ? 'hud' : ''],
-      ['pendentes', 'NA', 'na'],
+      ['pendentes', (s => s.abertas + (s.atrasadas ? ` · ${s.atrasadas}!` : ''))(taskStats(E)), (s => s.atrasadas ? 'warn' : s.abertas ? 'hud' : '')(taskStats(E))],
       ['uptime', dur(Date.now() - S.startedAt), '', 'k-up'],
     ];
     $('core-kv').innerHTML = kv.map(([k, v, tone, id]) =>
@@ -186,6 +187,16 @@ export function createUI(ctx) {
 
   function renderTele(now, tk, E, today, y) {
     $('t-date').textContent = `${DOW[now.getDay()]} ${ddmm(now)}`;
+
+    // tarefas da aba atual (ou todas, na inbox)
+    const ts = taskStats(S.ctx ? E.filter(e => (e.tags || []).includes(S.ctx)) : E, now);
+    $('t-ctx').textContent = S.ctx ? '#' + S.ctx : 'todas';
+    $('t-open').textContent = ts.abertas;
+    $('t-due').textContent = ts.hoje;
+    const late = $('t-late');
+    late.textContent = ts.atrasadas;
+    late.className = ts.atrasadas ? 'c-warn' : '';
+    $('t-doneday').textContent = ts.feitasHoje;
     const big = $('t-today');
     big.textContent = today;
     big.classList.toggle('is-zero', !today);
@@ -246,7 +257,7 @@ export function createUI(ctx) {
     ];
     $('foot').innerHTML = f.map(([k, v, tone, id]) =>
       `<span class="ff${tone ? ' is-' + tone : ''}"><i>${k}</i><b${id ? ` id="${id}"` : ''}>${esc(v)}</b></span>`).join('');
-    $('work-meta').textContent = { email: 'login · e-mail', password: 'login · senha', code: 'login · código' }[S.mode] || 'captura';
+    $('work-meta').textContent = { email: 'login · e-mail', password: 'login · senha', code: 'login · código' }[S.mode] || ('captura · ~' + (S.ctx ? '/' + S.ctx : ''));
   }
 
   const fmtMs = ms => ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(1) + 's';

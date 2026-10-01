@@ -63,7 +63,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 
 ## Roadmap
 - [x] 0. Esqueleto (protótipo no Cowork): terminal, HUD (hoje, semana, ano, memória, tags, módulos), inbox, comandos /ajuda /inbox /hoje /buscar /apagar /desfazer /status /roadmap /limpar
-- [ ] 0.5. Migrar o protótipo para app próprio (PWA + banco na nuvem + login)
+- [x] 0.5. Migrar o protótipo para app próprio (PWA + banco na nuvem + login) · publicado em https://vinorio12.github.io/mega-brain/
   - [x] separar em arquivos + visual novo + terminal (histórico, tab, ctrl+c, ctrl+k, tarefas com ID, erros com código) + /clima
   - [x] boot animado, clima padrão Jaraguá do Sul, HUD sem repetições
   - [x] código do Supabase: login (senha ou código), memória na nuvem com fila offline e tempo real, /entrar /sair /sync /migrar /codigo
@@ -71,11 +71,15 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - [x] /apagar em lote e por texto · /painel (ctrl+.) e /foco · tempo real autenticado + sync entre abas
   - [x] testes automáticos (tests/) · js/dates.js pronto pra Fase 1 · README e docs/
   - [x] erros inesperados viram `E_JS` no terminal · /importar (sem duplicar) · nuvem aceita colunas novas (`data`) · offline verificado com servidor desligado · prompt acima do teclado no celular
-  - [ ] confirmar com o Vini que o tempo real funciona logado (RT `on` no rodapé, duas janelas)
-  - [ ] confirmar no celular de verdade que o prompt fica visível com o teclado aberto
-  - [ ] publicar no GitHub Pages (docs/publicar.md) + atualizar Site URL no Supabase
+  - [x] tempo real confirmado (RT on) · prompt visível com teclado no celular confirmado
+  - [x] publicado no GitHub Pages + Site URL no Supabase · instalado no celular
   - [x] PWA (manifest, ícones, service worker, /instalar)
 - [ ] 1. Tarefas e projetos: tabs Hoje, TCC, WEG, Pessoal, prazos, concluir
+  - Decisões do Vini: qualquer #tag é projeto · criar com `/t` e com `- ` · abas como pastas (`/ir tcc`, prompt `~/tcc`) · concluída fica riscada até o fim do dia + histórico em `/feitas`
+  - [x] `js/tasks.js` (funções puras) · tarefa = entrada `kind: 'tarefa'` com `data: { prazo, feito }`
+  - [x] comandos: /t, "- ", /tarefas [proj], /feito, /reabrir, /adiar, /feitas [proj] [dias], /projetos, /ir (alt+1..4), /apagar t1, /desfazer de qualquer mudança
+  - [x] HUD: telemetria "tarefas" (da aba), "pendentes" real no núcleo, módulo tarefas online · 104 testes
+  - [ ] Vini rodar `supabase/002_data.sql` → publicar (git push) → Vini testar no celular
 - [ ] 2. IA intérprete: texto livre vira tarefa, gasto, treino etc.
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)

@@ -270,6 +270,16 @@ ul, dl, dd { margin: 0; padding: 0; list-style: none; }
 .tbl .k { color: var(--meta); }
 .tbl.cmd .k { color: var(--act); }
 .opts { color: var(--meta); }
+
+/* tarefas: t3  [ ]  texto                     sex 02.10 */
+.task { display: grid; grid-template-columns: 5ch 3ch minmax(0, 1fr) auto; gap: 0 1.4ch; }
+.task .n { color: var(--meta); text-align: right; }
+.task .bx { color: var(--meta); }
+.task .done { color: var(--meta); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--meta) 70%, transparent); }
+.task .done .c-act { color: var(--meta); }
+.task .due { white-space: nowrap; text-align: right; }
+.tgrp { margin-top: 8px; color: var(--hud); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
+.tgrp:first-of-type { margin-top: 2px; }
 .dim { color: var(--meta); }
 
 /* prompt fino, sempre embaixo */
@@ -480,6 +490,8 @@ ul, dl, dd { margin: 0; padding: 0; list-style: none; }
   .lg .src, .lg .t .s { display: none; }
   .ent { grid-template-columns: 4ch 11ch minmax(0, 1fr); gap: 0 1ch; }
   .tbl { grid-template-columns: 11ch minmax(0, 1fr); gap: 0 1.2ch; }
+  .task { grid-template-columns: 3.5ch 3ch minmax(0, 1fr) auto; gap: 0 1ch; }
+  .prompt.has-ctx .ps-path { display: inline; color: var(--act); } /* no celular, a aba aparece no prompt */
   .prompt { padding: 10px 12px; }
   .ps-who, .hint { display: none; }
   .ps-caret { margin-left: .5ch; }

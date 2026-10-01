@@ -40,7 +40,9 @@ const S = {
   email: null,
   user: null,
   entries: [],
-  undo: [],
+  undo: [],          // cada item: { label, items: [versões anteriores] }
+  ctx: null,         // aba atual (projeto), ex: 'tcc' · null = inbox (~)
+  taskList: null,    // ids na ordem dos números t1, t2... da última lista mostrada
   lastLatency: null,
   weather: null,
   startedAt: Date.now(),
@@ -70,7 +72,7 @@ ctx.term = createTerminal({
 });
 ctx.commands = createCommands(ctx);
 ctx.ui = createUI(ctx);
-ctx.actions = { login, logout, sync, migrate, install, sendCode };
+ctx.actions = { login, logout, sync, migrate, install, sendCode, setCtx };
 
 const { term, ui } = ctx;
 
@@ -82,6 +84,8 @@ async function run(text) {
     if (S.mode === 'password') return submitPassword(text);
     if (S.mode === 'code') return submitCode(text);
     if (!ctx.store) return lockedError();
+    // "- revisar cap 2 #tcc >sex" vira tarefa
+    if (/^-\s+\S/.test(text)) return term.task('tarefa', (signal, t) => ctx.commands.addTask(text.replace(/^-\s+/, ''), t));
     return capture(text);
   }
 
@@ -109,6 +113,8 @@ function lockedError() {
 async function capture(text) {
   await term.task('captura', async (signal, t) => {
     const now = new Date();
+    // dentro de uma aba, a nota ganha a #tag dela
+    if (S.ctx && !tagsOf(text).includes(S.ctx)) text += ' #' + S.ctx;
     const tags = tagsOf(text);
     const entry = await ctx.store.add({ text, tags, kind: 'nota', ts: now.getTime(), day: dayKey(now) });
     S.lastLatency = t.elapsed();
@@ -177,6 +183,8 @@ function closeSession(reason) {
 
 function dbError(e) {
   const msg = String(e?.message || e);
+  if (e?.code === '42703' || e?.code === 'PGRST204' || /column .*data/i.test(msg))
+    return new CmdError('E_DB_MIGRATION', 'sync', 'o banco ainda não tem a coluna das tarefas', 'rode <span class="c-hud">supabase/002_data.sql</span> no SQL Editor do Supabase');
   if (e?.code === '42P01' || e?.code === 'PGRST205' || /does not exist|schema cache/i.test(msg))
     return new CmdError('E_DB_TABLE', 'sync', 'a tabela entries não existe no banco', 'rode <span class="c-hud">supabase/001_entries.sql</span> no SQL Editor do Supabase');
   if (/fetch|network/i.test(msg))
@@ -350,6 +358,34 @@ async function refreshWeather() {
   });
 }
 
+/* ================= abas (projetos como pastas) ================= */
+
+const CTX_KEY = 'mb.ctx.v1';
+const TABS = [null, 'tcc', 'weg', 'pessoal']; // alt+1..4
+
+function setCtx(proj, { quiet = false } = {}) {
+  S.ctx = proj || null;
+  S.taskList = null; // a numeração t1, t2... passa a ser a da aba nova
+  try { proj ? localStorage.setItem(CTX_KEY, proj) : localStorage.removeItem(CTX_KEY); } catch {}
+  document.querySelector('.ps-path').textContent = ':~' + (S.ctx ? '/' + S.ctx : '');
+  document.querySelector('.prompt').classList.toggle('has-ctx', !!S.ctx);
+  ui.render();
+  if (!quiet) {
+    term.say(S.ctx
+      ? `aba <span class="c-act">~/${esc(S.ctx)}</span> · o que você escrever aqui ganha <span class="c-act">#${esc(S.ctx)}</span> · <span class="c-hud">/tarefas</span> lista as daqui · <span class="c-hud">/ir ~</span> volta`
+      : 'aba <span class="c-act">~</span> · inbox geral');
+    ui.pulse('hud');
+  }
+}
+
+addEventListener('keydown', e => {
+  // alt+1..4 troca de aba (sem ctrl, pra não confundir com AltGr)
+  if (e.altKey && !e.ctrlKey && !e.metaKey && /^[1-4]$/.test(e.key)) {
+    e.preventDefault();
+    setCtx(TABS[+e.key - 1]);
+  }
+});
+
 /* ================= erros inesperados ================= */
 
 // Qualquer bug vira uma linha E_JS no terminal (com arquivo e linha), em vez de falhar calado.
@@ -434,13 +470,17 @@ async function boot() {
   screen.step('rede', online ? 'online' : 'offline', online ? 'ok' : 'warn');
   term[online ? 'ok' : 'warn']('net', online ? 'rede online' : 'rede offline');
 
+  // volta na última aba usada neste aparelho
+  try { const saved = localStorage.getItem(CTX_KEY); if (saved) setCtx(saved, { quiet: true }); } catch {}
+
   S.booting = false;
   ui.render();
   await screen.done();
   ui.pulse('hud');
 
   if (needLogin) login();
-  else term.say('pronto. escreva qualquer coisa pra capturar · <span class="c-act">/ajuda</span> mostra os comandos.');
+  else term.say('pronto. escreva qualquer coisa pra capturar · <span class="c-act">- texto >sex</span> cria tarefa · <span class="c-act">/ajuda</span> mostra os comandos.' +
+    (S.ctx ? ` · você está na aba <span class="c-act">~/${esc(S.ctx)}</span>` : ''));
 
   registerSW();
   refreshWeather();

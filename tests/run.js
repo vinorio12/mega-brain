@@ -8,6 +8,7 @@ import { createLocalStore } from '../js/store.js';
 import { createCloudStore } from '../js/cloud.js';
 import { createTerminal } from '../js/terminal.js';
 import { parseDue, fmtDue } from '../js/dates.js';
+import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName } from '../js/tasks.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -122,13 +123,156 @@ describe('datas faladas (Fase 1: prazos)', () => {
   test('+n dias, semanas, meses', () => eq([p('+3'), p('+3d'), p('+2s'), p('+1m')], ['2026-10-03', '2026-10-03', '2026-10-14', '2026-10-30']));
   test('+1m no dia 31 cai no último dia do mês', () => eq(parseDue('+1m', new Date(2026, 0, 31)), '2026-02-28'));
   test('dd/mm e dd.mm', () => eq([p('15/10'), p('15.10'), p('5/1')], ['2026-10-15', '2026-10-15', '2027-01-05']));
-  test('dd/mm que já passou vai pro ano que vem', () => eq(p('10/09'), '2027-09-10'));
+  test('dd/mm usa o ano mais perto de hoje', () => eq([p('28/09'), p('10/09'), p('5/1'), p('20/03')], ['2026-09-28', '2026-09-10', '2027-01-05', '2027-03-20']));
+  test('dd/mm na virada do ano', () => eq([parseDue('28/12', new Date(2027, 0, 3)), parseDue('5/1', new Date(2026, 11, 28))], ['2026-12-28', '2027-01-05']));
   test('só o dia: este mês ou o próximo', () => eq([p('30'), p('15')], ['2026-09-30', '2026-10-15']));
   test('com ano', () => eq([p('15/10/27'), p('15/10/2027')], ['2027-10-15', '2027-10-15']));
   test('datas impossíveis → null', () => eq([p('31/02'), p('32'), p('0'), p('15/13'), p('xyz'), p('')], [null, null, null, null, null, null]));
   test('fmtDue mostra de forma curta', () => eq(
     ['2026-09-30', '2026-10-01', '2026-10-02', '2026-09-28', '2026-10-20', '2027-01-05'].map(k => fmtDue(k, now)),
     ['hoje', 'amanhã', 'sex 02.10', 'atrasada 2d', '20.10', '05.01.27']));
+});
+
+describe('tarefas · lógica (tasks.js)', () => {
+  const now = new Date(2026, 8, 30, 15, 0); // quarta 30/09
+  const T = (text, prazo = null, feito = null, i = 0) => ({ id: 'k' + i + text, text, tags: tagsOf(text), kind: 'tarefa', ts: 1000 + i, day: '2026-09-30', data: { prazo, feito } });
+  test('parseTaskInput: texto, tags e prazo', () => eq(parseTaskInput('revisar cap 2 #tcc >sex', null, now), { text: 'revisar cap 2 #tcc', tags: ['tcc'], prazo: '2026-10-02' }));
+  test('parseTaskInput: prazo no meio do texto', () => eq(parseTaskInput('ligar >amanhã pro joão', null, now).text, 'ligar pro joão'));
+  test('parseTaskInput: aba adiciona a tag', () => eq(parseTaskInput('ler artigo', 'tcc', now).tags, ['tcc']));
+  test('parseTaskInput: aba não duplica a tag', () => eq(parseTaskInput('ler #tcc', 'tcc', now).text, 'ler #tcc'));
+  test('parseTaskInput: prazo inválido', () => eq(parseTaskInput('x >blabla', null, now), { error: 'prazo', token: '>blabla' }));
+  test('parseTaskInput: só prazo = vazio', () => eq(parseTaskInput('>sex', null, now).error, 'vazio'));
+  test('parseTaskInput: ">" sozinho fica no texto', () => eq(parseTaskInput('a > b', null, now).text, 'a > b'));
+  test('groupTasks: grupos na ordem certa', () => {
+    const E = [T('sem', null, null, 1), T('prox', '2026-10-05', null, 2), T('hoje', '2026-09-30', null, 3), T('velha', '2026-09-28', null, 4), T('feita', null, now.getTime(), 5), T('feita ontem', null, now.getTime() - 864e5, 6), entry('nota comum', 7)];
+    const r = groupTasks(E, { now });
+    eq(r.groups.map(g => g.key), ['atrasadas', 'hoje', 'proximas', 'sem', 'feitas']);
+    eq(r.list.length, 5, 'feita ontem e nota não entram');
+  });
+  test('groupTasks: filtra por projeto', () => {
+    const E = [T('a #tcc', null, null, 1), T('b #weg', null, null, 2)];
+    eq(groupTasks(E, { proj: 'tcc', now }).list.length, 1);
+  });
+  test('groupTasks: próximas ordenadas por prazo', () => {
+    const E = [T('depois', '2026-10-10', null, 1), T('antes', '2026-10-02', null, 2)];
+    eq(groupTasks(E, { now }).groups[0].items.map(e => e.text), ['antes', 'depois']);
+  });
+  test('doneHistory: últimos N dias, mais recente primeiro', () => {
+    const E = [T('hoje', null, now.getTime(), 1), T('ontem', null, now.getTime() - 864e5, 2), T('mês passado', null, now.getTime() - 40 * 864e5, 3), T('aberta', null, null, 4)];
+    const h = doneHistory(E, { days: 7, now });
+    eq(h.total, 2);
+    eq(h.groups.map(g => g.key), ['2026-09-30', '2026-09-29']);
+    eq(doneHistory(E, { days: 60, now }).total, 3);
+  });
+  test('projectsSummary conta abertas, atrasadas e notas', () => {
+    const E = [T('a #tcc', '2026-09-01', null, 1), T('b #tcc', null, null, 2), T('c #tcc', null, 5, 3), entry('nota #tcc', 4), entry('x #weg', 5)];
+    eq(projectsSummary(E, now)[0], { proj: 'tcc', abertas: 2, atrasadas: 1, notas: 1 });
+  });
+  test('taskStats', () => {
+    const E = [T('a', '2026-09-30', null, 1), T('b', '2026-09-01', null, 2), T('c', null, null, 3), T('d', null, now.getTime(), 4)];
+    eq(taskStats(E, now), { abertas: 3, hoje: 1, atrasadas: 1, feitasHoje: 1 });
+  });
+  test('taskNumbers: t1 t3, 1-4, t2-t4; texto → null', () => eq([taskNumbers('t1 t3'), taskNumbers('1-4'), taskNumbers('t2-t4'), taskNumbers('ler')], ['1 3', '1-4', '2-4', null]));
+  test('projName limpa e valida', () => eq([projName('#TCC'), projName('fase-1'), projName('a b'), projName('')], ['tcc', 'fase-1', null, null]));
+});
+
+describe('tarefas · comandos', () => {
+  const T = (text, prazo = null, i = 0) => ({ id: 'tk' + i, text, tags: tagsOf(text), kind: 'tarefa', ts: 1000 + i, day: '2026-09-30', data: { prazo, feito: null } });
+  function setupTasks(list) {
+    const s = setup([]);
+    s.S.entries = list;
+    s.ctx.store = memStore(list);
+    s.ctx.store.subscribe(l => { s.S.entries = l; });
+    s.ctx.actions = { setCtx: p => { s.S.ctx = p; s.S.taskList = null; } };
+    return s;
+  }
+  const texts = S => S.entries.map(e => e.text);
+  test('/t cria tarefa com prazo e tag da aba', async () => {
+    const { S, run } = setupTasks([]);
+    S.ctx = 'tcc';
+    await run('/t ler artigo >amanhã');
+    const e = S.entries[0];
+    eq([e.kind, e.text, e.tags], ['tarefa', 'ler artigo #tcc', ['tcc']]);
+    ok(e.data.prazo && e.data.feito === null);
+  });
+  test('/t com prazo errado dá E_PRAZO', async () => {
+    const { run } = setupTasks([]);
+    await throws(() => run('/t x >nunca'), 'E_PRAZO');
+  });
+  test('/tarefas numera e /feito t2 conclui a certa', async () => {
+    const { S, run } = setupTasks([T('primeira', null, 1), T('segunda', null, 2)]);
+    await run('/tarefas');
+    await run('/feito t2');
+    eq(S.entries.find(e => e.text === 'segunda').data.feito > 0, true);
+    eq(S.entries.find(e => e.text === 'primeira').data.feito, null);
+  });
+  test('/feito pelo texto', async () => {
+    const { S, run } = setupTasks([T('ligar pro joão', null, 1), T('outra', null, 2)]);
+    await run('/feito joão');
+    ok(S.entries.find(e => e.text === 'ligar pro joão').data.feito);
+  });
+  test('/feito em lote e /desfazer volta todas', async () => {
+    const { S, run } = setupTasks([T('a', null, 1), T('b', null, 2), T('c', null, 3)]);
+    await run('/feito t1-t3');
+    eq(S.entries.filter(e => e.data.feito).length, 3);
+    await run('/desfazer');
+    eq(S.entries.filter(e => e.data.feito).length, 0);
+  });
+  test('números continuam valendo depois de concluir (riscada fica na lista)', async () => {
+    const { S, run } = setupTasks([T('a', null, 1), T('b', null, 2)]);
+    await run('/tarefas');
+    await run('/feito t1');
+    await run('/feito t2');
+    eq(S.entries.filter(e => e.data.feito).length, 2);
+  });
+  test('/reabrir', async () => {
+    const { S, run } = setupTasks([T('a', null, 1)]);
+    await run('/feito t1');
+    await run('/reabrir t1');
+    eq(S.entries[0].data.feito, null);
+  });
+  test('/adiar muda e remove prazo', async () => {
+    const { S, run } = setupTasks([T('a', null, 1)]);
+    await run('/adiar t1 15/10');
+    ok(S.entries[0].data.prazo?.endsWith('-10-15'));
+    await run('/adiar t1 sem');
+    eq(S.entries[0].data.prazo, null);
+  });
+  test('/apagar t1 apaga a tarefa da lista, /desfazer volta', async () => {
+    const { S, run } = setupTasks([T('a', null, 1), T('b', null, 2)]);
+    await run('/tarefas');
+    await run('/apagar t2');
+    eq(texts(S), ['a']);
+    await run('/desfazer');
+    eq(texts(S).sort(), ['a', 'b']);
+  });
+  test('número de tarefa que sumiu não pega outra', async () => {
+    const { S, run } = setupTasks([T('a', null, 1), T('b', null, 2), T('c', null, 3)]);
+    await run('/tarefas');
+    await run('/apagar t1');
+    await throws(() => run('/feito t1'), 'E_ARG'); // t1 sumiu: não pode concluir a "b" por engano
+    await run('/feito t3');
+    ok(S.entries.find(e => e.text === 'c').data.feito);
+  });
+  test('/tarefas tcc mostra só o projeto', async () => {
+    const { term, run } = setupTasks([T('a #tcc', null, 1), T('b #weg', null, 2)]);
+    await run('/tarefas tcc');
+    eq(term.out.filter(x => x[2] === 'task').length, 1);
+  });
+  test('/feitas lista o histórico', async () => {
+    const { term, run } = setupTasks([T('a', null, 1)]);
+    await run('/feito t1');
+    term.out.length = 0;
+    await run('/feitas');
+    eq(term.out.filter(x => x[2] === 'task').length, 1);
+  });
+  test('/ir tcc e /ir ~', async () => {
+    const { S, run } = setupTasks([]);
+    await run('/ir tcc');
+    eq(S.ctx, 'tcc');
+    await run('/ir ~');
+    eq(S.ctx, null);
+  });
 });
 
 describe('/apagar · escolha do que apagar (pickTargets)', () => {

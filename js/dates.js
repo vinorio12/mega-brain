@@ -3,7 +3,7 @@
 //
 //   hoje · amanhã · depois (de amanhã)
 //   seg ter qua qui sex sáb dom      → o próximo (se for hoje, é hoje)
-//   15  · 15/10 · 15/10/26 · 15/10/2026 · 15.10
+//   15 (próximo dia 15) · 15/10 (ano mais perto de hoje) · 15/10/26 · 15/10/2026 · 15.10
 //   +3 (dias) · +3d · +2s (semanas) · +1m (meses)
 
 import { dayKey, DOW, pad } from './util.js';
@@ -38,11 +38,14 @@ export function parseDue(input, now = new Date()) {
     let mo = m[2] ? +m[2] - 1 : today.getMonth();
     let y = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : today.getFullYear();
     if (d < 1 || d > 31 || mo < 0 || mo > 11) return null;
-    // sem ano e já passou → é o próximo (mês que vem, ou ano que vem)
     if (!m[3]) {
-      let cand = new Date(y, mo, d);
-      if (cand < today) {
-        if (m[2]) y++; else mo++;
+      if (m[2]) {
+        // dd/mm sem ano → o ano que deixa a data mais perto de hoje
+        // (28/09 escrito em 01/10 é "3 dias atrás", não "ano que vem"; 05/01 em setembro é janeiro que vem)
+        const dist = yy => Math.abs(new Date(yy, mo, d) - today);
+        y = [y - 1, y, y + 1].reduce((best, yy) => (dist(yy) < dist(best) ? yy : best), y);
+      } else if (new Date(y, mo, d) < today) {
+        mo++; // só o dia e já passou → mês que vem
       }
     }
     const date = new Date(y, mo, d);

@@ -1,7 +1,9 @@
-# Fase 1 · Tarefas e projetos (rascunho)
+# Fase 1 · Tarefas e projetos
 
 Roadmap: *tabs Hoje, TCC, WEG, Pessoal, prazos, concluir.*
-Este documento é uma **proposta** pra sessão da Fase 1 começar rápido. Nada aqui foi aplicado no banco.
+
+> **Status (01/10/2026): implementada.** As respostas do Vini: 1 qualquer tag · 2 os dois · 3 sim · 4 riscada + histórico (`/feitas`).
+> A migração está em `supabase/002_data.sql`. O texto abaixo é a proposta original, mantida como registro.
 
 ## Perguntas pro Vini (responder antes de começar)
 

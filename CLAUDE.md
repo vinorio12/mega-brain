@@ -22,7 +22,7 @@ Terminal cru, underground. Fundo quase preto, uma fonte monoespaçada (JetBrains
 ## Alvo técnico (confirmado)
 - HTML/CSS/JS puros com módulos ES, sem build e sem Node.
 - PWA instalável no celular e no PC, com link próprio.
-- Supabase: banco Postgres + login por e-mail, cadastro desligado, regras RLS (cada linha só do dono).
+- Supabase: banco Postgres + login por **e-mail + senha** (decisão do Vini; código por e-mail fica como opção `/codigo`, mas o SMTP via Resend ainda dá erro 500), cadastro desligado, regras RLS (cada linha só do dono). Usuário: hornburg.vinicius@gmail.com.
 - IA intérprete a partir da Fase 2 (chave guardada no Supabase, nunca no front).
 
 ## Como rodar localmente
@@ -47,8 +47,9 @@ Terminal cru, underground. Fundo quase preto, uma fonte monoespaçada (JetBrains
 - [ ] 0.5. Migrar o protótipo para app próprio (PWA + banco na nuvem + login)
   - [x] separar em arquivos + visual novo + terminal (histórico, tab, ctrl+c, ctrl+k, tarefas com ID, erros com código) + /clima
   - [x] boot animado, clima padrão Jaraguá do Sul, HUD sem repetições
-  - [x] código do Supabase: login por código no e-mail, memória na nuvem com fila offline e tempo real, /entrar /sair /sync /migrar
-  - [ ] Supabase configurado (rodar supabase/001_entries.sql, criar usuário, desligar cadastro, chave em js/config.js)
+  - [x] código do Supabase: login (senha ou código), memória na nuvem com fila offline e tempo real, /entrar /sair /sync /migrar /codigo
+  - [x] Supabase configurado (tabela + RLS, usuário criado, cadastro desligado, chave em js/config.js) · login testado e funcionando
+  - [ ] Supabase: atualizar Site URL / Redirect URLs pro link do GitHub Pages ao publicar
   - [x] PWA (manifest, ícones, service worker, /instalar)
   - [ ] publicar no GitHub Pages (repositório público)
 - [ ] 1. Tarefas e projetos: tabs Hoje, TCC, WEG, Pessoal, prazos, concluir

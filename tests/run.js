@@ -7,7 +7,7 @@ import { pickTargets, prepareImport, createCommands } from '../js/commands.js';
 import { createLocalStore } from '../js/store.js';
 import { createCloudStore } from '../js/cloud.js';
 import { createTerminal } from '../js/terminal.js';
-import { parseDue, fmtDue } from '../js/dates.js';
+import { parseDue, fmtDue, findDate } from '../js/dates.js';
 import { deriveState, describeState, readIntent } from '../js/state.js';
 import { viewName, viewGroups, calendarModel, parseMonth } from '../js/views.js';
 import { parseLink, parseSnippet, shortUrl, searchAll } from '../js/acervo.js';
@@ -135,6 +135,49 @@ describe('datas faladas (Fase 1: prazos)', () => {
   test('fmtDue mostra de forma curta', () => eq(
     ['2026-09-30', '2026-10-01', '2026-10-02', '2026-09-28', '2026-10-20', '2027-01-05'].map(k => fmtDue(k, now)),
     ['hoje', 'amanhã', 'sex 02.10', 'atrasada 2d', '20.10', '05.01.27']));
+});
+
+describe('datas em frases (findDate · Fase 2)', () => {
+  const now = new Date(2026, 9, 1, 15, 0); // quinta, 01/10/2026
+  const d = s => findDate(s, now)?.data ?? null;
+  const all = list => list.map(d);
+  test('amanhã tira a data do texto', () => eq(findDate('ligar pro dentista amanhã', now),
+    { data: '2026-10-02', trecho: 'amanhã', resto: 'ligar pro dentista', inicio: 19, fim: 25 }));
+  test('hoje, amanhã, depois de amanhã, ontem, anteontem', () => eq(
+    all(['hoje', 'amanhã', 'amanha', 'AMANHÃ', 'depois de amanhã', 'ontem', 'anteontem']),
+    ['2026-10-01', '2026-10-02', '2026-10-02', '2026-10-02', '2026-10-03', '2026-09-30', '2026-09-29']));
+  test('preposição sai junto: "até sexta"', () => {
+    const r = findDate('entregar relatório até sexta', now);
+    eq([r.data, r.trecho, r.resto], ['2026-10-02', 'até sexta', 'entregar relatório']);
+  });
+  test('dia da semana = o próximo (hoje, se for hoje)', () => eq(
+    all(['reunião na sexta-feira', 'reunião sexta feira', 'prova na terça', 'Terça', 'churrasco sábado com a galera', 'domingo', 'revisar na quinta']),
+    ['2026-10-02', '2026-10-02', '2026-10-06', '2026-10-06', '2026-10-03', '2026-10-04', '2026-10-01']));
+  test('próxima / que vem: nunca hoje', () => eq(
+    all(['próxima quinta', 'quinta que vem', 'próxima sexta', 'sexta que vem', 'próximo sábado']),
+    ['2026-10-08', '2026-10-08', '2026-10-02', '2026-10-02', '2026-10-03']));
+  test('semana que vem', () => eq(
+    all(['semana que vem', 'na próxima semana', 'sexta da semana que vem', 'semana que vem na terça', 'segunda da próxima semana']),
+    ['2026-10-05', '2026-10-05', '2026-10-09', '2026-10-06', '2026-10-05']));
+  test('segunda/quarta/quinta/sexta sozinhas só com contexto', () => eq(
+    all(['segunda versão do tcc', 'quinta série', 'ligar pro joão segunda', 'ligar segunda #weg !alta', 'até segunda', 'segunda-feira tem prova']),
+    [null, null, '2026-10-05', '2026-10-05', '2026-10-05', '2026-10-05']));
+  test('dia 15, dia 15 de novembro, 15 de janeiro, 20/10', () => eq(
+    all(['dia 15', 'até o dia 15', 'no dia 3', 'dia 15 de novembro', '15 de janeiro', 'dia 15/10', 'prova 20/10', 'entrega 5/1/2027', 'dia 31 de fevereiro']),
+    ['2026-10-15', '2026-10-15', '2026-10-03', '2026-11-15', '2027-01-15', '2026-10-15', '2026-10-20', '2027-01-05', null]));
+  test('"até o dia 15" sai inteiro do texto', () => eq(findDate('entregar cap 2 até o dia 15 #tcc', now).resto, 'entregar cap 2 #tcc'));
+  test('daqui a / em / dentro de', () => eq(
+    all(['daqui a 3 dias', 'em 2 semanas', 'daqui a uma semana', 'em duas semanas', 'dentro de 10 dias', 'daqui a um mês']),
+    ['2026-10-04', '2026-10-15', '2026-10-08', '2026-10-15', '2026-10-11', '2026-11-01']));
+  test('mês que vem e fim de semana', () => eq(
+    all(['mês que vem', 'próximo mês', 'nesse fim de semana', 'fds', 'final de semana que vem']),
+    ['2026-11-01', '2026-11-01', '2026-10-03', '2026-10-03', '2026-10-10']));
+  test('fim de semana no domingo = hoje', () => eq(findDate('fim de semana', new Date(2026, 9, 4))?.data, '2026-10-04'));
+  test('não é data', () => eq(
+    all(['ler cap 15', 'comprar 1,5 kg', 'R$ 30,50', 'gastei 30 reais', 'ter que estudar', '>sexta', 'https://x.com/amanha', 'nota 15.5 na prova', 'segundas intenções', '']),
+    [null, null, null, null, null, null, null, null, null, null]));
+  test('duas datas: vale a primeira', () => eq(d('amanhã ou sexta'), '2026-10-02'));
+  test('pontuação em volta não sobra', () => eq(findDate('amanhã, ligar pro banco', now).resto, 'ligar pro banco'));
 });
 
 describe('tarefas · lógica (tasks.js)', () => {

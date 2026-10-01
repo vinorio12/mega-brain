@@ -105,7 +105,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - Regras: leitor de datas em frases, leitor de valores (centavos), palavras-chave por projeto (`/palavras`) · linha "↳ entendi" depois de salvar · log de frases não entendidas (`/aprendizado`) · régua de frases de exemplo (`tests/frases.js`) que a IA também precisa passar
   - Pra Fase 6: histórico de mudanças (registros `kind: evento`, append-only) e `montarContexto` (resumo enxuto do estado)
   - [x] 0 · plano aprovado e roadmap atualizado
-  - [ ] 1 datas em frases · [ ] 2 valores · [ ] 3 contrato + registro de tipos · [ ] 4 régua + regras (nota, tarefa, link, trecho) · [ ] 5 gasto/entrada/treino brutos · [ ] 6 `interpretar()` + provedor de IA desligado · [ ] 7 palavras-chave por projeto · [ ] 8 histórico de mudanças · [ ] 9 ligar na tela (9a sem mudar nada, 9b texto livre + `/tipo`) · [ ] 10 aprendizado · [ ] 11 `montarContexto` · [ ] 12 fechamento
+  - [x] 1 datas em frases (`findDate` em dates.js, 195 testes) · [ ] 2 valores · [ ] 3 contrato + registro de tipos · [ ] 4 régua + regras (nota, tarefa, link, trecho) · [ ] 5 gasto/entrada/treino brutos · [ ] 6 `interpretar()` + provedor de IA desligado · [ ] 7 palavras-chave por projeto · [ ] 8 histórico de mudanças · [ ] 9 ligar na tela (9a sem mudar nada, 9b texto livre + `/tipo`) · [ ] 10 aprendizado · [ ] 11 `montarContexto` · [ ] 12 fechamento
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)
 - [ ] 5. Dashboards: gráficos por área e tendências, só com dados reais

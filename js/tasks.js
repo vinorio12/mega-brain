@@ -249,6 +249,24 @@ export function projectsSummary(entries, now = new Date(), projects = []) {
   };
 }
 
+// Tela inicial: só o essencial, em poucas linhas.
+// Ordem: atrasadas → prioridade alta → as que vencem primeiro (sem repetir).
+export function briefing(entries, { reg = registry([]), now = new Date(), limit = 6, proj = null } = {}) {
+  const today = dayKey(now);
+  const open = entries.filter(e => isOpen(e) && inProj(e, proj, reg.projects));
+  const late = open.filter(e => e.data?.prazo && e.data.prazo < today).sort(byDue);
+  const high = open.filter(e => prioOf(e) === 'alta' && !late.includes(e)).sort(byDue);
+  const soon = open.filter(e => e.data?.prazo && !late.includes(e) && !high.includes(e)).sort(byDue);
+  const items = [...late, ...high, ...soon].slice(0, limit);
+  return {
+    items,
+    abertas: open.length,
+    atrasadas: late.length,
+    altas: open.filter(e => prioOf(e) === 'alta').length,
+    hoje: open.filter(e => e.data?.prazo === today).length,
+  };
+}
+
 // Números para o HUD.
 export function taskStats(entries, now = new Date()) {
   const today = dayKey(now);

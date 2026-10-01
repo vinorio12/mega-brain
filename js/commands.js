@@ -14,7 +14,7 @@ import { geocode, locate, fetchWeather, savedPlace, describe } from './weather.j
 import { fmtDue, parseDue } from './dates.js';
 import {
   isTask, doneAt, projName, parseTaskInput, newTask, groupTasks, doneHistory, projectsSummary, taskNumbers, taskStats,
-  projectOf, statusChange, finalStatus, firstStatus, fillByRules, matchStatus, statusOf, prioOf, isFinalStatus,
+  projectOf, statusChange, finalStatus, firstStatus, fillByRules, matchStatus, statusOf, prioOf, isFinalStatus, briefing,
 } from './tasks.js';
 
 export const PHASES = [
@@ -269,7 +269,7 @@ export function createCommands(ctx) {
         table([['qualquer texto', 'captura na inbox · use #tags: <span class="dim">ler cap 2</span> <span class="c-act">#tcc</span>']], 'cmd');
         table([['- texto #proj @status >prazo !prio', 'cria tarefa (igual ao /t) · o que faltar vira ↳ auto']], 'cmd');
         const groups = [
-          ['tarefas e projetos', c => ['t', 'tarefas', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
+          ['tarefas e projetos', c => ['inicio', 't', 'tarefas', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
           ['memória', c => c.data],
           ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
           ['tela', c => ['painel', 'foco', 'limpar', 'log', 'historico', 'boot'].includes(c.name)],
@@ -315,6 +315,23 @@ export function createCommands(ctx) {
           term.print(`── tarefas pra hoje ${'─'.repeat(10)}`, 'sep');
           showTaskGroups(due, due.flatMap(g => g.items.map(e => e.id)));
         }
+      },
+    },
+    {
+      name: 'inicio', alias: ['home', 'i'], data: true, desc: 'o essencial: atrasadas, prioridade alta e as que vencem primeiro',
+      run() {
+        const now = new Date();
+        const b = briefing(S.entries, { reg: ctx.reg(), now, proj: S.ctx });
+        term.print(`── início · ${DOW[now.getDay()]} ${ddmm(now)}${S.ctx ? ' · #' + esc(S.ctx) : ''} ${'─'.repeat(8)}`, 'sep');
+        if (!b.items.length) {
+          S.taskList = [];
+          return term.say(b.abertas ? `nada atrasado nem urgente · ${plural(b.abertas, 'tarefa')} sem prazo · <span class="c-int">/tarefas</span> mostra` : 'nenhuma tarefa aberta. respira. ✓');
+        }
+        S.taskList = b.items.map(e => e.id);
+        b.items.forEach((e, i) => taskLine(i + 1, e, now));
+        term.print(`<span class="dim">${plural(b.abertas, 'aberta')}` +
+          (b.atrasadas ? ` · <span class="c-warn">${plural(b.atrasadas, 'atrasada')}</span>` : '') +
+          (b.altas ? ` · ${b.altas} !alta` : '') + ' · /tarefas mostra tudo</span>');
       },
     },
     /* ---------- tarefas e projetos (Fase 1) ---------- */

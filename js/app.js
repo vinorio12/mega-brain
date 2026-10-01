@@ -243,6 +243,13 @@ async function migrate(t) {
   term.ok('store', `migradas ${todo.length} notas · ${local.length - todo.length} já estavam na nuvem · a cópia local foi mantida <span class="c-meta">· ${t.id} · ${t.elapsed()}ms</span>`);
 }
 
+// tela inicial: o essencial (atrasadas, prioridade alta, as que vencem primeiro)
+function showHome() {
+  try { ctx.commands.get('inicio').run(''); }
+  catch (e) { term.error(e); }
+  term.print('<span class="dim">escreva pra capturar · <span class="c-act">- texto</span> cria tarefa · <span class="c-act">/ajuda</span> mostra tudo</span>');
+}
+
 /* ================= login ================= */
 
 function setMode(mode) {
@@ -303,7 +310,7 @@ async function submitPassword(text) {
     term.ok('auth', `acesso liberado · operador ${esc(S.operator || S.email)} <span class="c-meta">· ${t.id} · ${t.elapsed()}ms</span>`);
     await openSession(session);
     ui.pulse('act');
-    term.say('pronto. memória aberta · escreva qualquer coisa pra capturar.');
+    showHome();
   }, { announce: true });
 }
 
@@ -330,7 +337,7 @@ async function submitCode(text) {
     term.ok('auth', `acesso liberado <span class="c-meta">· ${t.id} · ${t.elapsed()}ms</span>`);
     await openSession(session);
     ui.pulse('act');
-    term.say('pronto. memória aberta · escreva qualquer coisa pra capturar.');
+    showHome();
   }, { announce: true });
 }
 
@@ -350,7 +357,7 @@ async function logout(t) {
 function onAuthEvent(event, session) {
   setTimeout(() => {
     if (event === 'SIGNED_IN' && session && S.locked) {
-      openSession(session).then(() => term.say('pronto. memória aberta.'));
+      openSession(session).then(showHome);
     } else if (event === 'SIGNED_OUT' && S.user) {
       closeSession('a sessão terminou · entre de novo');
     }
@@ -525,8 +532,7 @@ async function boot() {
   term.ok('core', `core online · ${S.locked ? 'memory locked' : 'intelligence ready'} · boot ${mode === 'full' ? 'completo' : mode === 'short' ? 'rápido' : 'instantâneo'}`);
 
   if (needLogin) login();
-  else term.say('pronto. escreva qualquer coisa pra capturar · <span class="c-act">- texto >sex</span> cria tarefa · <span class="c-act">/ajuda</span> mostra os comandos.' +
-    (S.ctx ? ` · você está na aba <span class="c-act">~/${esc(S.ctx)}</span>` : ''));
+  else showHome();
 
   registerSW();
   refreshWeather();

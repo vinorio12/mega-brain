@@ -89,7 +89,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - [x] 0.5 · login usuário + senha (OPERATORS em config.js; tela bloqueada pede direto a senha; `/entrar outro`) · `/status` do sistema virou `/condition` (`/sys`)
   - [x] 1 · modelo de dados v2 (`data: { projeto, status, prazo, prioridade, feito_em }`, lê o formato antigo) · registros `kind: projeto|status` separados das notas (`S.records`) · semente com ids fixos (`seedId`) · `/projeto [novo|renomear|arquivar]` · `/desfazer` desfaz criação
   - [x] 2 · `#proj @status >prazo !prioridade` (`parseTaskInput`) · regras (`fillByRules`: projeto pelo texto/histórico, `a fazer`, `média`, prazo alta+1 média+3 baixa+7 corridos) · linha `↳ auto (regra)` · `/editar`, `/mover`, `/status [novo|renomear]` · prévia na direita com "auto"
-  - [ ] 3 · tela inicial (atrasadas, prioridade alta, vencem primeiro)
+  - [x] 3 · tela inicial `/inicio` (`briefing`: atrasadas → !alta → vencem primeiro, até 6 linhas) depois do boot e do login · painel da direita usa a mesma regra
   - [ ] 4 · visões `/ver lista|status|kanban|calendario`
   - [ ] 6 · acervo (links colados, `/guardar` textos, busca em tudo)
   - [ ] 7 · fechamento e publicação

@@ -9,7 +9,7 @@ import { createCloudStore } from '../js/cloud.js';
 import { createTerminal } from '../js/terminal.js';
 import { parseDue, fmtDue } from '../js/dates.js';
 import { deriveState, describeState, readIntent } from '../js/state.js';
-import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord, guessProject, dueFor, fillByRules, matchStatus } from '../js/tasks.js';
+import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord, guessProject, dueFor, fillByRules, matchStatus, briefing } from '../js/tasks.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -215,6 +215,18 @@ describe('tarefas · regras automáticas', () => {
     eq([r.values.prazo, r.auto.includes('prazo')], [null, false]);
   });
   test('matchStatus ambíguo → null', () => eq(matchStatus('a', [{ name: 'abc' }, { name: 'abd' }]), null));
+});
+
+describe('tela inicial (briefing)', () => {
+  const now = new Date(2026, 8, 30, 15, 0);
+  const T = (text, prazo, prioridade = 'média', feito_em = null) => ({ id: text, kind: 'tarefa', text, tags: [], ts: 1, data: { prazo, prioridade, feito_em, status: feito_em ? 'feito' : 'a fazer' } });
+  const E = [
+    T('futura baixa', '2026-10-20', 'baixa'), T('urgente sem prazo', null, 'alta'), T('atrasada', '2026-09-28'),
+    T('amanhã', '2026-10-01'), T('feita', '2026-09-01', 'alta', 5), T('sem nada', null),
+  ];
+  test('ordem: atrasadas → alta → vencem primeiro', () => eq(briefing(E, { now }).items.map(e => e.text), ['atrasada', 'urgente sem prazo', 'amanhã', 'futura baixa']));
+  test('limite de linhas', () => eq(briefing(E, { now, limit: 2 }).items.length, 2));
+  test('contagens', () => { const b = briefing(E, { now }); eq([b.abertas, b.atrasadas, b.altas], [5, 1, 1]); });
 });
 
 describe('tarefas · modelo v2 e registros', () => {

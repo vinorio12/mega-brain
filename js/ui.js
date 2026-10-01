@@ -5,7 +5,7 @@ import { esc, pad, dayKey, hhmm, ddmm, dur, DOW, VERSION } from './util.js';
 import { createCore } from './core.js';
 import { describe } from './weather.js';
 import { PHASES } from './commands.js';
-import { taskStats, groupTasks, projectOf } from './tasks.js';
+import { taskStats, groupTasks, projectOf, briefing, prioOf } from './tasks.js';
 import { fmtDue } from './dates.js';
 import { deriveState, describeState, readIntent, LISTEN_MS, FAULT_MS } from './state.js';
 
@@ -295,24 +295,18 @@ export function createUI(ctx) {
         `<dt>destino</dt><dd>${esc(mem()[0])}</dd></dl><div class="ctx-hint">comece com "- " pra virar tarefa</div>`;
       short = `→ nota${intent.tags.length ? ' · #' + intent.tags.join(' #') : ''}`;
     } else {
-      // parado: tarefas que importam agora (atrasadas, hoje, próximas)
-      const { groups } = groupTasks(E, { proj: S.ctx, now, projects: ctx.reg().projects });
+      // parado: o essencial (mesma regra da tela inicial): atrasadas → !alta → vencem primeiro
+      const b = briefing(E, { reg: ctx.reg(), now, proj: S.ctx, limit: 7 });
       const s = taskStats(S.ctx ? E.filter(e => inCtx(e)) : E, now);
-      sub = `${S.ctx ? '#' + S.ctx : 'todas'} · ${s.abertas} abertas`;
-      const relevant = groups.filter(g => g.key !== 'feitas');
-      let shownN = 0;
-      html = relevant.map(g => {
-        const items = g.items.slice(0, Math.max(0, 7 - shownN));
-        shownN += items.length;
-        if (!items.length) return '';
-        return `<div class="ctx-grp">${esc(g.title)}</div>` + items.map(e => {
-          const due = e.data?.prazo ? fmtDue(e.data.prazo, now) : '';
-          const tone = due.startsWith('atrasada') ? 'c-warn' : due === 'hoje' ? 'c-act' : 'c-meta';
-          return `<div class="ctx-task"><span class="n">[ ]</span><span title="${esc(e.text)}">${esc(e.text)}</span><span class="due ${tone}">${esc(due)}</span></div>`;
-        }).join('');
+      sub = `${S.ctx ? '#' + S.ctx : 'todas'} · ${b.abertas} abertas`;
+      html = b.items.map(e => {
+        const due = e.data?.prazo ? fmtDue(e.data.prazo, now) : '';
+        const tone = due.startsWith('atrasada') ? 'c-warn' : due === 'hoje' ? 'c-act' : 'c-meta';
+        const hi = prioOf(e) === 'alta' ? '<span class="c-warn">!</span> ' : '';
+        return `<div class="ctx-task"><span class="n">[ ]</span><span title="${esc(e.text)}">${hi}${esc(e.text)}</span><span class="due ${tone}">${esc(due)}</span></div>`;
       }).join('');
-      if (!html) html = `<div class="empty">nenhuma tarefa aberta${S.ctx ? ' aqui' : ''}</div><div class="ctx-hint">- revisar cap 2 #tcc >sex</div>`;
-      else if (s.feitasHoje) html += `<div class="ctx-hint">✓ ${s.feitasHoje} feitas hoje · /tarefas numera</div>`;
+      if (!html) html = `<div class="empty">${b.abertas ? 'nada atrasado nem urgente' : 'nenhuma tarefa aberta' + (S.ctx ? ' aqui' : '')}</div><div class="ctx-hint">- revisar cap 2 #tcc >sex</div>`;
+      else html += `<div class="ctx-hint">${b.atrasadas ? `<span class="c-warn">${b.atrasadas} atrasadas</span> · ` : ''}${s.feitasHoje ? `✓ ${s.feitasHoje} feitas hoje · ` : ''}/inicio · /tarefas</div>`;
     }
 
     $('x-title').textContent = title;

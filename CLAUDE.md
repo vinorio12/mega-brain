@@ -88,7 +88,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - [x] HUD: telemetria "tarefas" (da aba), "pendentes" real no núcleo, módulo tarefas online · 104 testes
   - [x] 002_data.sql rodado · publicado
 - [x] 0.6. Redesign MB Core: núcleo vivo com estados reais, satélites, rails contextuais, boot cinematográfico · publicado
-- [x] 1b. Tarefas v2, visões e acervo · plano em `docs/plano-tarefas-acervo.md` (decisões do Vini lá) · publicado
+- [x] 1b. Tarefas v2, visões e acervo · plano em `docs/plano-tarefas-acervo.md` (decisões do Vini lá) · publicado v0.7.0 · testado e aprovado pelo Vini (01/10/2026)
   - [x] 0 · plano aprovado, 0.6 publicado
   - [x] 0.5 · login usuário + senha (OPERATORS em config.js; tela bloqueada pede direto a senha; `/entrar outro`) · `/status` do sistema virou `/condition` (`/sys`)
   - [x] 1 · modelo de dados v2 (`data: { projeto, status, prazo, prioridade, feito_em }`, lê o formato antigo) · registros `kind: projeto|status` separados das notas (`S.records`) · semente com ids fixos (`seedId`) · `/projeto [novo|renomear|arquivar]` · `/desfazer` desfaz criação

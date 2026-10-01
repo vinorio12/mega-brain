@@ -20,6 +20,9 @@ function authError(e) {
   const msg = String(e?.message || e).toLowerCase();
   if (msg.includes('signups not allowed') || msg.includes('user not found'))
     return new CmdError('E_AUTH_USER', 'auth', 'este e-mail não tem acesso', 'o Mega Brain só aceita o usuário criado no painel do Supabase');
+  if (msg.includes('error sending'))
+    return new CmdError('E_AUTH_SMTP', 'auth', 'o servidor de e-mail (SMTP) recusou o envio',
+      'confira host, porta, usuário, senha e remetente em Authentication → Emails → SMTP · detalhe em Logs → Auth');
   if (msg.includes('not authorized') || msg.includes('not allowed for this'))
     return new CmdError('E_AUTH_SMTP', 'auth', 'o e-mail padrão do Supabase não entrega pra este endereço',
       'use o e-mail da sua conta Supabase, ou ative o SMTP próprio em Authentication → Emails');

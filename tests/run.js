@@ -12,9 +12,12 @@ import { parseValor, findValor, fmtValor } from '../js/valores.js';
 import { deriveState, describeState, readIntent } from '../js/state.js';
 import { viewName, viewGroups, calendarModel, parseMonth } from '../js/views.js';
 import { parseLink, parseSnippet, shortUrl, searchAll } from '../js/acervo.js';
-import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord, guessProject, dueFor, fillByRules, matchStatus, briefing, isNoteKind } from '../js/tasks.js';
+import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord, guessProject, dueFor, fillByRules, matchStatus, briefing, isNoteKind, CONTENT_KINDS } from '../js/tasks.js';
 import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
-import { criarRegistro, validarInterpretacao } from '../js/tipos.js';
+import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
+import { comecaComVerbo } from '../js/tipos-base.js';
+import { provedorRegras } from '../js/provedor-regras.js';
+import { FRASES, rodarFrases } from './frases.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -733,6 +736,52 @@ describe('registro de tipos + contrato (tipos.js · Fase 2)', () => {
     eq(validarInterpretacao({ ...base, tipo: 'tarefa', campos: { texto: 'x', tags: ['a', 1] } }, r).ok, false);
   });
   test('motivo da recusa em português', () => eq(validarInterpretacao({ ...base, campos: {} }, reg()).erro, 'falta o campo valor'));
+});
+
+describe('provedor de regras (provedor-regras.js · Fase 2)', () => {
+  const now = new Date(2026, 9, 1, 12, 0);
+  const ctx = (extra = {}) => ({ reg: registry([]), entries: [], now, ...extra });
+  const P = (t, extra) => provedorRegras.interpretar(t, ctx(extra));
+  test('tipos base registrados e todo tipo de conteúdo aparece nas listas', () => {
+    eq(REGISTRO.ids().slice(0, 4), ['nota', 'tarefa', 'link', 'trecho']);
+    ok(REGISTRO.ids().every(id => CONTENT_KINDS.includes(REGISTRO.get(id).kind)), 'kind fora do CONTENT_KINDS ficaria escondido');
+  });
+  test('resposta segue o contrato', () => {
+    const r = P('ligar pro dentista amanhã');
+    eq([r.tipo, r.origem, r.provedor, r.texto, r.auto], ['tarefa', 'regra', 'regras', 'ligar pro dentista amanhã', ['projeto', 'status', 'prioridade']]);
+    ok(validarInterpretacao(r).ok);
+  });
+  test('vazio → null', () => eq([P(''), P('   ')], [null, null]));
+  test('/t força tarefa mesmo sem sinal', () => eq([P('bolo de cenoura', { forcar: 'tarefa' }).tipo, P('bolo de cenoura', { forcar: 'tarefa' }).confianca], ['tarefa', 1]));
+  test('- com marcador errado devolve o erro (como hoje)', () => eq([P('- x >nunca').erro, P('- x !urgente').erro.codigo], [{ codigo: 'prazo', token: '>nunca' }, 'prioridade']));
+  test('texto livre com marcador errado não é tarefa', () => eq(P('que dia lindo !uau').tipo, 'nota'));
+  test('data passada não vira prazo de tarefa', () => eq(P('- pagar conta ontem').campos.texto, 'pagar conta ontem'));
+  test('verbo: ligar, ler, ir sim · celular, lugar, por não', () => eq(
+    ['ligar pro joão', 'ler o cap 3', 'ir no banco', 'celular quebrou', 'lugar bonito', 'por favor né'].map(comecaComVerbo), [true, true, true, false, false, false]));
+  test('montar dá a mesma entrada que os comandos de hoje', () => {
+    const c = ctx();
+    eq(REGISTRO.get('link').montar(P('https://x.com/a artigo #tcc'), c),
+      { kind: 'link', text: 'https://x.com/a artigo #tcc', tags: ['tcc'], ts: now.getTime(), day: '2026-10-01', data: { url: 'https://x.com/a', contexto: 'artigo #tcc' } });
+    eq(REGISTRO.get('trecho').montar(P('"frase boa"'), c), { kind: 'trecho', text: 'frase boa', tags: [], ts: now.getTime(), day: '2026-10-01', data: {} });
+    eq(REGISTRO.get('nota').montar(P('oi #weg'), c), { text: 'oi #weg', tags: ['weg'], kind: 'nota', ts: now.getTime(), day: '2026-10-01' });
+    const t = REGISTRO.get('tarefa').montar(P('- revisar cap 2 #tcc >sex'), c);
+    eq([t.kind, t.text, t.tags, t.data.projeto, t.data.prazo, t.data.status, t.data.auto], ['tarefa', 'revisar cap 2', ['tcc'], 'tcc', '2026-10-02', 'a fazer', { campos: ['status', 'prioridade'], fonte: 'regra' }]);
+  });
+});
+
+describe('régua de frases (tests/frases.js · motor de regras)', () => {
+  // até o interpretar() existir (etapa 7): confiança abaixo de 0.7 = nota com pergunta
+  const viaRegras = (frase, c) => {
+    const r = provedorRegras.interpretar(frase, c);
+    return r.confianca >= 0.7 ? r : { ...r, tipo: 'nota', pergunta: true };
+  };
+  const ctxBase = () => ({ reg: registry([]), entries: [] });
+  for (const f of FRASES) {
+    test(`"${f.frase}" → ${f.esperado.tipo}${f.esperado.pergunta ? ' + pergunta' : ''}`, async () => {
+      const [r] = await rodarFrases(viaRegras, [f], ctxBase);
+      if (!r.ok) throw new Error(r.motivo);
+    });
+  }
 });
 
 describe('estado do núcleo (deriveState)', () => {

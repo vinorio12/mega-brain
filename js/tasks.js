@@ -21,7 +21,7 @@ export const DEFAULT_STATUSES = [
   { name: 'esperando', final: false },
   { name: 'feito', final: true },
 ];
-export const RECORD_KINDS = ['projeto', 'status', 'evento'];
+export const RECORD_KINDS = ['projeto', 'status', 'evento', 'interpretacao'];
 // o que aparece nas listas. Qualquer outro kind (evento, e os que versões novas do app criarem)
 // fica escondido em S.records: assim um aparelho com versão velha nunca mostra lixo no /inbox.
 export const CONTENT_KINDS = ['nota', 'tarefa', 'link', 'trecho', 'gasto', 'entrada', 'treino'];

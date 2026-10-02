@@ -23,6 +23,7 @@ import { FRASES, rodarFrases } from './frases.js';
 import { criarInterpretador, interpretar, previa } from '../js/interpretar.js';
 import { criarProvedorIA, travaDiaria, montarPedido } from '../js/provedor-ia.js';
 import { INTERPRETADOR } from '../js/config.js';
+import { registroAprendizado, resumoAprendizado, exportarFrases } from '../js/aprendizado.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -932,6 +933,42 @@ describe('texto livre + "↳ entendi" + /tipo (etapa 9b)', () => {
     eq([g.type, g.tipo, g.campos.valor], ['registro', 'gasto', 3000]);
     const d = readIntent('comprar pão', { now });
     eq([d.type, d.pergunta, d.palpite], ['note', true, 'tarefa']);
+  });
+});
+
+describe('aprendizado (aprendizado.js · Fase 2)', () => {
+  const now = new Date(2026, 9, 2, 10);
+  const R = (texto, data, i) => ({ ...registroAprendizado({ texto, ...data }, new Date(now.getTime() + i * 1000)), id: 'ap' + i });
+  test('registro: frase + palpite, escondido nas listas', () => {
+    const r = registroAprendizado({ texto: ' comprar pão ', palpite: 'tarefa', confianca: 0.6 }, now);
+    eq([r.kind, r.text, r.data.palpite, r.data.corrigido, isRecord(r)], ['interpretacao', 'comprar pão', 'tarefa', null, true]);
+    eq(registroAprendizado({ texto: '  ' }), null);
+  });
+  test('resumo junta por frase; correção vence a pergunta', () => {
+    const res = resumoAprendizado([
+      R('comprar pão', { palpite: 'tarefa' }, 1), R('Comprar pão', { era: 'nota', corrigido: 'tarefa' }, 2),
+      R('uber 18', { palpite: 'gasto' }, 3), R('uber 18', { palpite: 'gasto' }, 4),
+    ]);
+    eq([res.total, res.corrigidas.map(i => [i.texto, i.corrigido]), res.semResposta.map(i => [i.texto, i.vezes])],
+      [2, [['Comprar pão', 'tarefa']], [['uber 18', 2]]]);
+  });
+  test('exportar no formato da régua (aspas protegidas)', () => eq(
+    exportarFrases(resumoAprendizado([R("it's ok", { era: 'nota', corrigido: 'nota' }, 1), R('uber 18', { palpite: 'gasto' }, 2)])),
+    ["  { frase: 'it\\'s ok', esperado: { tipo: 'nota' } },", "  // { frase: 'uber 18', esperado: { tipo: '?' } }, // palpite: gasto"]));
+  test('dúvida e /tipo gravam; /aprendizado mostra e exporta', async () => {
+    const s = setup([]);
+    const T = { id: 'T0001', elapsed: () => 1 };
+    await s.ctx.commands.capturar('comprar pão', T);
+    await s.ctx.commands.capturar('uber 18', T);
+    await s.run('/tipo gasto');
+    await new Promise(r => setTimeout(r, 0));
+    const res = resumoAprendizado(s.S.records);
+    eq([res.corrigidas.map(i => i.texto), res.semResposta.map(i => i.texto)], [['uber 18'], ['comprar pão']]);
+    await s.run('/aprendizado');
+    ok(/corrigidas/.test(s.term.text()) && /sem resposta/.test(s.term.text()));
+    await s.run('/aprendizado exportar');
+    ok(/frase: 'uber 18', esperado: \{ tipo: 'gasto' \}/.test(s.term.text()), s.term.text());
+    eq(s.S.entries.filter(isNoteKind).map(e => e.text), ['comprar pão'], 'nada de aprendizado no /inbox');
   });
 });
 

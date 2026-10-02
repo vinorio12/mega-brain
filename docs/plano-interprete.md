@@ -98,7 +98,7 @@ Lista `{ frase, hoje: '2026-10-01', esperado: { tipo, campos parciais, minConfia
 | 8 | **feito** · Palavras-chave por projeto + `/palavras`; `guessProject` usa | P | palavra do projeto decide; edição desfaz; sincroniza |
 | 9a | **feito** · Ligar na tela, **sem mudar comportamento**: `run()` e `readIntent` chamam o motor; `/t` e `- ` passam por ele; `isNote`/`tipoOf`/overview tratam `kind` novos | M | testes antigos todos verdes (181 hoje) + captura de nota/link/texto/tarefa idêntica |
 | 9b | **feito** · Texto livre vira tarefa/gasto/entrada/treino; linha "↳ entendi"; nota com pergunta; `/tipo` | M | "ligar pro dentista amanhã" vira tarefa com prazo; "bla bla" vira nota + pergunta |
-| 10 | Aprendizado: registro `interpretacao`, `/aprendizado [exportar]` | P | frase desconhecida registrada; correção `/tipo` grava o par |
+| 10 | **feito** · Aprendizado: registro `interpretacao`, `/aprendizado [exportar]` | P | frase desconhecida registrada; correção `/tipo` grava o par |
 | 11 | `montarContexto` + `/contexto` | M | testado com tarefas/eventos fixos; cabe em `maxChars` |
 | 12 | Fechamento: `/ajuda` (grupo "intérprete"), README, `docs/`, `VERSION` 0.9.0, `PHASES`, `CLAUDE.md` | P | Vini testa no celular e aprova |
 

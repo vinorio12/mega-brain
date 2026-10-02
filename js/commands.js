@@ -22,6 +22,7 @@ import { eventsOf } from './historico.js';
 import { fmtValor } from './valores.js';
 import { REGISTRO } from './tipos.js';
 import { previa, interpretar } from './interpretar.js';
+import { registroAprendizado, resumoAprendizado, exportarFrases } from './aprendizado.js';
 
 export const PHASES = [
   ['0', 'esqueleto · terminal, hud, inbox', 'ok'],
@@ -226,7 +227,14 @@ export function createCommands(ctx) {
     const { e, n } = await salvar(r, t);
     S.ultima = { id: e.id, texto: text }; // o /tipo sem alvo corrige esta
     entendiLine(r, e, n);
+    if (r.pergunta) aprender({ texto: text, palpite: r.palpite, confianca: r.confianca, origem: r.origem, era: 'nota' });
     return { e, n };
+  }
+
+  // guarda pro /aprendizado (frase não entendida ou corrigida). Nunca atrapalha a captura.
+  function aprender(dados) {
+    const reg = registroAprendizado(dados);
+    if (reg) Promise.resolve(ctx.store.add(reg)).catch(e => console.warn('aprendizado', e));
   }
   // rótulo do processo que aparece enquanto grava
   const rotuloCaptura = text => (/^-\s+\S/.test(text) ? 'nova tarefa'
@@ -505,7 +513,7 @@ export function createCommands(ctx) {
         table([['- texto #proj @status >prazo !prio', 'cria tarefa (igual ao /t) · o que faltar vira ↳ auto'], ['https://… contexto', 'guarda o link no acervo'], ['"texto', 'guarda o texto no acervo']], 'cmd');
         const groups = [
           ['tarefas e projetos', c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
-          ['intérprete', c => ['tipo', 'palavras', 'mudancas'].includes(c.name)],
+          ['intérprete', c => ['tipo', 'palavras', 'aprendizado', 'mudancas'].includes(c.name)],
           ['acervo', c => ['acervo', 'guardar', 'buscar'].includes(c.name)],
           ['memória', c => c.data],
           ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
@@ -879,8 +887,32 @@ export function createCommands(ctx) {
         S.undo.pop(); // o salvar empilhou só a criação; o passo certo inclui a antiga
         S.undo.push({ label: `virou ${REGISTRO.get(tipo).rotulo}`, items: [e], created: [novo.id] });
         S.ultima = { id: novo.id, texto };
-        ctx.aprender?.({ texto, era: e.kind, virou: tipo });
+        aprender({ texto, era: e.kind, corrigido: tipo });
         entendiLine({ ...r, pergunta: false }, novo, n);
+      },
+    },
+    {
+      name: 'aprendizado', alias: ['aprender'], data: true, args: '[exportar]',
+      desc: 'frases que o app não entendeu e as que você corrigiu com /tipo · exportar = formato da régua de testes',
+      run(arg) {
+        const res = resumoAprendizado(S.records || []);
+        if (!res.total) return term.say('nada ainda · quando o app ficar em dúvida ou você usar /tipo, a frase aparece aqui.');
+        if (/^export/i.test(String(arg).trim())) {
+          term.print(`── aprendizado · cole em tests/frases.js ${'─'.repeat(6)}`, 'sep');
+          exportarFrases(res).forEach(l => term.print(`<span class="${l.trimStart().startsWith('//') ? 'dim' : ''}">${esc(l)}</span>`));
+          return term.print('<span class="dim">corrigidas viram teste · as comentadas (//) precisam do tipo certo antes</span>');
+        }
+        term.print(`── aprendizado · ${res.total} frases · ${res.corrigidas.length} corrigidas · ${res.semResposta.length} sem resposta ${'─'.repeat(4)}`, 'sep');
+        const linha = (i, extra) => term.print(`<span class="c-meta">${ddmm(new Date(i.ts))}</span> ${hl(i.texto)} ${extra}${i.vezes > 1 ? ` <span class="dim">· ${i.vezes}x</span>` : ''}`);
+        if (res.corrigidas.length) {
+          term.print('corrigidas', 'tgrp');
+          res.corrigidas.slice(0, 15).forEach(i => linha(i, `<span class="dim">${esc(i.era || '?')} →</span> <span class="c-act">${esc(i.corrigido)}</span>`));
+        }
+        if (res.semResposta.length) {
+          term.print('sem resposta', 'tgrp');
+          res.semResposta.slice(0, 15).forEach(i => linha(i, `<span class="dim">palpite: ${esc(i.palpite || '—')}</span>`));
+        }
+        term.print('<span class="dim">/aprendizado exportar gera as linhas pra régua de testes</span>');
       },
     },
     {

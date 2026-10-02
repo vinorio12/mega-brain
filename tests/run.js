@@ -829,12 +829,13 @@ describe('palavras-chave por projeto (Fase 2)', () => {
     const s = setup([]);
     for (const e of seeds()) await s.ctx.store.restore(e);
     await s.run('/palavras tcc +orientador +Banca');
-    const rec = () => s.S.records.find(e => e.kind === 'projeto' && e.text === 'tcc');
-    eq(rec().data.palavras, ['orientador', 'banca']);
+    // (desde a Fase 2.5 as palavras-chave são decisões na memória: registros kind 'memoria')
+    const fix = () => criarMemoria(s.S.entries, s.S.records, { reg: registry(s.S.records) }).todas().filter(i => i.estado === 'fixado' && i.dominante === 'tcc').map(i => i.rotulo);
+    eq(fix(), ['orientador', 'banca']);
     await s.run('/palavras tcc -banca');
-    eq(rec().data.palavras, ['orientador']);
+    eq(fix(), ['orientador']);
     await s.run('/desfazer');
-    eq(rec().data.palavras, ['orientador', 'banca']);
+    eq(fix(), ['orientador', 'banca']);
     await s.run('/t mandar email pro orientador');
     eq(s.S.entries.find(e => e.kind === 'tarefa').data.projeto, 'tcc');
     await s.run('/palavras');
@@ -1085,6 +1086,44 @@ describe('memória que aprende (memoria.js · etapa 6 · Fase 2.5)', () => {
     await s.ctx.store.idle();
     await s.ctx.commands.capturar('revisar planilha sexta', T);
     eq(s.S.entries.at(-1).data.projeto, 'weg');
+  });
+});
+
+describe('/memoria: ver e editar o que o app aprendeu (etapa 7 · Fase 2.5)', () => {
+  const T = { id: 'T0001', elapsed: () => 1 };
+  test('fixar, bloquear, soltar, limpar, desfazer · pessoa ou palavra', async () => {
+    const s = setup([]);
+    await s.run('/pessoa nova João');
+    for (const t of ['falar com João #tcc', 'cobrar João #tcc']) await s.run('/t ' + t);
+    const info = k => criarMemoria(s.S.entries, s.S.records, { reg: registry(s.S.records), pessoas: pessoasDe(s.S.records) }).info(k);
+    const joao = 'pessoa:' + pessoasDe(s.S.records)[0].id;
+    eq(info(joao).dominante, 'tcc');
+    await s.run('/memoria joão = weg');
+    eq([info(joao).estado, info(joao).dominante], ['fixado', 'weg']);
+    await s.ctx.commands.capturar('ligar pro João amanhã', T);
+    eq(s.S.entries.at(-1).data.projeto, 'weg');
+    ok(/João: fixado/.test(s.term.text()), 'motivo na linha entendi');
+    await s.run('/memoria joão solta');
+    eq(info(joao).dominante, 'tcc');
+    await s.run('/memoria joão -tcc');
+    eq([info(joao).estado, info(joao).porProjeto.map(x => x[0])], ['pouca', ['weg']]); // sobra só 1 de peso na weg
+    await s.run('/desfazer');
+    eq(info(joao).porProjeto[0][0], 'tcc');
+    await s.run('/memoria joão limpar');
+    eq(info(joao).estado, 'nada');
+    await s.run('/memoria planilha = weg');
+    eq(info('palavra:planilha').dominante, 'weg');
+  });
+  test('ver: visão geral e uma pista; erros', async () => {
+    const s = setup([]);
+    await s.run('/memoria');
+    ok(/ainda não aprendi/.test(s.term.text()));
+    for (const t of ['revisar motor #weg', 'trocar motor #weg', 'medir motor #weg']) await s.run('/t ' + t);
+    await s.run('/memoria');
+    ok(/palavras que puxam/.test(s.term.text()) && /motor/.test(s.term.text()), s.term.text());
+    await s.run('/memoria motor');
+    ok(/→ #weg/.test(s.term.text()));
+    await throws(() => s.run('/memoria motor = xyz'), 'E_404');
   });
 });
 

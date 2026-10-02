@@ -25,6 +25,7 @@ import { previa, interpretar } from './interpretar.js';
 import { registroAprendizado, resumoAprendizado, exportarFrases } from './aprendizado.js';
 import { montarContexto, estimarTokens } from './contexto.js';
 import { pessoasDe, acharPessoa, editApelidos, juntarPessoas, fold, resumoPessoa } from './pessoas.js';
+import { memoriaDe, chavePalavra } from './memoria.js';
 
 export const PHASES = [
   ['0', 'esqueleto · terminal, hud, inbox', 'ok'],
@@ -183,6 +184,12 @@ export function createCommands(ctx) {
 
   // o que o intérprete precisa saber: projetos e status, entradas (histórico de projetos), aba atual
   const ictx = (extra = {}) => ({ reg: ctx.reg(), entries: S.entries, records: S.records || [], aba: S.ctx, now: new Date(), pessoas: pessoasDe(S.records || []), ignorarPessoas: ignorados(), ...extra });
+  // a memória do momento (pessoas/palavras → projeto); recalcula só quando os dados mudam
+  const mem = () => memoriaDe(S.entries, S.records || [], { reg: ctx.reg(), pessoas: pessoasDe(S.records || []) });
+  // decisão sua sobre uma pista (/memoria, /palavras): registro que só cresce, o mais novo vale
+  const gravarMemoria = (chave, acao, projeto, rotulo) => ctx.store.add({
+    kind: 'memoria', text: String(rotulo || chave), tags: [], ts: Date.now(), day: dayKey(new Date()), data: { chave, acao, projeto: projeto || null },
+  });
   // palavras que você disse que não são pessoa (/nao): ficam no aprendizado
   const ignorados = () => (S.records || []).filter(e => e.kind === 'interpretacao' && e.data?.naoPessoa).map(e => e.data.naoPessoa);
 
@@ -603,7 +610,7 @@ export function createCommands(ctx) {
         const groups = [
           ['tarefas e projetos', c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
           ['pessoas', c => ['pessoas', 'pessoa', 'sim', 'nao'].includes(c.name)],
-          ['intérprete', c => ['tipo', 'palavras', 'aprendizado', 'mudancas', 'contexto'].includes(c.name)],
+          ['intérprete', c => ['tipo', 'memoria', 'palavras', 'aprendizado', 'mudancas', 'contexto'].includes(c.name)],
           ['acervo', c => ['acervo', 'guardar', 'buscar'].includes(c.name)],
           ['memória', c => c.data],
           ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
@@ -915,25 +922,80 @@ export function createCommands(ctx) {
     {
       name: 'palavras', alias: ['palavra', 'keywords'], data: true, async: true, exec: true, args: '[projeto] [+palavra] [-palavra]',
       desc: 'palavras-chave que puxam a tarefa pro projeto · ex: /palavras tcc +orientador +banca · /palavras tcc -banca',
+      // (atalho do /memoria: "+palavra" fixa a palavra no projeto, "-palavra" solta)
       async run(arg, signal, t) {
         const [first, ...rest] = String(arg).trim().split(/\s+/).filter(Boolean);
         const reg = ctx.reg();
-        const show = p => `<span class="k c-act">#${esc(p)}</span><span>${(reg.palavras[p] || []).map(esc).join(', ') || '<span class="dim">nenhuma</span>'}</span>`;
+        const fixadas = p => mem().todas().filter(i => i.chave.startsWith('palavra:') && i.estado === 'fixado' && i.dominante === p).map(i => i.rotulo);
+        const show = p => `<span class="k c-act">#${esc(p)}</span><span>${fixadas(p).map(esc).join(', ') || '<span class="dim">nenhuma</span>'}</span>`;
         if (!first) {
           term.print(`── palavras-chave ${'─'.repeat(10)}`, 'sep');
           reg.projects.forEach(p => term.print(show(p), 'tbl'));
-          return term.print('<span class="dim">/palavras tcc +orientador ensina · a tarefa que tiver a palavra vai pro projeto</span>');
+          return term.print('<span class="dim">/palavras tcc +orientador ensina · a tarefa que tiver a palavra vai pro projeto · /memoria mostra o que o app aprendeu sozinho</span>');
         }
         const name = projName(first);
-        const r = name && S.records.find(e => e.kind === 'projeto' && e.text === name && !e.data?.arquivado);
-        if (!r) throw new CmdError('E_404', 'task', `projeto #${first} não existe`, 'veja os projetos com <span class="c-int">/projeto</span> · cria com <span class="c-int">/projeto novo nome</span>');
+        if (!name || !reg.projects.includes(name)) throw new CmdError('E_404', 'task', `projeto #${first} não existe`, 'veja os projetos com <span class="c-int">/projeto</span> · cria com <span class="c-int">/projeto novo nome</span>');
         if (!rest.length) return term.print(show(name), 'tbl');
-        const antes = r.data?.palavras || [];
-        const depois = editPalavras(antes, rest);
-        if (JSON.stringify(antes) === JSON.stringify(depois)) return term.say('nada mudou.');
-        S.undo.push({ label: 'palavras-chave', items: [r] });
-        await ctx.store.restore({ ...r, data: { ...(r.data || {}), palavras: depois } });
-        term.ok('task', `palavras de <span class="c-act">#${esc(name)}</span> · ${depois.map(esc).join(', ') || 'nenhuma'} <span class="c-meta">· /desfazer volta · ${t.id}</span>`);
+        const criadas = [];
+        // "+banca de defesa" vale como uma expressão só: junta as palavras até o próximo + ou -
+        const itens = rest.join(' ').split(/\s+(?=[+-])/).map(s => s.trim()).filter(Boolean);
+        for (const it of itens) {
+          const tira = it.startsWith('-'), w = it.replace(/^[+-]/, '').replace(/^#/, '').trim();
+          if (!w) continue;
+          const atual = mem().info(chavePalavra(w));
+          if (tira && !(atual.estado === 'fixado' && atual.dominante === name)) continue;
+          if (!tira && atual.estado === 'fixado' && atual.dominante === name) continue;
+          criadas.push(await gravarMemoria(chavePalavra(w), tira ? 'desafixar' : 'fixar', name, w));
+        }
+        if (!criadas.length) return term.say('nada mudou.');
+        S.undo.push({ label: 'palavras-chave', items: [], created: criadas.map(e => e.id) });
+        term.ok('task', `palavras de <span class="c-act">#${esc(name)}</span> · ${fixadas(name).map(esc).join(', ') || 'nenhuma'} <span class="c-meta">· /desfazer volta · ${t.id}</span>`);
+        ctx.ui.pulse('act');
+      },
+    },
+    {
+      name: 'memoria', alias: ['memória', 'pistas', 'associar'], data: true, async: true, exec: true,
+      args: '[pista] [= projeto | -projeto | solta | limpar]',
+      desc: 'o que o app aprendeu (pessoa/palavra → projeto) · ex: /memoria · /memoria João · /memoria planilha = weg',
+      async run(arg, signal, t) {
+        const raw = String(arg).trim();
+        const reg = ctx.reg();
+        const m = mem();
+        const pct = i => (i.total ? Math.round(((i.peso || 0) / i.total) * 100) : 0);
+        const linha = i => {
+          const por = i.porProjeto.map(([p, w]) => `<span class="c-act">#${esc(p)}</span> ${w}`).join(' · ') || '<span class="dim">sem aparições</span>';
+          const est = { fixado: `<span class="c-int">fixada em #${esc(i.dominante)}</span>`, dominante: `<span class="c-act">→ #${esc(i.dominante)}</span> <span class="dim">${pct(i)}%</span>`,
+            dividida: '<span class="c-warn">dividida (não vota)</span>', pouca: '<span class="dim">pouca evidência</span>', nada: '<span class="dim">nada ainda</span>' }[i.estado];
+          return `<span class="k">${esc(i.rotulo)}</span><span>${est} · ${por}${i.bloqueados.length ? ` · <span class="dim">bloqueada em ${i.bloqueados.map(esc).join(', ')}</span>` : ''}</span>`;
+        };
+        if (!raw) {
+          const todas = m.todas().filter(i => i.estado !== 'nada' && i.estado !== 'pouca');
+          if (!todas.length) return term.say('ainda não aprendi nada · conforme você cria e corrige tarefas, eu vou ligando pessoas e palavras aos projetos.');
+          term.print(`── memória · o que eu aprendi ${'─'.repeat(8)}`, 'sep');
+          const grupos = [
+            ['fixadas por você', todas.filter(i => i.estado === 'fixado')],
+            ['pessoas', todas.filter(i => i.chave.startsWith('pessoa:') && i.estado !== 'fixado')],
+            ['palavras que puxam', todas.filter(i => i.chave.startsWith('palavra:') && i.estado === 'dominante').sort((a, b) => b.peso - a.peso).slice(0, 12)],
+          ].filter(([, l]) => l.length);
+          for (const [titulo, l] of grupos) { term.print(titulo, 'tgrp'); l.forEach(i => term.print(linha(i), 'tbl')); }
+          return term.print('<span class="dim">/memoria planilha = weg fixa · -tcc bloqueia · solta · limpar esquece · só vota quem tem ≥70% num projeto</span>');
+        }
+        // "<pista> = projeto" · "<pista> -projeto" · "<pista> solta" · "<pista> limpar"
+        let pista = raw, acao = null, proj = null;
+        let mm;
+        if ((mm = raw.match(/^(.+?)\s*=\s*#?(\S+)$/))) { pista = mm[1]; acao = 'fixar'; proj = mm[2].toLowerCase(); }
+        else if ((mm = raw.match(/^(.+?)\s+-#?(\S+)$/))) { pista = mm[1]; acao = 'bloquear'; proj = mm[2].toLowerCase(); }
+        else if ((mm = raw.match(/^(.+?)\s+(solta|soltar|desafixar)$/i))) { pista = mm[1]; acao = 'desafixar'; }
+        else if ((mm = raw.match(/^(.+?)\s+(limpar|esquecer|zerar)$/i))) { pista = mm[1]; acao = 'limpar'; }
+        if (proj && !reg.projects.includes(proj)) throw new CmdError('E_404', 'task', `projeto #${proj} não existe`, `projetos: ${reg.projects.map(p => '#' + esc(p)).join(' ')}`);
+        const p = acharPessoa(pista, pessoasDe(S.records || []));
+        if (p.ambiguo) throw new CmdError('E_AMBIGUO', 'pessoa', `"${pista}" bate com ${p.ambiguo.map(x => x.nome).join(', ')}`, 'use o nome completo');
+        const chave = p.pessoa ? 'pessoa:' + p.pessoa.id : chavePalavra(pista);
+        if (!acao) { term.print(`── memória · ${esc(pista)} ${'─'.repeat(8)}`, 'sep'); return term.print(linha(m.info(chave)), 'tbl'); }
+        const e = await gravarMemoria(chave, acao, proj, p.pessoa ? p.pessoa.nome : pista);
+        S.undo.push({ label: 'memória', items: [], created: [e.id] });
+        S.lastLatency = t.elapsed();
+        term.ok('task', `${{ fixar: 'fixado', bloquear: 'bloqueado', desafixar: 'solto', limpar: 'esquecido' }[acao]} · ${linha(mem().info(chave))} <span class="c-meta">· /desfazer volta · ${t.id}</span>`);
         ctx.ui.pulse('act');
       },
     },

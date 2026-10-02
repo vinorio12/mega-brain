@@ -27,6 +27,9 @@ export function palavrasDe(texto, excluir = new Set()) {
   return [...new Set(tokens(texto).filter(w => w.length >= 3 && !/^\d+$/.test(w) && !STOP.has(w) && !excluir.has(w)))];
 }
 
+// chave de uma palavra (ou expressão) na memória: 'palavra:banca de defesa'
+export const chavePalavra = w => 'palavra:' + tokens(w).join(' ');
+
 const cache = new WeakMap();
 // Versão com cache: recalcula só quando as entradas mudam (a prévia chama a cada tecla).
 export function memoriaDe(entries = [], records = [], opts = {}) {
@@ -81,7 +84,7 @@ export function criarMemoria(entries = [], records = [], { reg = registry([]), p
     for (const w of palavrasDe(e.text, excluir)) soma('palavra:' + w, p, peso, e.ts || 0);
   }
 
-  const rotulo = k => (k.startsWith('pessoa:') ? nomeDe.get(k.slice(7)) || '?' : k.slice(7));
+  const rotulo = k => (k.startsWith('pessoa:') ? nomeDe.get(k.slice(7)) || '?' : k.slice(k.indexOf(':') + 1));
 
   // o que a memória sabe de uma pista
   function info(k) {

@@ -10,7 +10,7 @@ import { createTerminal } from '../js/terminal.js';
 import { parseDue, fmtDue, findDate } from '../js/dates.js';
 import { parseValor, findValor, fmtValor } from '../js/valores.js';
 import { deriveState, describeState, readIntent } from '../js/state.js';
-import { viewName, viewGroups, calendarModel, parseMonth } from '../js/views.js';
+import { viewName, viewGroups, calendarModel, parseMonth, parseVerArgs } from '../js/views.js';
 import { parseLink, parseSnippet, shortUrl, searchAll } from '../js/acervo.js';
 import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord, guessProject, dueFor, fillByRules, matchStatus, briefing, isNoteKind, CONTENT_KINDS, editPalavras } from '../js/tasks.js';
 import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
@@ -372,6 +372,15 @@ describe('visões (views.js)', () => {
     T('f', 'tcc', 'a fazer', '2026-09-20'), T('g', 'tcc', 'a fazer', '2026-11-03'),
   ];
   test('viewName entende apelidos', () => eq(['kanban', 'quadro', 'cal', 'agenda', 'projetos', 'xyz'].map(viewName), ['kanban', 'kanban', 'calendario', 'calendario', 'lista', null]));
+  test('/ver lê status ("a fazer", "@fazendo") e não inventa projeto', () => eq(
+    ['a fazer', 'fazendo', '@esperando tcc', 'kanban fazendo', 'kanban tcc', 'fazer', 'xyz', 'todas'].map(a => parseVerArgs(a, { reg, now })),
+    [{ view: null, proj: null, month: null, status: 'a fazer' }, { view: null, proj: null, month: null, status: 'fazendo' },
+      { view: null, proj: 'tcc', month: null, status: 'esperando' }, { view: 'kanban', proj: null, month: null, status: 'fazendo' },
+      { view: 'kanban', proj: 'tcc', month: null, status: null }, { erro: 'fazer' }, { erro: 'xyz' }, { view: null, proj: null, month: null, status: null }]));
+  test('filtro de status: só elas; no kanban, só a coluna', () => {
+    eq(viewGroups(E, 'kanban', { reg, now, status: 'a fazer' }).groups.map(g => [g.key, g.items.map(e => e.text)]), [['a fazer', ['f', 'a', 'g']]]);
+    eq(viewGroups(E, 'prazo', { reg, now, status: 'fazendo' }).list, ['b']);
+  });
   test('lista: um grupo por projeto, na ordem; feita antiga some', () => {
     const r = viewGroups(E, 'lista', { reg, now });
     eq(r.groups.map(g => [g.key, g.items.map(e => e.text)]), [['tcc', ['f', 'a', 'g', 'c']], ['weg', ['b']], ['pessoal', ['d']]]);
@@ -763,6 +772,8 @@ describe('provedor de regras (provedor-regras.js · Fase 2)', () => {
   test('- com marcador errado devolve o erro (como hoje)', () => eq([P('- x >nunca').erro, P('- x !urgente').erro.codigo], [{ codigo: 'prazo', token: '>nunca' }, 'prioridade']));
   test('texto livre com marcador errado não é tarefa', () => eq(P('que dia lindo !uau').tipo, 'nota'));
   test('data passada não vira prazo de tarefa', () => eq(P('- pagar conta ontem').campos.texto, 'pagar conta ontem'));
+  test('palavra que sobraria sozinha não é data ("- segunda @fazendo")', () => eq(
+    [P('- segunda @fazendo').campos.texto, P('- amanhã').campos.texto, P('- sexta #tcc').campos.texto], ['segunda', 'amanhã', 'sexta']));
   test('verbo: ligar, ler, ir sim · celular, lugar, por não', () => eq(
     ['ligar pro joão', 'ler o cap 3', 'ir no banco', 'celular quebrou', 'lugar bonito', 'por favor né'].map(comecaComVerbo), [true, true, true, false, false, false]));
   test('montar dá a mesma entrada que os comandos de hoje', () => {
@@ -827,6 +838,25 @@ describe('palavras-chave por projeto (Fase 2)', () => {
     await s.run('/palavras');
     ok(/orientador, banca/.test(s.term.text()), 'lista as palavras');
     await throws(() => s.run('/palavras xyz +a'), 'E_404');
+  });
+});
+
+describe('/ver por status (bug do kanban vazio)', () => {
+  const T = { id: 'T0001', elapsed: () => 1 };
+  test('/ver kanban e depois /ver a fazer mostram as tarefas; palavra estranha dá erro', async () => {
+    const s = setup([]);
+    s.ctx.store.subscribe(() => {});
+    await s.run('/t primeira >sex');
+    await s.run('/t segunda @fazendo');
+    await s.run('/ver kanban');
+    const antes = s.term.out.length;
+    await s.run('/ver a fazer');
+    const novo = s.term.out.slice(antes).map(x => x.join(' ')).join('\n');
+    ok(/primeira/.test(novo) && !/segunda/.test(novo), novo);
+    await s.run('/ver fazendo');
+    ok(/segunda/.test(s.term.text()));
+    eq(s.S.view, 'kanban'); // filtrar por status não troca a visão salva
+    await throws(() => s.run('/ver xyz'), 'E_ARG');
   });
 });
 

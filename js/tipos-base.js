@@ -64,6 +64,8 @@ export function registrarTiposBase(r = REGISTRO) {
       // data falada ("amanhã", "dia 15"), só se não tem >prazo e se não é passado
       let data = /(^|\s)>\S/.test(raw) ? null : findDate(raw, now);
       if (data && data.data < today) data = null;
+      // se tirar a data não sobra texto ("segunda @fazendo"), a palavra é a tarefa, não a data
+      if (data && !data.resto.split(/\s+/).some(w => w && !/^[#@>!]/.test(w))) data = null;
       const verbo = comecaComVerbo(raw);
 
       let confianca = explicito ? 1 : marcador ? 0.9 : intro ? 0.8 : verbo && data ? 0.8 : verbo ? 0.6 : data && data.data > today ? 0.6 : 0;

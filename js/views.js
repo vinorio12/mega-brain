@@ -9,11 +9,36 @@
 // Todas devolvem `list`: os ids na ordem da numeração t1, t2...
 
 import { dayKey } from './util.js';
-import { isTask, doneAt, statusOf, projectOf, registry, isFinalStatus, byDue, groupTasks } from './tasks.js';
+import { isTask, doneAt, statusOf, projectOf, registry, isFinalStatus, byDue, groupTasks, matchStatus } from './tasks.js';
 
 export const VIEWS = ['prazo', 'lista', 'status', 'kanban', 'calendario'];
 const VIEW_ALIASES = { prazo: 'prazo', prazos: 'prazo', lista: 'lista', projeto: 'lista', projetos: 'lista', status: 'status', kanban: 'kanban', quadro: 'kanban', calendario: 'calendario', 'calendário': 'calendario', cal: 'calendario', agenda: 'calendario', mes: 'calendario', 'mês': 'calendario' };
 export const viewName = s => VIEW_ALIASES[String(s || '').toLowerCase()] || null;
+
+// Lê o que vem depois do /ver: visão, projeto (só os que existem), status ("a fazer", "@fazendo"), mês.
+//   "kanban tcc" · "a fazer" · "fazendo tcc" · "calendario +1" · "todas"
+// Devolve { view, proj, month, status } ou { erro: 'palavra' } (nada de projeto inventado: tela vazia sem motivo).
+export function parseVerArgs(arg, { reg = registry([]), ctx = null, now = new Date() } = {}) {
+  const words = String(arg || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  let view = null, proj = ctx, month = null;
+  const resto = [];
+  for (const w of words) {
+    const v = viewName(w);
+    if (v && !view) { view = v; continue; }
+    const mo = parseMonth(w, now);
+    if (mo) { month = mo; view = view || 'calendario'; continue; }
+    if (['todas', 'tudo', '*', '~'].includes(w)) { proj = null; continue; }
+    const p = w.replace(/^#/, '');
+    if (reg.projects.includes(p)) { proj = p; continue; }
+    resto.push(w.replace(/^@/, ''));
+  }
+  let status = null;
+  if (resto.length) {
+    status = matchStatus(resto.join(' '), reg.statuses);
+    if (!status) return { erro: resto.join(' ') };
+  }
+  return { view, proj, month, status };
+}
 
 const inProj = (e, proj, projects) => !proj || projectOf(e, projects) === proj || (e.tags || []).includes(proj);
 // tarefas que aparecem nas visões: abertas + concluídas hoje (riscadas até a meia-noite)
@@ -22,7 +47,9 @@ function visible(entries, { proj, reg, now }) {
   return entries.filter(e => isTask(e) && inProj(e, proj, reg.projects) && (!doneAt(e) || dayKey(new Date(doneAt(e))) === today));
 }
 
-export function viewGroups(entries, view, { reg = registry([]), proj = null, now = new Date() } = {}) {
+export function viewGroups(entries, view, { reg = registry([]), proj = null, now = new Date(), status = null } = {}) {
+  // /ver fazendo: só as tarefas desse status (no kanban, só a coluna dele)
+  if (status) entries = entries.filter(e => isTask(e) && statusOf(e) === status);
   if (view === 'prazo') return groupTasks(entries, { proj, now, projects: reg.projects });
   const tasks = visible(entries, { proj, reg, now });
   let groups;
@@ -42,6 +69,7 @@ export function viewGroups(entries, view, { reg = registry([]), proj = null, now
     groups = names.map(s => ({ key: s, title: '@' + s, final: isFinalStatus(reg, s), items: tasks.filter(e => statusOf(e) === s).sort(byDue) }));
   }
   if (view !== 'kanban') groups = groups.filter(g => g.items.length);
+  else if (status) groups = groups.filter(g => g.key === status);
   return { groups, list: groups.flatMap(g => g.items.map(e => e.id)) };
 }
 

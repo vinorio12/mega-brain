@@ -12,7 +12,7 @@
 import { esc, hl, dayKey, hhmm, ddmm, dur, lev, kb, tagsOf, uid, CmdError, VERSION, DOW } from './util.js';
 import { geocode, locate, fetchWeather, savedPlace, describe } from './weather.js';
 import { fmtDue, fmtDia, parseDue } from './dates.js';
-import { VIEWS, viewName, viewGroups, calendarModel, parseMonth } from './views.js';
+import { VIEWS, viewName, viewGroups, calendarModel, parseMonth, parseVerArgs } from './views.js';
 import { isLink, isSnippet, isAcervo, safeUrl, parseLink, parseSnippet, shortUrl, searchAll } from './acervo.js';
 import {
   isTask, doneAt, projName, parseTaskInput, newTask, groupTasks, doneHistory, projectsSummary, taskNumbers, taskStats,
@@ -353,14 +353,15 @@ export function createCommands(ctx) {
   // a visão atual fica no estado (S.view); o app carrega/salva no navegador (mb.view.v1)
   const currentView = () => viewName(S.view) || 'prazo';
 
-  function showView(view, proj = S.ctx, month = null) {
+  function showView(view, proj = S.ctx, month = null, status = null) {
     if (view === 'calendario') return showCalendar(proj, month);
-    const { groups, list } = viewGroups(S.entries, view, { reg: ctx.reg(), proj });
-    if (!list.length && view !== 'kanban') {
+    const { groups, list } = viewGroups(S.entries, view, { reg: ctx.reg(), proj, status });
+    if (!list.length && (view !== 'kanban' || status)) {
       S.taskList = [];
+      if (status) return term.say(`nenhuma tarefa <span class="c-int">@${esc(status)}</span> em ${esc(projLabel(proj))}.`);
       return term.say(`nenhuma tarefa em ${esc(projLabel(proj))}. crie com <span class="c-int">- revisar cap 2${proj ? ' #' + esc(proj) : ''} >sex</span>`);
     }
-    term.print(`── ${view} · ${esc(projLabel(proj))} ${'─'.repeat(10)}`, 'sep');
+    term.print(`── ${view}${status ? ' · @' + esc(status) : ''} · ${esc(projLabel(proj))} ${'─'.repeat(10)}`, 'sep');
     if (view === 'kanban') showKanban(groups, list);
     else showTaskGroups(groups, list, g => g.title, view === 'lista' ? ['projeto'] : view === 'status' ? ['status'] : []);
     term.print('<span class="dim">/feito t1 · /mover t1 fazendo · /editar t1 >sex · /ver muda a visão</span>');
@@ -614,28 +615,25 @@ export function createCommands(ctx) {
       name: 'ver', alias: ['v', 'visao'], data: true, args: '[prazo | lista | status | kanban | calendario] [projeto] [mês]',
       desc: 'muda a visão das tarefas (fica salva) · ex: /ver kanban · /ver lista tcc · /ver calendario +1',
       run(arg) {
-        const words = String(arg).trim().toLowerCase().split(/\s+/).filter(Boolean);
-        let view = null, proj = S.ctx, month = null;
-        for (const w of words) {
-          const v = viewName(w);
-          if (v && !view) { view = v; continue; }
-          const mo = parseMonth(w);
-          if (mo) { month = mo; view = view || 'calendario'; continue; }
-          if (['todas', 'tudo', '*', '~'].includes(w)) { proj = null; continue; }
-          const p = projName(w);
-          if (!p) throw usage('ver', 'kanban  ·  lista tcc  ·  calendario +1');
-          proj = p;
+        const words = String(arg).trim().split(/\s+/).filter(Boolean);
+        const reg = ctx.reg();
+        const a = parseVerArgs(arg, { reg, ctx: S.ctx });
+        if (a.erro) {
+          throw new CmdError('E_ARG', 'task', `não conheço "${a.erro}" (não é visão, projeto nem status)`,
+            `visões: ${VIEWS.map(v => `<span class="c-int">${v}</span>`).join(' ')} · projetos: ${reg.projects.map(p => `<span class="c-act">${esc(p)}</span>`).join(' ')} · status: ${reg.statuses.map(s => `<span class="c-int">${esc(s.name)}</span>`).join(', ')}`);
         }
+        let { view, proj, month, status } = a;
         if (!words.length) {
           const cur = currentView();
           term.print(`── visões ${'─'.repeat(10)}`, 'sep');
           VIEWS.forEach(v => term.print(`<span class="k ${v === cur ? 'c-act' : 'c-int'}">${v === cur ? '▸ ' : '  '}${v}</span><span class="dim">${{ prazo: 'atrasadas · hoje · próximas · sem prazo', lista: 'agrupada por projeto', status: 'agrupada por status', kanban: 'colunas por status', calendario: 'mês por prazo (agenda no celular)' }[v]}</span>`, 'tbl'));
-          return term.print('<span class="dim">/ver kanban troca · /tarefas usa a visão atual</span>');
+          return term.print('<span class="dim">/ver kanban troca · /ver fazendo filtra por status · /tarefas usa a visão atual</span>');
         }
+        // só troca a visão salva quando você diz qual ("/ver fazendo" filtra sem mudar a visão)
+        if (view) { S.view = view; try { localStorage.setItem(VIEW_KEY, view); } catch {} }
         view = view || currentView();
-        S.view = view;
-        try { localStorage.setItem(VIEW_KEY, view); } catch {}
-        showView(view, proj, month);
+        if (status && view === 'calendario') view = 'status';
+        showView(view, proj, month, status);
       },
     },
     {

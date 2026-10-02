@@ -1,6 +1,6 @@
 // Ponto de partida: liga as peças, faz o boot e cuida do login.
 
-import { esc, dayKey, tagsOf, sleep, uid, CmdError, VERSION } from './util.js';
+import { esc, sleep, uid, CmdError, VERSION } from './util.js';
 import { createLocalStore, LOCAL_KEY } from './store.js';
 import { createCloud, createCloudStore } from './cloud.js';
 import { SUPABASE_URL, SUPABASE_KEY, OPERATORS } from './config.js';
@@ -94,12 +94,8 @@ async function run(text) {
     if (S.mode === 'password') return submitPassword(text);
     if (S.mode === 'code') return submitCode(text);
     if (!ctx.store) return lockedError();
-    // colou um link → acervo · começou com aspas → texto guardado no acervo
-    if (/^https?:\/\/\S/i.test(text)) return term.task('guardar link', (signal, t) => ctx.commands.addLink(text, t), { kind: 'exec' });
-    if (/^["“]\s*\S/.test(text)) return term.task('guardar texto', (signal, t) => ctx.commands.addSnippet(text, t), { kind: 'exec' });
-    // "- revisar cap 2 #tcc >sex" vira tarefa
-    if (/^-\s+\S/.test(text)) return term.task('nova tarefa', (signal, t) => ctx.commands.addTask(text.replace(/^-\s+/, ''), t), { kind: 'exec' });
-    return capture(text);
+    // texto livre: o intérprete decide o que é (link, texto, tarefa, nota...) · veja js/interpretar.js
+    return term.task(ctx.commands.rotuloCaptura(text), (signal, t) => ctx.commands.capturar(text, t), { kind: 'exec' });
   }
 
   const [name, ...rest] = text.slice(1).split(/\s+/);
@@ -120,24 +116,6 @@ function lockedError() {
   ui.pulse('warn');
   term.error(new CmdError('E_LOCKED', 'auth', 'memória bloqueada até você entrar',
     S.mode ? 'responda o que o prompt está pedindo' : 'digite <span class="c-hud">/entrar</span>'));
-}
-
-// Texto livre vira uma entrada na inbox.
-async function capture(text) {
-  await term.task('captura', async (signal, t) => {
-    const now = new Date();
-    // dentro de uma aba, a nota ganha a #tag dela
-    if (S.ctx && !tagsOf(text).includes(S.ctx)) text += ' #' + S.ctx;
-    const tags = tagsOf(text);
-    const entry = await ctx.store.add({ text, tags, kind: 'nota', ts: now.getTime(), day: dayKey(now) });
-    S.lastLatency = t.elapsed();
-    const n = S.entries.findIndex(e => e.id === entry.id) + 1;
-    const tagHtml = tags.length ? ' · ' + tags.map(x => `<span class="c-act">#${esc(x)}</span>`).join(' ') : '';
-    const queued = ctx.store.pending() > 0;
-    term[queued ? 'warn' : 'ok']('store',
-      `${queued ? 'capturado · na fila, sobe quando a rede voltar' : 'capturado'} <span class="c-meta">#${n}</span>${tagHtml} <span class="c-meta">· ${t.id} · ${S.lastLatency}ms</span>`);
-    ui.pulse(queued ? 'warn' : 'act');
-  }, { kind: 'exec' });
 }
 
 /* ================= memória ================= */

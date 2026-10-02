@@ -20,6 +20,8 @@ import {
 } from './tasks.js';
 import { eventsOf } from './historico.js';
 import { fmtValor } from './valores.js';
+import { REGISTRO } from './tipos.js';
+import { previa, interpretar } from './interpretar.js';
 
 export const PHASES = [
   ['0', 'esqueleto · terminal, hud, inbox', 'ok'],
@@ -174,26 +176,69 @@ export function createCommands(ctx) {
     return `<a class="lnk" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(shortUrl(url, 32))}</a>${ctxText ? ' ' + hl(ctxText) : ''}`;
   }
 
+  /* ---------- intérprete: tudo o que é escrito passa por aqui ---------- */
+
+  // o que o intérprete precisa saber: projetos e status, entradas (histórico de projetos), aba atual
+  const ictx = (extra = {}) => ({ reg: ctx.reg(), entries: S.entries, aba: S.ctx, now: new Date(), ...extra });
+
+  // Grava o que o intérprete entendeu (qualquer tipo registrado) e mostra a confirmação. Tudo entra no /desfazer.
+  async function salvar(interp, t) {
+    const tipo = REGISTRO.get(interp.tipo);
+    const e = await ctx.store.add(tipo.montar(interp, ictx()));
+    S.lastLatency = t.elapsed();
+    const queued = ctx.store.pending() > 0;
+    const meta = `<span class="c-meta">· ${t.id} · ${S.lastLatency}ms</span>`;
+    let n = null;
+    if (interp.tipo === 'tarefa') {
+      S.undo.push({ label: 'tarefa criada', items: [], created: [e.id] });
+      // entra no fim da lista atual, pra já ter um número
+      if (!S.taskList?.length) S.taskList = groupTasks(S.entries, { proj: S.ctx, projects: ctx.reg().projects }).list;
+      else if (!S.taskList.includes(e.id)) S.taskList.push(e.id);
+      n = 't' + (S.taskList.indexOf(e.id) + 1);
+      term[queued ? 'warn' : 'ok']('task', `tarefa${queued ? ' na fila' : ''} <span class="c-meta">${n}</span> · ${hl(e.text)} ${meta}`);
+    } else if (interp.tipo === 'link') {
+      S.undo.push({ label: 'link guardado', items: [], created: [e.id] });
+      n = nums().get(e.id) || '';
+      term.ok('acervo', `link guardado <span class="c-meta">${n}</span> · ${linkHtml(e)} <span class="c-meta">· ${t.id} · /acervo lista</span>`);
+    } else if (interp.tipo === 'trecho') {
+      S.undo.push({ label: 'texto guardado', items: [], created: [e.id] });
+      n = nums().get(e.id) || '';
+      term.ok('acervo', `texto guardado <span class="c-meta">${n}</span> · ${hl(e.text)} <span class="c-meta">· ${t.id} · /acervo lista</span>`);
+    } else if (interp.tipo === 'nota') {
+      S.undo.push({ label: 'nota capturada', items: [], created: [e.id] });
+      n = nums().get(e.id) || '';
+      const tagHtml = e.tags?.length ? ' · ' + e.tags.map(x => `<span class="c-act">#${esc(x)}</span>`).join(' ') : '';
+      term[queued ? 'warn' : 'ok']('store', `${queued ? 'capturado · na fila, sobe quando a rede voltar' : 'capturado'} <span class="c-meta">${esc(n)}</span>${tagHtml} ${meta}`);
+    } else {
+      // gasto, entrada, treino...: só o dado bruto por enquanto
+      S.undo.push({ label: `${tipo.rotulo} guardado`, items: [], created: [e.id] });
+      term[queued ? 'warn' : 'ok']('store', `${esc(tipo.rotulo)} guardado${queued ? ' na fila' : ''} · ${hl(e.text)} ${meta}`);
+    }
+    ctx.ui.pulse(queued ? 'warn' : 'act');
+    return { e, n };
+  }
+
+  // Texto livre digitado no terminal (sem "/"): o intérprete decide o que é.
+  async function capturar(text, t) {
+    const r = previa(text, ictx());
+    if (r.tipo === 'link' || r.tipo === 'trecho') return salvar(r, t);
+    if (/^-\s+\S/.test(text)) return addTask(text.replace(/^-\s+/, ''), t);
+    // (etapa 9a: o resto continua virando nota, como antes)
+    return salvar(previa(text, ictx({ forcar: 'nota' })), t);
+  }
+  // rótulo do processo que aparece enquanto grava
+  const rotuloCaptura = text => ({ link: 'guardar link', trecho: 'guardar texto', tarefa: 'nova tarefa' }[/^-\s+\S/.test(text) ? 'tarefa' : previa(text, ictx())?.tipo] || 'captura');
+
   // Acervo: guardar link e texto (mesma fila, nuvem e desfazer de tudo)
   async function addLink(line, t) {
-    const l = parseLink(line);
-    if (!l) throw new CmdError('E_LINK', 'acervo', 'link inválido', 'só http:// e https://');
-    const now = new Date();
-    const e = await ctx.store.add({ kind: 'link', text: `${l.url}${l.contexto ? ' ' + l.contexto : ''}`, tags: l.tags, ts: now.getTime(), day: dayKey(now), data: { url: l.url, contexto: l.contexto } });
-    S.undo.push({ label: 'link guardado', items: [], created: [e.id] });
-    S.lastLatency = t.elapsed();
-    term.ok('acervo', `link guardado <span class="c-meta">${nums().get(e.id) || ''}</span> · ${linkHtml(e)} <span class="c-meta">· ${t.id} · /acervo lista</span>`);
-    ctx.ui.pulse('act');
+    const r = previa(String(line).trim(), ictx());
+    if (r?.tipo !== 'link') throw new CmdError('E_LINK', 'acervo', 'link inválido', 'só http:// e https://');
+    await salvar(r, t);
   }
   async function addSnippet(text, t) {
-    const s = parseSnippet('"' + String(text).replace(/^["“”]/, ''));
-    if (!s) throw usage('guardar', 'texto curto pra guardar');
-    const now = new Date();
-    const e = await ctx.store.add({ kind: 'trecho', text: s.text, tags: s.tags, ts: now.getTime(), day: dayKey(now), data: {} });
-    S.undo.push({ label: 'texto guardado', items: [], created: [e.id] });
-    S.lastLatency = t.elapsed();
-    term.ok('acervo', `texto guardado <span class="c-meta">${nums().get(e.id) || ''}</span> · ${hl(s.text)} <span class="c-meta">· ${t.id} · /acervo lista</span>`);
-    ctx.ui.pulse('act');
+    const r = previa('"' + String(text).trim().replace(/^["“”]/, ''), ictx());
+    if (r?.tipo !== 'trecho') throw usage('guardar', 'texto curto pra guardar');
+    await salvar(r, t);
   }
 
   // busca e acervo: um grupo por tipo, cada um com a sua cara
@@ -382,25 +427,13 @@ export function createCommands(ctx) {
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
   // Cria a tarefa: o que você informou vale; o resto as regras decidem (e a linha "↳ auto" mostra).
+  // (/t e "- "; o intérprete com o tipo tarefa forçado, então a data falada também vale: "/t ligar amanhã")
   async function addTask(raw, t) {
-    const reg = ctx.reg();
-    const p = parseTaskInput(raw, { ctx: S.ctx, reg });
-    if (p.error === 'vazio') throw usage('t', 'revisar cap 2 #tcc @fazendo >sex !alta');
-    if (p.error) throw parseError(p);
-    const { values, auto } = fillByRules(p, { entries: S.entries, reg });
-    const e = await ctx.store.add(newTask({ text: p.text, tags: [...new Set([values.projeto, ...p.tags])], ...values, auto: { campos: auto, fonte: 'regra' } }));
-    S.undo.push({ label: 'tarefa criada', items: [], created: [e.id] });
-    // entra no fim da lista atual, pra já ter um número
-    if (!S.taskList?.length) S.taskList = groupTasks(S.entries, { proj: S.ctx, projects: reg.projects }).list;
-    else if (!S.taskList.includes(e.id)) S.taskList.push(e.id);
-    const n = S.taskList.indexOf(e.id) + 1;
-    S.lastLatency = t.elapsed();
-    const queued = ctx.store.pending() > 0;
-    term[queued ? 'warn' : 'ok']('task',
-      `tarefa${queued ? ' na fila' : ''} <span class="c-meta">t${n}</span> · ${hl(p.text)}` +
-      ` <span class="c-meta">· ${t.id} · ${S.lastLatency}ms</span>`);
-    autoLine(values, auto, n);
-    ctx.ui.pulse(queued ? 'warn' : 'act');
+    const r = previa(raw, ictx({ forcar: 'tarefa' }));
+    if (!r || r.erro?.codigo === 'vazio') throw usage('t', 'revisar cap 2 #tcc @fazendo >sex !alta');
+    if (r.erro) throw parseError({ error: r.erro.codigo, token: r.erro.token });
+    const { n } = await salvar(r, t);
+    autoLine(r.campos, r.auto, n.slice(1));
   }
 
   // /editar e /mover: muda só os campos informados; o que você corrigir deixa de ser "auto"
@@ -1148,6 +1181,9 @@ export function createCommands(ctx) {
     get,
     notFound,
     addTask,
+    capturar,
+    rotuloCaptura,
+    salvar,
     addLink,
     addSnippet,
     // lista leve dos comandos (nome, atalhos, uso, descrição) pro painel de contexto

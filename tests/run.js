@@ -828,6 +828,45 @@ describe('palavras-chave por projeto (Fase 2)', () => {
   });
 });
 
+describe('captura pelo intérprete (etapa 9a · mesmo comportamento)', () => {
+  const T = { id: 'T0001', elapsed: () => 1 };
+  test('link, texto, "- " e nota vão pro lugar de sempre', async () => {
+    const s = setup([]);
+    for (const line of ['https://x.com/a artigo #tcc', '"frase boa"', '- revisar cap 2 #tcc >sex', 'ideia solta']) await s.ctx.commands.capturar(line, T);
+    eq(s.S.entries.map(e => [e.kind, e.text]), [['link', 'https://x.com/a artigo #tcc'], ['trecho', 'frase boa'], ['tarefa', 'revisar cap 2'], ['nota', 'ideia solta']]);
+    ok(/link guardado/.test(s.term.text()) && /texto guardado/.test(s.term.text()) && /tarefa/.test(s.term.text()) && /capturado/.test(s.term.text()));
+  });
+  test('na aba, a nota ganha a #tag', async () => {
+    const s = setup([]);
+    s.S.ctx = 'weg';
+    await s.ctx.commands.capturar('reunião boa', T);
+    eq([s.S.entries[0].text, s.S.entries[0].tags], ['reunião boa #weg', ['weg']]);
+  });
+  test('nota capturada agora também sai com /desfazer', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('ideia solta', T);
+    await s.run('/desfazer');
+    eq(s.S.entries.length, 0);
+  });
+  test('/t entende data falada', async () => {
+    const s = setup([]);
+    await s.run('/t ligar pro dentista amanhã');
+    const e = s.S.entries[0];
+    eq(e.text, 'ligar pro dentista');
+    ok(e.data.prazo && !e.data.auto.campos.includes('prazo'), 'prazo veio da frase, não é auto');
+  });
+  test('"- " com prazo errado continua dando E_PRAZO', async () => {
+    const s = setup([]);
+    await throws(() => s.ctx.commands.capturar('- x >nunca', T), 'E_PRAZO');
+  });
+  test('prévia da direita lê com o mesmo motor', () => {
+    const i = readIntent('- ligar pro banco sexta', { now: new Date(2026, 9, 1, 12) });
+    eq([i.type, i.text, i.prazo, i.auto], ['task', 'ligar pro banco', '2026-10-02', ['projeto', 'status', 'prioridade']]);
+    eq(readIntent('https://x.com/a oi').type, 'link');
+    eq(readIntent('"guardar isto"').text, 'guardar isto');
+  });
+});
+
 describe('régua de frases (tests/frases.js · interpretar com regras)', () => {
   // frase com `palavras` (ex: { tcc: ['orientador'] }) roda com essas palavras-chave nos projetos
   const ctxBase = f => ({

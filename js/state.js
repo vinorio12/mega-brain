@@ -1,8 +1,8 @@
 // Estado do MB Core e leitura do que o operador está digitando. Funções puras, testadas em tests/.
 
-import { tagsOf, lev } from './util.js';
-import { parseTaskInput, fillByRules, registry } from './tasks.js';
-import { parseLink, parseSnippet } from './acervo.js';
+import { lev } from './util.js';
+import { registry } from './tasks.js';
+import { previa } from './interpretar.js';
 
 // Cada estado: rótulo, descrição curta e tom de cor (token do CSS)
 export const STATE_INFO = {
@@ -45,7 +45,7 @@ export function describeState(key, { tasks = [], mode = null } = {}) {
 
 // O que vai acontecer quando o operador apertar Enter?
 //   catalog: [{ name, alias, args, desc }] dos comandos
-export function readIntent(text, { mode = null, ctx = null, catalog = [], reg = registry([]), entries = [] } = {}) {
+export function readIntent(text, { mode = null, ctx = null, catalog = [], reg = registry([]), entries = [], now = new Date() } = {}) {
   const raw = String(text);
   if (mode) return { type: 'login', field: mode };
   const v = raw.trim();
@@ -63,21 +63,21 @@ export function readIntent(text, { mode = null, ctx = null, catalog = [], reg = 
     return { type: 'unknown', query: n, near: near.slice(0, 3) };
   }
 
-  // acervo: link colado ou texto entre aspas
-  const link = parseLink(v);
-  if (link) return { type: 'link', ...link };
-  const snip = parseSnippet(v);
-  if (snip) return { type: 'trecho', ...snip };
+  // texto livre: a mesma leitura que o Enter vai fazer (o intérprete, só regras: instantâneo)
+  const ictx = { reg, entries, aba: ctx, now };
+  const r = previa(v, ictx);
+  if (r.tipo === 'link') return { type: 'link', url: r.campos.url, contexto: r.campos.contexto || '', tags: r.campos.tags || [] };
+  if (r.tipo === 'trecho') return { type: 'trecho', text: r.campos.texto, tags: r.campos.tags || [] };
 
   if (/^-\s+\S/.test(v)) {
-    const p = parseTaskInput(v.replace(/^-\s+/, ''), { ctx, reg });
-    if (p.error) return { type: 'task-error', error: p.error, token: p.token };
+    const t = previa(v.replace(/^-\s+/, ''), { ...ictx, forcar: 'tarefa' });
+    if (t.erro) return { type: 'task-error', error: t.erro.codigo, token: t.erro.token };
     // prévia completa: o que foi informado + o que as regras vão decidir
-    const { values, auto } = fillByRules(p, { entries, reg });
-    return { type: 'task', ...p, ...values, auto };
+    const c = t.campos;
+    return { type: 'task', text: c.texto, tags: c.tags || [], projeto: c.projeto, status: c.status, prazo: c.prazo || null, prioridade: c.prioridade, auto: t.auto };
   }
 
-  let note = v;
-  if (ctx && !tagsOf(note).includes(ctx)) note += ' #' + ctx;
-  return { type: 'note', text: note, tags: tagsOf(note) };
+  // (etapa 9a: o resto continua nota)
+  const n = previa(v, { ...ictx, forcar: 'nota' });
+  return { type: 'note', text: n.campos.texto, tags: n.campos.tags || [] };
 }

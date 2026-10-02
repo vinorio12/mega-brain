@@ -24,6 +24,7 @@ import { criarInterpretador, interpretar, previa } from '../js/interpretar.js';
 import { criarProvedorIA, travaDiaria, montarPedido } from '../js/provedor-ia.js';
 import { INTERPRETADOR } from '../js/config.js';
 import { registroAprendizado, resumoAprendizado, exportarFrases } from '../js/aprendizado.js';
+import { montarContexto, estimarTokens } from '../js/contexto.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -969,6 +970,58 @@ describe('aprendizado (aprendizado.js · Fase 2)', () => {
     await s.run('/aprendizado exportar');
     ok(/frase: 'uber 18', esperado: \{ tipo: 'gasto' \}/.test(s.term.text()), s.term.text());
     eq(s.S.entries.filter(isNoteKind).map(e => e.text), ['comprar pão'], 'nada de aprendizado no /inbox');
+  });
+});
+
+describe('montarContexto (contexto.js · pra Fase 6)', () => {
+  const now = new Date(2026, 9, 8, 12, 0); // quinta, 08/10
+  const at = (d, h = 10) => new Date(2026, 9, d, h).getTime();
+  const tk = (id, text, data, ts = at(7)) => ({ id, kind: 'tarefa', text, tags: [], ts, day: '2026-10-07', data: { status: 'a fazer', prazo: null, prioridade: 'média', feito_em: null, ...data } });
+  const ev = (alvo, ts, mudancas, acao = 'alterada') => ({ id: 'e' + ts + alvo, kind: 'evento', text: acao, ts, data: { alvo, acao, mudancas } });
+  const E = [
+    tk('t1', 'revisar cap 2', { projeto: 'tcc', prazo: '2026-10-05', prioridade: 'alta' }, at(1)),
+    tk('t2', 'falar com orientador', { projeto: 'tcc', status: 'esperando' }, at(1)),
+    tk('t3', 'relatório mensal', { projeto: 'weg', prazo: '2026-10-08' }),
+    tk('t4', 'planilha', { projeto: 'weg', status: 'feito', feito_em: at(6) }),
+    tk('t5', 'arrumar quarto', { projeto: 'pessoal' }, new Date(2026, 8, 20, 12).getTime()),
+    tk('t6', 'dentista', { projeto: 'pessoal', prazo: '2026-10-12' }),
+    { id: 'g1', kind: 'gasto', text: 'gastei 30 no almoço', tags: [], ts: at(7), day: '2026-10-07', data: { valor: 3000, descricao: 'almoço', data: '2026-10-07' } },
+    { id: 'w1', kind: 'treino', text: 'treinei peito 1h', tags: [], ts: at(6), day: '2026-10-06', data: { descricao: 'treinei peito 1h', duracao_min: 60, data: '2026-10-06' } },
+  ];
+  const EV = [
+    ev('t1', at(2), { prazo: ['2026-10-02', '2026-10-04'] }), ev('t1', at(4), { prazo: ['2026-10-04', '2026-10-05'] }),
+    ev('t2', at(2), { status: ['a fazer', 'esperando'] }),
+  ];
+  test('resumo enxuto: atrasadas, adiamentos, travou, andou, próximas, gastos e treinos', () => eq(montarContexto(E, EV, { now }), [
+    'hoje 2026-10-08 qui',
+    'tarefas: 5 abertas · 1 atrasadas · 1 feitas em 7d',
+    '#tcc: 2 abertas · 1 atrasadas',
+    '  atrasada 3d: revisar cap 2 !alta (adiada 2x)',
+    '  travou: falar com orientador (esperando 6d)',
+    '  andou: falar com orientador → esperando',
+    '#weg: 1 abertas',
+    '  hoje: relatório mensal',
+    '  andou: ✓ planilha',
+    '#pessoal: 2 abertas',
+    '  travou: arrumar quarto (parada 18d)',
+    '  próximas: dentista >12.10',
+    'gastos 7d: R$ 30,00 (1)',
+    'treinos 7d: 1 · 1h',
+  ].join('\n')));
+  test('passou do limite: corta o menos importante, nunca o cabeçalho', () => {
+    const t = montarContexto(E, EV, { now, maxChars: 120 });
+    ok(t.length <= 120, `tamanho ${t.length}`);
+    eq(t.split('\n').slice(0, 2), ['hoje 2026-10-08 qui', 'tarefas: 5 abertas · 1 atrasadas · 1 feitas em 7d']);
+    const m = montarContexto(E, EV, { now, maxChars: 400 });
+    ok(m.includes('atrasada 3d') && !m.includes('próximas'), 'as atrasadas ficam, as próximas saem primeiro');
+  });
+  test('sem nada: só o cabeçalho', () => eq(montarContexto([], [], { now }), 'hoje 2026-10-08 qui\ntarefas: 0 abertas · 0 atrasadas · 0 feitas em 7d'));
+  test('tarefa antiga sem histórico usa feito_em e ts (nada inventado)', () => ok(montarContexto([tk('x', 'velha', { projeto: 'tcc', status: 'feito', feito_em: at(5) })], [], { now }).includes('✓ velha')));
+  test('estimarTokens e /contexto', async () => {
+    eq(estimarTokens('a'.repeat(400)), 100);
+    const s = setup([]);
+    await s.run('/contexto');
+    ok(/tokens/.test(s.term.text()) && /hoje /.test(s.term.text()));
   });
 });
 

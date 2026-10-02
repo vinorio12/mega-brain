@@ -62,6 +62,15 @@ export function registrarTiposCorpo(r = REGISTRO) {
         data: { descricao: c.descricao, duracao_min: c.duracao_min ?? null, distancia_km: c.distancia_km ?? null, data: c.data || dayKey(now) },
       };
     },
+    // uma linha pro montarContexto: "treinos 7d: 3 · 2h30 · 5km"
+    resumo(list, { desde, dias }) {
+      const de = dayKey(new Date(desde));
+      const no = list.filter(e => (e.data?.data || e.day) >= de);
+      if (!no.length) return null;
+      const min = no.reduce((s, e) => s + (e.data?.duracao_min || 0), 0), km = no.reduce((s, e) => s + (e.data?.distancia_km || 0), 0);
+      const h = min >= 60 ? `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, '0') : ''}` : min ? `${min}min` : '';
+      return [`treinos ${dias}d: ${no.length}`, h, km ? `${Math.round(km * 10) / 10}km` : ''].filter(Boolean).join(' · ');
+    },
   });
   return r;
 }

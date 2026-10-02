@@ -23,6 +23,7 @@ import { fmtValor } from './valores.js';
 import { REGISTRO } from './tipos.js';
 import { previa, interpretar } from './interpretar.js';
 import { registroAprendizado, resumoAprendizado, exportarFrases } from './aprendizado.js';
+import { montarContexto, estimarTokens } from './contexto.js';
 
 export const PHASES = [
   ['0', 'esqueleto · terminal, hud, inbox', 'ok'],
@@ -513,7 +514,7 @@ export function createCommands(ctx) {
         table([['- texto #proj @status >prazo !prio', 'cria tarefa (igual ao /t) · o que faltar vira ↳ auto'], ['https://… contexto', 'guarda o link no acervo'], ['"texto', 'guarda o texto no acervo']], 'cmd');
         const groups = [
           ['tarefas e projetos', c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
-          ['intérprete', c => ['tipo', 'palavras', 'aprendizado', 'mudancas'].includes(c.name)],
+          ['intérprete', c => ['tipo', 'palavras', 'aprendizado', 'mudancas', 'contexto'].includes(c.name)],
           ['acervo', c => ['acervo', 'guardar', 'buscar'].includes(c.name)],
           ['memória', c => c.data],
           ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
@@ -889,6 +890,17 @@ export function createCommands(ctx) {
         S.ultima = { id: novo.id, texto };
         aprender({ texto, era: e.kind, corrigido: tipo });
         entendiLine({ ...r, pergunta: false }, novo, n);
+      },
+    },
+    {
+      name: 'contexto', alias: ['ctx'], data: true, args: '[dias]',
+      desc: 'o resumo do seu estado que a IA vai ler (Fase 6) · ex: /contexto · /contexto 14',
+      run(arg) {
+        const d = Math.min(60, Math.max(1, parseInt(arg, 10) || 7));
+        const texto = montarContexto(S.entries, S.records || [], { reg: ctx.reg(), dias: d });
+        term.print(`── contexto · ${d} dias · ${texto.length} caracteres · ≈ ${estimarTokens(texto)} tokens ${'─'.repeat(4)}`, 'sep');
+        texto.split('\n').forEach(l => term.print(`<span class="${l.startsWith('  ') ? '' : 'c-int'}">${esc(l).replace(/^ +/, m => '&nbsp;'.repeat(m.length))}</span>`));
+        term.print('<span class="dim">é isto (e só isto) que o Coach vai ler · curto de propósito pra gastar pouco</span>');
       },
     },
     {

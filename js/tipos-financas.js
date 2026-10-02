@@ -9,7 +9,7 @@
 
 import { REGISTRO } from './tipos.js';
 import { tagsOf, dayKey } from './util.js';
-import { findValor } from './valores.js';
+import { findValor, fmtValor } from './valores.js';
 import { findDate } from './dates.js';
 
 const fold = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -54,6 +54,13 @@ function registrarMovimento(r, id, rotulo, exemplos) {
         kind: id, text: i.texto, tags: i.campos.tags || tagsOf(i.texto), ts: now.getTime(), day: dayKey(now),
         data: { valor: i.campos.valor, descricao: i.campos.descricao || '', data: i.campos.data || dayKey(now) },
       };
+    },
+    // uma linha pro montarContexto: "gastos 7d: R$ 230,00 (5)"
+    resumo(list, { desde, dias }) {
+      const de = dayKey(new Date(desde));
+      const no = list.filter(e => (e.data?.data || e.day) >= de);
+      if (!no.length) return null;
+      return `${rotulo}s ${dias}d: ${fmtValor(no.reduce((s, e) => s + (e.data?.valor || 0), 0))} (${no.length})`;
     },
   });
 }

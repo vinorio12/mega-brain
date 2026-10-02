@@ -7,6 +7,7 @@ Terminal pessoal estilo "segundo cérebro" do Vini. Centraliza tarefas, projetos
 - Uma sessão por fase do roadmap. Ao terminar uma fase, atualize este arquivo.
 - Mudanças pequenas e testáveis. Me diga como testar o que foi feito.
 - Nunca apague dados salvos do usuário sem pedir.
+- **Backlog sempre:** quando eu disser "deixa pra depois", "joga no backlog" ou "não é o foco agora", anote no Backlog (fim deste arquivo) na mesma sessão. Você também pode pôr lá, por conta própria, o que achar relevante um dia mas fora do foco atual (e me avise no resumo).
 
 ## Visual: MB Core · AI operating environment (v0.6)
 Nome do app: **MB Core** (repositório continua `mega-brain`). Matrix na austeridade, Jarvis na inteligência, Unix na interação.
@@ -51,6 +52,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - `docs/fase-1.md` · proposta da Fase 1 (feita)
 - `docs/plano-tarefas-acervo.md` · tarefas v2, visões e acervo (feito; Etapa 5 = IA no backlog)
 - `docs/plano-interprete.md` · Fase 2: intérprete por regras com IA encaixável, histórico e `montarContexto` (etapas 1–12 feitas, falta aprovação)
+- `docs/plano-pessoas-memoria.md` · Fase 2.5: pessoas reconhecidas na frase + memória única que aprende com o uso (proposta, esperando aprovação)
 
 ## Estrutura
 - `index.html` estrutura da tela · `css/style.css` visual
@@ -119,6 +121,9 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - Pra Fase 6: histórico de mudanças (registros `kind: evento`, append-only) e `montarContexto` (resumo enxuto do estado)
   - [x] 0 · plano aprovado e roadmap atualizado
   - [x] 1 datas em frases (`findDate` em dates.js, 195 testes) · [x] 2 valores (`js/valores.js`: centavos inteiros, 202 testes) · [x] 3 histórico de mudanças (`js/historico.js`: `withHistory` em volta da memória, `/mudancas [t1]`) + kinds desconhecidos escondidos (214 testes) · [x] 4 contrato + registro de tipos (`js/tipos.js`: `criarRegistro`, `REGISTRO`, `validarInterpretacao`, 222 testes) · [x] 5 régua (`tests/frases.js`, 24 frases) + provedor de regras (`js/provedor-regras.js`, tipos em `js/tipos-base.js`) · 255 testes · [x] 6 gasto/entrada/treino brutos (`js/tipos-financas.js`, `js/tipos-corpo.js`; aparecem no `/buscar`, não no `/inbox`; 40 frases, 276 testes) · [x] 7 `interpretar()` (`js/interpretar.js`: regras → IA se ligada → nota com pergunta + palpite) + provedor de IA desligado (`js/provedor-ia.js`, `INTERPRETADOR` em config.js, ganchos `travaDiaria` e cache) · 287 testes · [x] 8 palavras-chave por projeto (`/palavras tcc +orientador -banca`, `data.palavras` no registro do projeto, `guessProject` nome +5 · palavra +4 · histórico +1) · 294 testes · [x] 9 ligar na tela: [x] 9a o Enter (`capturar`) e a prévia (`readIntent`) usam o motor; `salvar(interp)` grava qualquer tipo; `/t` entende data falada; nota entra no `/desfazer` (300 testes) · [x] 9b texto livre vira tarefa/gasto/entrada/treino, linha "↳ entendi" (nota comum não ganha linha), dúvida = nota + "era tarefa? /tipo tarefa", `/tipo <tipo> [#3|t2|a1]` com `/desfazer`, `data.frase` guarda a frase original da tarefa (308 testes) · [x] 10 aprendizado (`js/aprendizado.js`: registros `kind: interpretacao` das dúvidas e das correções do `/tipo`; `/aprendizado [exportar]` gera linhas pra `tests/frases.js`; 312 testes) · [x] 11 `montarContexto` (`js/contexto.js`: totais + por projeto atrasadas/adiadas, hoje e !alta, travou, andou, próximas + `resumo()` de gasto/entrada/treino; corta o menos importante até `maxChars`; `/contexto [dias]` mostra com ≈ tokens; 317 testes) · [x] 12 fechamento (v0.9.0, README, `/ajuda` com grupo "intérprete") · **falta: Vini testar no celular, aprovar e publicar**
+- [ ] 2.5. Pessoas + memória que aprende · plano em `docs/plano-pessoas-memoria.md` (proposta 02/10/2026, esperando o Vini aprovar)
+  - Pessoas reconhecidas por nome/apelido sem `@` (registro `kind: pessoa`, `data.pessoas` nas entradas), nome novo pergunta (`/sim`), "esperando o João" → `esperando`, `/pessoa` ver/editar/juntar
+  - Memória única (pessoas e palavras): projeto em que cada pista aparece, com peso (aparição 1, escrito 2, correção 3, fixado manda); só vota se dominante (≥70%, peso ≥3); dividida = não chuta, pergunta; `/memoria` edita
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)
 - [ ] 5. Dashboards: gráficos por área e tendências, só com dados reais
@@ -131,3 +136,6 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - Login por biometria (passkey/WebAuthn) ou câmera, no celular e no PC
 - Título automático dos links do acervo
 - "Cofre"/"Vault" pra algo secreto
+- Pessoas com dados extras (aniversário, contato, onde conheci) · depois da Fase 2.5
+- Lembrete de follow-up: tarefa "esperando fulano" parada há X dias aparece no `/inicio` · depois da Fase 2.5
+- Conferir no celular, logado, a linha "↳ entendi" e o painel da direita da v0.9 (só testado por testes automáticos)

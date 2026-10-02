@@ -6,7 +6,8 @@ import { createCore } from './core.js';
 import { describe } from './weather.js';
 import { PHASES } from './commands.js';
 import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary, isNoteKind } from './tasks.js';
-import { fmtDue } from './dates.js';
+import { fmtDue, fmtDia } from './dates.js';
+import { fmtValor } from './valores.js';
 import { shortUrl, isAcervo, isLink, safeUrl } from './acervo.js';
 import { deriveState, describeState, readIntent, LISTEN_MS, FAULT_MS } from './state.js';
 
@@ -241,6 +242,8 @@ export function createUI(ctx) {
     $(id + '-2').textContent = sub || '';
   }
   function intentWord(i) {
+    if (i.type === 'registro') return i.tipo;
+    if (i.type === 'note' && i.pergunta) return 'nota?';
     return { idle: 'aguardando', login: { email: 'usuário', password: 'senha', code: 'código' }[i.field], note: 'nota', task: 'tarefa', link: 'link', trecho: 'texto', 'task-error': 'prazo?', commands: 'comando', command: '/' + (i.cmd?.name || ''), unknown: 'desconhecido' }[i.type] || 'aguardando';
   }
 
@@ -281,6 +284,7 @@ export function createUI(ctx) {
         `<dt>status</dt><dd class="c-int">@${esc(intent.status)}${A('status')}</dd>` +
         `<dt>prioridade</dt><dd class="${intent.prioridade === 'alta' ? 'c-warn' : ''}">!${esc(intent.prioridade)}${A('prioridade')}</dd>` +
         `<dt>prazo</dt><dd class="c-int">${intent.prazo ? esc(fmtDue(intent.prazo, now)) : '<span class="dim">sem prazo</span>'}${A('prazo')}</dd></dl>` +
+        (intent.inferido ? `<div class="ctx-hint">entendi como tarefa (regra, ${Math.round(intent.confianca * 100)}%) · escreva "nota:" antes pra guardar como nota</div>` : '') +
         '<div class="ctx-hint">auto = o app decide · informe com #proj @status >prazo !prio</div>';
       short = `→ tarefa · #${intent.projeto} · @${intent.status} · !${intent.prioridade}${intent.prazo ? ' · ' + fmtDue(intent.prazo, now) : ''}${intent.auto.length ? ' (auto: ' + intent.auto.join(', ') + ')' : ''}`;
     } else if (intent.type === 'task-error') {
@@ -302,12 +306,30 @@ export function createUI(ctx) {
       sub = 'enter guarda no acervo';
       html = `<dl class="ctx-intent"><dt>texto</dt><dd>${esc(intent.text)}</dd><dt>tags</dt><dd class="c-act">${intent.tags.length ? intent.tags.map(t => '#' + esc(t)).join(' ') : '<span class="dim">—</span>'}</dd></dl>`;
       short = '→ texto guardado no acervo';
+    } else if (intent.type === 'registro') {
+      // gasto, entrada, treino: só o dado bruto por enquanto
+      const c = intent.campos, A = k => (intent.auto.includes(k) ? ' <span class="auto-tag">auto</span>' : '');
+      title = 'novo ' + intent.tipo;
+      sub = 'enter guarda';
+      const rows = [
+        c.valor !== undefined ? ['valor', `<span class="c-act">${esc(fmtValor(c.valor))}</span>`] : null,
+        c.descricao ? ['descrição', esc(c.descricao)] : null,
+        c.duracao_min ? ['duração', c.duracao_min + ' min'] : null,
+        c.distancia_km ? ['distância', c.distancia_km + ' km'] : null,
+        c.data ? ['data', esc(fmtDia(c.data, now)) + A('data')] : null,
+      ].filter(Boolean);
+      html = `<dl class="ctx-intent">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>` +
+        `<div class="ctx-hint">entendi como ${esc(intent.tipo)} (regra, ${Math.round(intent.confianca * 100)}%) · "nota:" antes guarda como nota</div>`;
+      short = `→ ${intent.tipo}${c.valor !== undefined ? ' · ' + fmtValor(c.valor) : ''}`;
     } else if (intent.type === 'note') {
       title = 'nova nota';
       sub = 'enter captura';
       html = `<dl class="ctx-intent"><dt>tags</dt><dd class="c-act">${intent.tags.length ? intent.tags.map(t => '#' + esc(t)).join(' ') : '<span class="dim">—</span>'}</dd>` +
-        `<dt>destino</dt><dd>${esc(mem()[0])}</dd></dl><div class="ctx-hint">comece com "- " pra virar tarefa</div>`;
-      short = `→ nota${intent.tags.length ? ' · #' + intent.tags.join(' #') : ''}`;
+        `<dt>destino</dt><dd>${esc(mem()[0])}</dd></dl>` +
+        (intent.pergunta
+          ? `<div class="ctx-hint c-warn">parece ${esc(intent.palpite || 'outra coisa')}, mas não tenho certeza · salvo como nota e pergunto</div>`
+          : '<div class="ctx-hint">comece com "- " pra virar tarefa</div>');
+      short = `→ nota${intent.pergunta ? ' (' + intent.palpite + '?)' : ''}${intent.tags.length ? ' · #' + intent.tags.join(' #') : ''}`;
     } else {
       // parado: o essencial (mesma regra da tela inicial): atrasadas → !alta → vencem primeiro
       const b = briefing(E, { reg: ctx.reg(), now, proj: S.ctx, limit: 7 });

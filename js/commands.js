@@ -11,7 +11,7 @@
 
 import { esc, hl, dayKey, hhmm, ddmm, dur, lev, kb, tagsOf, uid, CmdError, VERSION, DOW } from './util.js';
 import { geocode, locate, fetchWeather, savedPlace, describe } from './weather.js';
-import { fmtDue, parseDue } from './dates.js';
+import { fmtDue, fmtDia, parseDue } from './dates.js';
 import { VIEWS, viewName, viewGroups, calendarModel, parseMonth } from './views.js';
 import { isLink, isSnippet, isAcervo, safeUrl, parseLink, parseSnippet, shortUrl, searchAll } from './acervo.js';
 import {
@@ -219,15 +219,41 @@ export function createCommands(ctx) {
   }
 
   // Texto livre digitado no terminal (sem "/"): o intérprete decide o que é.
+  //   "- " = tarefa, sempre · o resto: interpretar() (regras → IA, se ligada → nota com pergunta)
   async function capturar(text, t) {
-    const r = previa(text, ictx());
-    if (r.tipo === 'link' || r.tipo === 'trecho') return salvar(r, t);
     if (/^-\s+\S/.test(text)) return addTask(text.replace(/^-\s+/, ''), t);
-    // (etapa 9a: o resto continua virando nota, como antes)
-    return salvar(previa(text, ictx({ forcar: 'nota' })), t);
+    const r = await interpretar(text, ictx());
+    const { e, n } = await salvar(r, t);
+    S.ultima = { id: e.id, texto: text }; // o /tipo sem alvo corrige esta
+    entendiLine(r, e, n);
+    return { e, n };
   }
   // rótulo do processo que aparece enquanto grava
-  const rotuloCaptura = text => ({ link: 'guardar link', trecho: 'guardar texto', tarefa: 'nova tarefa' }[/^-\s+\S/.test(text) ? 'tarefa' : previa(text, ictx())?.tipo] || 'captura');
+  const rotuloCaptura = text => (/^-\s+\S/.test(text) ? 'nova tarefa'
+    : { link: 'guardar link', trecho: 'guardar texto', tarefa: 'nova tarefa', gasto: 'novo gasto', entrada: 'nova entrada', treino: 'novo treino' }[previa(text, ictx())?.tipo] || 'captura');
+
+  // A linha curta "↳ entendi": o que o app concluiu sozinho, pra conferir e corrigir.
+  // Só aparece quando o tipo foi deduzido (tarefa, gasto...) ou quando ficou em dúvida. Nota comum não ganha linha.
+  function entendiLine(r, e, n) {
+    if (r.pergunta) {
+      const outros = ['tarefa', 'gasto', 'entrada', 'treino'].filter(x => x !== r.palpite);
+      term.print(`<span class="c-warn">↳ salvei como nota</span> <span class="dim">· não tive certeza ·</span> era ${esc(r.palpite || 'outra coisa')}? ` +
+        `<span class="c-int">/tipo ${esc(r.palpite || 'tarefa')}</span> <span class="dim">· ou ${outros.map(esc).join(', ')} · deixe assim se é nota</span>`, 'auto');
+      return;
+    }
+    if (['nota', 'link', 'trecho'].includes(r.tipo)) return;
+    const c = r.campos, A = k => (r.auto.includes(k) ? '<span class="dim">*</span>' : '');
+    const partes = {
+      tarefa: () => [`<span class="c-act">#${esc(c.projeto || '')}</span>${A('projeto')}`, `${c.prazo ? '>' + esc(fmtDue(c.prazo)) : '>sem prazo'}${A('prazo')}`, `!${esc(c.prioridade || 'média')}${A('prioridade')}`],
+      gasto: () => [esc(fmtValor(c.valor)), c.descricao ? esc(c.descricao) : '', `${esc(fmtDia(c.data))}${A('data')}`],
+      treino: () => [c.duracao_min ? c.duracao_min + 'min' : '', c.distancia_km ? c.distancia_km + 'km' : '', `${esc(fmtDia(c.data))}${A('data')}`],
+    };
+    partes.entrada = partes.gasto;
+    const campos = (partes[r.tipo]?.() || []).filter(Boolean);
+    const corrigir = r.tipo === 'tarefa' ? `/editar ${n}` : '/tipo nota';
+    term.print(`<span class="c-int">↳ entendi</span> · ${esc(REGISTRO.get(r.tipo)?.rotulo || r.tipo)} · ${campos.join(' · ')}` +
+      ` <span class="dim">· ${r.auto.length ? '* auto · ' : ''}${esc(r.origem)} ${Math.round(r.confianca * 100)}% · /desfazer ou ${corrigir}</span>`, 'auto');
+  }
 
   // Acervo: guardar link e texto (mesma fila, nuvem e desfazer de tudo)
   async function addLink(line, t) {
@@ -478,7 +504,8 @@ export function createCommands(ctx) {
         table([['qualquer texto', 'captura na inbox · use #tags: <span class="dim">ler cap 2</span> <span class="c-act">#tcc</span>']], 'cmd');
         table([['- texto #proj @status >prazo !prio', 'cria tarefa (igual ao /t) · o que faltar vira ↳ auto'], ['https://… contexto', 'guarda o link no acervo'], ['"texto', 'guarda o texto no acervo']], 'cmd');
         const groups = [
-          ['tarefas e projetos', c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'mudancas', 'projeto', 'palavras', 'status', 'ir'].includes(c.name)],
+          ['tarefas e projetos', c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
+          ['intérprete', c => ['tipo', 'palavras', 'mudancas'].includes(c.name)],
           ['acervo', c => ['acervo', 'guardar', 'buscar'].includes(c.name)],
           ['memória', c => c.data],
           ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
@@ -812,6 +839,48 @@ export function createCommands(ctx) {
         await ctx.store.restore({ ...r, data: { ...(r.data || {}), palavras: depois } });
         term.ok('task', `palavras de <span class="c-act">#${esc(name)}</span> · ${depois.map(esc).join(', ') || 'nenhuma'} <span class="c-meta">· /desfazer volta · ${t.id}</span>`);
         ctx.ui.pulse('act');
+      },
+    },
+    {
+      name: 'tipo', alias: ['era', 'corrigir'], data: true, async: true, exec: true, args: '<tarefa|nota|gasto|entrada|treino|link|texto> [#3 | t2 | a1]',
+      desc: 'corrige o que o app entendeu · sem alvo, vale pra última coisa que você escreveu · ex: /tipo tarefa · /tipo nota t4',
+      async run(arg, signal, t) {
+        const [rawTipo, alvo] = String(arg).trim().toLowerCase().split(/\s+/);
+        const ALIAS = { texto: 'trecho', textos: 'trecho', tarefas: 'tarefa', notas: 'nota', gastos: 'gasto', entradas: 'entrada', treinos: 'treino' };
+        const tipo = ALIAS[rawTipo] || rawTipo;
+        if (!tipo || !REGISTRO.get(tipo)) throw usage('tipo', `${REGISTRO.ids().map(x => (x === 'trecho' ? 'texto' : x)).join('|')} [#3 | t2]`);
+        // qual entrada: a última escrita, ou a do número (#3 nota, a2 acervo, t1 tarefa)
+        let e = null, frase = null;
+        if (!alvo) {
+          e = S.entries.find(x => x.id === S.ultima?.id) || null;
+          frase = S.ultima?.texto;
+          if (!e) throw new CmdError('E_ARG', 'store', 'não sei qual corrigir', 'diga o número: <span class="c-int">/tipo tarefa #3</span> (nota) · <span class="c-int">t2</span> (tarefa) · <span class="c-int">a1</span> (acervo)');
+        } else if (/^t\d+$/.test(alvo)) {
+          e = taskPool()[+alvo.slice(1) - 1];
+          if (!e || e.missing) throw new CmdError('E_404', 'task', `tarefa ${alvo} não existe`, 'os números aparecem no <span class="c-hud">/tarefas</span>');
+        } else {
+          const label = /^\d+$/.test(alvo) ? '#' + alvo : alvo;
+          const id = [...nums()].find(([, v]) => v === label)?.[0];
+          e = id && S.entries.find(x => x.id === id);
+          if (!e) throw new CmdError('E_404', 'store', `${alvo} não existe`, 'os números aparecem no <span class="c-hud">/inbox</span> (#3) e no <span class="c-hud">/acervo</span> (a1)');
+        }
+        if (e.kind === tipo) return term.say(`já é ${esc(REGISTRO.get(tipo).rotulo)}.`);
+        // relê a frase original com o tipo forçado
+        const texto = frase || e.data?.frase || e.text;
+        const r = tipo === 'tarefa' ? previa(texto.replace(/^-\s+/, ''), ictx({ forcar: 'tarefa' })) : previa(texto, ictx({ forcar: tipo }));
+        if (!r || r.tipo !== tipo || r.erro) {
+          const dica = { gasto: 'precisa de um valor, ex: <span class="c-int">gastei 30 no almoço</span>', entrada: 'precisa de um valor, ex: <span class="c-int">recebi 1.500 de salário</span>',
+            link: 'precisa começar com http:// ou https://', trecho: 'use <span class="c-int">/guardar texto</span>' }[tipo] || 'escreva de novo de outro jeito';
+          throw new CmdError('E_TIPO', 'store', `não consegui ler "${texto}" como ${REGISTRO.get(tipo).rotulo}`, dica + ' · <span class="c-hud">/desfazer</span> apaga o que foi salvo');
+        }
+        // troca: apaga a versão antiga e grava a nova · /desfazer volta as duas coisas de uma vez
+        await ctx.store.remove(e.id);
+        const { e: novo, n } = await salvar(r, t);
+        S.undo.pop(); // o salvar empilhou só a criação; o passo certo inclui a antiga
+        S.undo.push({ label: `virou ${REGISTRO.get(tipo).rotulo}`, items: [e], created: [novo.id] });
+        S.ultima = { id: novo.id, texto };
+        ctx.aprender?.({ texto, era: e.kind, virou: tipo });
+        entendiLine({ ...r, pergunta: false }, novo, n);
       },
     },
     {

@@ -45,7 +45,7 @@ export function registrarTiposCorpo(r = REGISTRO) {
     reconhecer(texto, ctx) {
       const now = ctx?.now || new Date();
       const s = fold(String(texto));
-      const confianca = FORTE.test(s) ? 0.9 : FRACO.test(s) ? 0.6 : 0;
+      const confianca = ctx?.forcar === 'treino' ? 1 : FORTE.test(s) ? 0.9 : FRACO.test(s) ? 0.6 : 0;
       if (!confianca) return null;
       const d = findDate(texto, now);
       const campos = { descricao: (d ? d.resto : String(texto).trim()) || String(texto).trim(), data: d ? d.data : dayKey(now), tags: tagsOf(texto) };

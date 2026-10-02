@@ -233,7 +233,7 @@ async function migrate(t) {
 function showHome() {
   try { ctx.commands.get('inicio').run(''); }
   catch (e) { term.error(e); }
-  term.print('<span class="dim">escreva pra capturar · <span class="c-act">- texto</span> cria tarefa · <span class="c-act">/ajuda</span> mostra tudo</span>');
+  term.print('<span class="dim">escreva do seu jeito · <span class="c-act">ligar pro dentista amanhã</span> · <span class="c-act">gastei 30 no almoço</span> · <span class="c-act">- texto</span> é sempre tarefa · <span class="c-act">/ajuda</span> mostra tudo</span>');
 }
 
 /* ================= login ================= */

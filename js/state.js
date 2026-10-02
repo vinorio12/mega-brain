@@ -77,7 +77,13 @@ export function readIntent(text, { mode = null, ctx = null, catalog = [], reg = 
     return { type: 'task', text: c.texto, tags: c.tags || [], projeto: c.projeto, status: c.status, prazo: c.prazo || null, prioridade: c.prioridade, auto: t.auto };
   }
 
-  // (etapa 9a: o resto continua nota)
-  const n = previa(v, { ...ictx, forcar: 'nota' });
-  return { type: 'note', text: n.campos.texto, tags: n.campos.tags || [] };
+  // tarefa deduzida do texto livre ("ligar pro dentista amanhã")
+  if (r.tipo === 'tarefa') {
+    const c = r.campos;
+    return { type: 'task', text: c.texto, tags: c.tags || [], projeto: c.projeto, status: c.status, prazo: c.prazo || null, prioridade: c.prioridade, auto: r.auto, inferido: true, confianca: r.confianca };
+  }
+  // gasto, entrada, treino... (dado bruto)
+  if (r.tipo !== 'nota') return { type: 'registro', tipo: r.tipo, campos: r.campos, auto: r.auto, confianca: r.confianca };
+  const note = { type: 'note', text: r.campos.texto, tags: r.campos.tags || [] };
+  return r.pergunta ? { ...note, pergunta: true, palpite: r.palpite } : note;
 }

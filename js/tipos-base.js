@@ -82,10 +82,16 @@ export function registrarTiposBase(r = REGISTRO) {
         auto,
       };
     },
-    montar: (i, ctx) => newTask({
-      text: i.campos.texto, tags: i.campos.tags || [], prazo: i.campos.prazo || null, projeto: i.campos.projeto || null,
-      status: i.campos.status, prioridade: i.campos.prioridade || 'média', auto: { campos: i.auto || [], fonte: i.origem },
-    }, ctxDe(ctx).now),
+    montar: (i, ctx) => {
+      const e = newTask({
+        text: i.campos.texto, tags: i.campos.tags || [], prazo: i.campos.prazo || null, projeto: i.campos.projeto || null,
+        status: i.campos.status, prioridade: i.campos.prioridade || 'média', auto: { campos: i.auto || [], fonte: i.origem },
+      }, ctxDe(ctx).now);
+      // a frase como foi escrita ("ligar pro dentista amanhã"), quando o texto da tarefa ficou diferente
+      const frase = String(i.texto || '').replace(/^-\s+/, '').trim();
+      if (frase && frase !== i.campos.texto) e.data.frase = frase;
+      return e;
+    },
   });
 
   r.registrar({

@@ -867,6 +867,74 @@ describe('captura pelo intérprete (etapa 9a · mesmo comportamento)', () => {
   });
 });
 
+describe('texto livre + "↳ entendi" + /tipo (etapa 9b)', () => {
+  const T = { id: 'T0001', elapsed: () => 1 };
+  const out = s => s.term.text();
+  test('"ligar pro dentista amanhã" vira tarefa com prazo e a linha entendi', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('ligar pro dentista amanhã', T);
+    const e = s.S.entries[0];
+    eq([e.kind, e.text, e.data.frase], ['tarefa', 'ligar pro dentista', 'ligar pro dentista amanhã']);
+    ok(/↳ entendi/.test(out(s)) && /amanhã/.test(out(s)) && /\/editar t1/.test(out(s)), out(s));
+  });
+  test('"gastei 30 no almoço" vira gasto (fora do /inbox, dentro do /buscar)', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('gastei 30 no almoço', T);
+    const e = s.S.entries[0];
+    eq([e.kind, e.data.valor, e.data.descricao], ['gasto', 3000, 'almoço']);
+    ok(/R\$ 30,00/.test(out(s)), 'linha entendi com o valor');
+    const antes = s.term.out.length;
+    await s.run('/inbox');
+    ok(!/gastei 30/.test(s.term.out.slice(antes).map(x => x.join(' ')).join('\n')), 'não aparece no /inbox');
+    await s.run('/buscar almoço');
+    ok(/gastos/.test(out(s)), 'aparece no /buscar');
+  });
+  test('nota comum: só "capturado", sem linha extra', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('li um artigo bom sobre RAG', T);
+    eq(s.S.entries[0].kind, 'nota');
+    ok(!/↳/.test(out(s)), out(s));
+  });
+  test('dúvida: salva como nota e pergunta; /tipo tarefa corrige; /desfazer volta', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('comprar pão', T);
+    eq(s.S.entries.map(e => e.kind), ['nota']);
+    ok(/salvei como nota/.test(out(s)) && /\/tipo tarefa/.test(out(s)), out(s));
+    await s.run('/tipo tarefa');
+    eq(s.S.entries.map(e => [e.kind, e.text]), [['tarefa', 'comprar pão']]);
+    await s.run('/desfazer');
+    eq(s.S.entries.map(e => [e.kind, e.text]), [['nota', 'comprar pão']]);
+  });
+  test('/tipo com número e /tipo nota desfaz uma tarefa deduzida', async () => {
+    const s = setup(['nota velha', 'uber 18']);
+    await s.run('/tipo gasto #2');
+    eq(s.S.entries.find(e => e.kind === 'gasto').data.valor, 1800);
+    await s.ctx.commands.capturar('ligar pro banco amanhã', T);
+    await s.run('/tipo nota');
+    eq(s.S.entries.filter(e => e.kind === 'nota').map(e => e.text), ['nota velha', 'ligar pro banco amanhã']);
+  });
+  test('/tipo que não dá: erro com dica, nada muda', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('comprar pão', T);
+    await throws(() => s.run('/tipo gasto'), 'E_TIPO');
+    await throws(() => s.run('/tipo foguete'), 'E_ARG');
+    eq(s.S.entries.map(e => e.kind), ['nota']);
+  });
+  test('"nota:" força nota', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('nota: preciso pensar nisso amanhã', T);
+    eq([s.S.entries[0].kind, s.S.entries[0].text], ['nota', 'preciso pensar nisso amanhã']);
+  });
+  test('prévia da direita: tarefa deduzida, gasto e dúvida', () => {
+    const now = new Date(2026, 9, 1, 12);
+    eq([readIntent('ligar pro banco amanhã', { now }).type, readIntent('ligar pro banco amanhã', { now }).inferido], ['task', true]);
+    const g = readIntent('gastei 30 no almoço', { now });
+    eq([g.type, g.tipo, g.campos.valor], ['registro', 'gasto', 3000]);
+    const d = readIntent('comprar pão', { now });
+    eq([d.type, d.pergunta, d.palpite], ['note', true, 'tarefa']);
+  });
+});
+
 describe('régua de frases (tests/frases.js · interpretar com regras)', () => {
   // frase com `palavras` (ex: { tcc: ['orientador'] }) roda com essas palavras-chave nos projetos
   const ctxBase = f => ({

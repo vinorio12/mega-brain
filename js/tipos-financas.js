@@ -44,7 +44,7 @@ function registrarMovimento(r, id, rotulo, exemplos) {
       const palavra = temPalavra(texto, PALAVRAS[id]);
       const outra = temPalavra(texto, PALAVRAS[id === 'gasto' ? 'entrada' : 'gasto']);
       // sem palavra nenhuma, um valor "com cara de dinheiro" é mais provável gasto (entrada quase sempre tem palavra)
-      const confianca = palavra ? 0.9 : !outra && id === 'gasto' && m.explicito ? 0.65 : 0;
+      const confianca = ctx?.forcar === id ? 1 : palavra ? 0.9 : !outra && id === 'gasto' && m.explicito ? 0.65 : 0;
       if (!confianca) return null;
       return { confianca, campos: { valor: m.valor, descricao: m.descricao, data: m.data, tags: tagsOf(texto) }, auto: m.temData ? [] : ['data'] };
     },

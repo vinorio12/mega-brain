@@ -165,3 +165,14 @@ export function findDate(input, now = new Date()) {
     .replace(/\s+/g, ' ').replace(/\s+([,.;:!?])/g, '$1').replace(/^[\s,.;:–-]+|[\s,;:–-]+$/g, '');
   return { data: best.data, trecho: text.slice(best.inicio, best.fim), resto, inicio: best.inicio, fim: best.fim };
 }
+
+// 'AAAA-MM-DD' de algo que aconteceu (gasto, treino) → hoje · ontem · 30.09 (sem "atrasada")
+export function fmtDia(key, now = new Date()) {
+  if (!key) return '';
+  const [y, mo, d] = key.split('-').map(Number);
+  const diff = Math.round((new Date(y, mo - 1, d) - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5);
+  if (diff === 0) return 'hoje';
+  if (diff === -1) return 'ontem';
+  if (diff === 1) return 'amanhã';
+  return `${pad(d)}.${pad(mo)}${y !== now.getFullYear() ? '.' + String(y).slice(2) : ''}`;
+}

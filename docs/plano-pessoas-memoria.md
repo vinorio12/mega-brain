@@ -1,6 +1,6 @@
 # Pessoas + memória que aprende (Fase 2.5)
 
-> Status: **proposta, esperando o Vini aprovar** (02/10/2026). Mesmo ritual das outras fases: uma etapa por vez,
+> Status: **aprovado pelo Vini em 02/10/2026** (respostas abaixo, em "Decisões do Vini"). Mesmo ritual das outras fases: uma etapa por vez,
 > testes verdes, `sw.js`, commit em português, `CLAUDE.md` atualizado. Nada de IA: tudo por regras e pelo uso.
 
 ## O que o Vini pediu
@@ -68,13 +68,18 @@ Uma **pista** é uma pessoa (`pessoa:<id>`) ou uma palavra (`palavra:planilha`).
 | 7 | `/memoria` ver/fixar/bloquear/limpar + motivo na linha "↳ entendi" | fixar manda; limpar esquece o passado |
 | 8 | contexto e IA: `montarContexto` cita "esperando João (2)"; pedido da IA leva os nomes cadastrados (só nome e apelido); fechamento, README, v0.10 | Vini testa no celular e aprova |
 
+## Decisões do Vini (02/10)
+- Empate entre projetos (pistas divididas): **tarefa sem projeto + pergunta**.
+- Status pela frase: **esperando e fazendo** ("esperando/aguardando/depende de" → esperando; "tô fazendo/comecei/estou fazendo" → fazendo; o resto, a fazer).
+- "VEG" no áudio = **WEG** (#weg).
+
 ## Decisões que tomei (mude se discordar)
 1. **Texto fica como você escreveu** ("falar com o João"); a pessoa vai em `data.pessoas`. Assim a busca e a leitura continuam naturais.
 2. **Pistas divididas e nada mais na frase → tarefa sem projeto + pergunta**, em vez do `pessoal` de hoje. (Hoje, sem pista nenhuma, vai pra `pessoal`; isso continua.)
 3. **A pergunta não trava** (como o `/tipo`): é uma linha; `/sim` responde a última.
 4. **Memória derivada do que já existe** + registros só pro que você fixa. Nada de contador que pode divergir.
 5. Limiar de dominância **70% e peso ≥ 3**, ajustável em `config.js`.
-6. "comecei a fazer X" / "tô fazendo X" → `fazendo`. Só esperando/aguardando/depende de mudam o status por frase; o resto segue `a fazer`.
+6. (confirmado pelo Vini) "comecei a fazer X" / "tô fazendo X" → `fazendo`; esperando/aguardando/depende de → `esperando`; o resto segue `a fazer`.
 
 ## Riscos
 - **Falso nome** ("falar com Itaú", "pro Santander"): por isso só pergunta, nunca cadastra sozinho; `/nao` faz ele não perguntar de novo por essa palavra.

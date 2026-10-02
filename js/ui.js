@@ -5,7 +5,7 @@ import { esc, pad, dayKey, hhmm, ddmm, dur, DOW, VERSION } from './util.js';
 import { createCore } from './core.js';
 import { describe } from './weather.js';
 import { PHASES } from './commands.js';
-import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary } from './tasks.js';
+import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary, isNoteKind } from './tasks.js';
 import { fmtDue } from './dates.js';
 import { shortUrl, isAcervo, isLink, safeUrl } from './acervo.js';
 import { deriveState, describeState, readIntent, LISTEN_MS, FAULT_MS } from './state.js';
@@ -392,7 +392,7 @@ export function createUI(ctx) {
     const reg = ctx.reg();
     const byId = new Map(E.map(e => [e.id, e]));
     const b = briefing(E, { reg, now, proj: S.ctx, limit: 8 });
-    const isNote = e => e.kind !== 'tarefa' && !isAcervo(e);
+    const isNote = isNoteKind;
     const notes = E.filter(isNote), acv = E.filter(isAcervo);
     const num = new Map();
     notes.forEach((e, i) => num.set(e.id, '#' + (i + 1)));

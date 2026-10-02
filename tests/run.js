@@ -12,7 +12,8 @@ import { parseValor, findValor, fmtValor } from '../js/valores.js';
 import { deriveState, describeState, readIntent } from '../js/state.js';
 import { viewName, viewGroups, calendarModel, parseMonth } from '../js/views.js';
 import { parseLink, parseSnippet, shortUrl, searchAll } from '../js/acervo.js';
-import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord, guessProject, dueFor, fillByRules, matchStatus, briefing } from '../js/tasks.js';
+import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord, guessProject, dueFor, fillByRules, matchStatus, briefing, isNoteKind } from '../js/tasks.js';
+import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -594,6 +595,93 @@ describe('tarefas · comandos', () => {
     eq(S.ctx, 'tcc');
     await run('/ir ~');
     eq(S.ctx, null);
+  });
+});
+
+describe('histórico de mudanças (historico.js · Fase 2)', () => {
+  const now = new Date(2026, 9, 2, 10, 0);
+  const task = (data = {}, text = 'revisar cap 2') => ({ id: 'tk1', kind: 'tarefa', text, tags: ['tcc'], ts: 1, day: '2026-10-02',
+    data: { projeto: 'tcc', status: 'a fazer', prazo: '2026-10-05', prioridade: 'média', feito_em: null, ...data } });
+  test('criada: guarda o estado inicial', () => {
+    const ev = diffEvent(null, task(), { now });
+    eq([ev.kind, ev.text, ev.day, ev.data.acao, ev.data.alvo, ev.data.origem, ev.data.texto], ['evento', 'criada', '2026-10-02', 'criada', 'tk1', 'usuario', 'revisar cap 2']);
+    eq(ev.data.mudancas, { text: [null, 'revisar cap 2'], projeto: [null, 'tcc'], status: [null, 'a fazer'], prazo: [null, '2026-10-05'], prioridade: [null, 'média'] });
+  });
+  test('alterada: só o que mudou, com de → para', () => {
+    const ev = diffEvent(task(), task({ status: 'feito', feito_em: 123 }), { now });
+    eq([ev.text, ev.data.mudancas], ['alterada · status · feito_em', { status: ['a fazer', 'feito'], feito_em: [null, 123] }]);
+  });
+  test('adiamento aparece como prazo de → para', () => eq(
+    diffEvent(task(), task({ prazo: '2026-10-09' })).data.mudancas, { prazo: ['2026-10-05', '2026-10-09'] }));
+  test('gravou igual, nota, registro ou evento: nada', () => eq(
+    [diffEvent(task(), task()), diffEvent(null, { id: 'n', kind: 'nota', text: 'oi' }), diffEvent(null, { id: 'p', kind: 'projeto', text: 'tcc' }), diffEvent(null, { id: 'e', kind: 'evento', text: 'x' })],
+    [null, null, null, null]));
+  test('apagada, restaurada (desfazer) e origem desconhecida', () => eq(
+    [diffEvent(task(), null).data.acao, diffEvent(null, task(), { origem: 'desfazer' }).data.acao, diffEvent(task(), task({ prazo: null }), { origem: 'hacker' }).data.origem],
+    ['apagada', 'restaurada', 'usuario']));
+  test('kinds desconhecidos ficam escondidos (registros), não viram nota', () => eq(
+    [{ kind: 'evento' }, { kind: 'interpretacao' }, { kind: 'xyz' }, { kind: 'projeto' }, { kind: 'nota' }, { kind: 'tarefa' }, { kind: 'link' }, { kind: 'trecho' }, { text: 'sem kind' }].map(isRecord),
+    [true, true, true, true, false, false, false, false, false]));
+  test('isNoteKind: só nota de verdade', () => eq(
+    [{ kind: 'nota' }, {}, { kind: 'tarefa' }, { kind: 'link' }, { kind: 'gasto' }].map(isNoteKind), [true, true, false, false, false]));
+
+  function wrapped() {
+    const raw = memStore([]);
+    let list = [];
+    raw.subscribe(l => { list = l; });
+    const store = withHistory(raw, { now: () => now });
+    return { raw, store, evs: () => list.filter(e => e.kind === 'evento'), list: () => list };
+  }
+  test('withHistory: criar, mudar, apagar geram um evento cada', async () => {
+    const { store, evs } = wrapped();
+    const e = await store.add(task());
+    await store.restore({ ...e, data: { ...e.data, status: 'fazendo' } });
+    await store.restore({ ...e, data: { ...e.data, status: 'fazendo' } }); // igual: sem evento
+    await store.remove(e.id);
+    await store.idle();
+    eq(evs().map(x => x.data.acao), ['criada', 'alterada', 'apagada']);
+    eq(evs().every(x => x.data.alvo === e.id), true);
+  });
+  test('withHistory: nota não gera evento; origem passa adiante', async () => {
+    const { store, evs } = wrapped();
+    await store.add({ kind: 'nota', text: 'ideia', tags: [], ts: 1, day: '2026-10-02' });
+    const e = await store.add(task());
+    await store.restore({ ...e, data: { ...e.data, prazo: '2026-10-08' } }, { origem: 'desfazer' });
+    await store.idle();
+    eq(evs().map(x => [x.data.acao, x.data.origem]), [['criada', 'usuario'], ['alterada', 'desfazer']]);
+  });
+  test('withHistory: mudança que chega de fora (nuvem/outra aba) não gera evento', async () => {
+    const { raw, store, evs } = wrapped();
+    const e = await store.add(task());
+    await raw.restore({ ...e, data: { ...e.data, status: 'feito' } }); // direto na memória, sem passar pela capa
+    await store.idle();
+    eq(evs().length, 1);
+  });
+  test('withHistory: falha ao gravar o evento não derruba a gravação', async () => {
+    const raw = memStore([]);
+    const add = raw.add;
+    raw.add = async doc => { if (doc.kind === 'evento') throw new Error('cheio'); return add(doc); };
+    const errors = [];
+    const store = withHistory(raw, { onError: e => errors.push(e.message) });
+    const e = await store.add(task());
+    await store.idle();
+    eq([e.kind, errors], ['tarefa', ['cheio']]);
+  });
+  test('comandos: /t, /feito, /adiar e /desfazer deixam rastro; /mudancas mostra', async () => {
+    const s = setup([]);
+    s.ctx.store = withHistory(memStore([]), { now: () => now });
+    s.ctx.store.subscribe(l => { s.S.entries = l.filter(e => !isRecord(e)); s.S.records = l.filter(isRecord); });
+    await s.run('/t revisar cap 2 #tcc >sex');
+    await s.run('/adiar t1 +7');
+    await s.run('/feito t1');
+    await s.run('/desfazer');
+    await s.ctx.store.idle();
+    const evs = eventsOf(s.S.records).reverse();
+    eq(evs.map(x => [x.data.acao, Object.keys(x.data.mudancas).filter(k => k !== 'feito_em').join(','), x.data.origem]),
+      [['criada', 'text,projeto,status,prazo,prioridade', 'usuario'], ['alterada', 'prazo', 'usuario'], ['alterada', 'status', 'usuario'], ['alterada', 'status', 'desfazer']]);
+    eq(s.S.entries.length, 1); // os eventos não aparecem como nota nem como tarefa
+    await s.run('/mudancas t1');
+    ok(/mudanças/.test(s.term.text()) && /prazo/.test(s.term.text()) && /desfazer/.test(s.term.text()), 'mostra as mudanças');
   });
 });
 

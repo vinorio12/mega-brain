@@ -89,8 +89,8 @@ Lista `{ frase, hoje: '2026-10-01', esperado: { tipo, campos parciais, minConfia
 |---|---|---|---|
 | 0 | Plano em `docs/plano-interprete.md`; `CLAUDE.md`: Fase 2 detalhada, **Fase 6 reescrita** (Coach = assistente que lê o contexto completo e sugere next steps, updates, prioridades, resumo do dia e revisão semanal), backlog "ligar provedor IA (Haiku) + travas de custo: limite diário e cache"; `PHASES` do `/roadmap` | P | só docs, commit |
 | 1 | `findDate` em `dates.js` · **feito** | P | frases de data testadas (fixando `now` = 2026-10-01, quinta) |
-| 2 | `js/valores.js` (`parseValor`, `findValor`, `fmtValor`) | P | 30 / 30 reais / R$30,00 / R$30,50 / R$ 1.234,56 testados |
-| 3 | Histórico: `evento`, `diffEvents`, `withHistory`; kinds desconhecidos escondidos; ligado no `attachStore` (subiu da 8 na revisão) | M | criar/mover/adiar/concluir/desfazer/apagar geram eventos; nada some; nada novo aparece no `/inbox` |
+| 2 | **feito** · `js/valores.js` (`parseValor`, `findValor`, `fmtValor`) | P | 30 / 30 reais / R$30,00 / R$30,50 / R$ 1.234,56 testados |
+| 3 | **feito** · Histórico: `evento`, `diffEvent`, `withHistory`, `/mudancas`; kinds desconhecidos escondidos; ligado no `attachStore` (subiu da 8 na revisão) | M | criar/mover/adiar/concluir/desfazer/apagar geram eventos; nada some; nada novo aparece no `/inbox` |
 | 4 | `js/tipos.js` (registro) + contrato + `validarInterpretacao` | P | tipo inválido/campo faltando é recusado |
 | 5 | Régua (`tests/frases.js`) + provedor de regras com `nota`, `tarefa`, `link`, `trecho` | M | frases-base verdes; `- tarefa`, link, aspas dão o mesmo que hoje |
 | 6 | `gasto`, `entrada`, `treino` (dado bruto) + frases na régua | M | "gastei 30 no almoço" → gasto 3000 centavos; "treinei peito 1h" → treino |

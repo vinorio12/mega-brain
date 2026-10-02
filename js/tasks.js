@@ -21,10 +21,14 @@ export const DEFAULT_STATUSES = [
   { name: 'esperando', final: false },
   { name: 'feito', final: true },
 ];
-export const RECORD_KINDS = ['projeto', 'status'];
+export const RECORD_KINDS = ['projeto', 'status', 'evento'];
+// o que aparece nas listas. Qualquer outro kind (evento, e os que versões novas do app criarem)
+// fica escondido em S.records: assim um aparelho com versão velha nunca mostra lixo no /inbox.
+export const CONTENT_KINDS = ['nota', 'tarefa', 'link', 'trecho'];
 
 export const isTask = e => e?.kind === 'tarefa';
-export const isRecord = e => RECORD_KINDS.includes(e?.kind);
+export const isRecord = e => !!e?.kind && !CONTENT_KINDS.includes(e.kind);
+export const isNoteKind = e => !e?.kind || e.kind === 'nota';
 // concluída = tem horário de conclusão (formato novo: feito_em · antigo: feito)
 export const doneAt = e => e?.data?.feito_em ?? e?.data?.feito ?? null;
 export const isOpen = e => isTask(e) && !doneAt(e);

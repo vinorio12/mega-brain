@@ -16,8 +16,9 @@ import { VIEWS, viewName, viewGroups, calendarModel, parseMonth } from './views.
 import { isLink, isSnippet, isAcervo, safeUrl, parseLink, parseSnippet, shortUrl, searchAll } from './acervo.js';
 import {
   isTask, doneAt, projName, parseTaskInput, newTask, groupTasks, doneHistory, projectsSummary, taskNumbers, taskStats,
-  projectOf, statusChange, finalStatus, firstStatus, fillByRules, matchStatus, statusOf, prioOf, isFinalStatus, briefing,
+  projectOf, statusChange, finalStatus, firstStatus, fillByRules, matchStatus, statusOf, prioOf, isFinalStatus, briefing, isNoteKind,
 } from './tasks.js';
+import { eventsOf } from './historico.js';
 
 export const PHASES = [
   ['0', 'esqueleto · terminal, hud, inbox', 'ok'],
@@ -94,7 +95,7 @@ export function createCommands(ctx) {
   const usage = (name, args) => new CmdError('E_ARG', 'shell', 'argumento faltando ou inválido', `uso: <span class="c-hud">/${name} ${esc(args)}</span>`);
 
   // Números por módulo (estáveis, em ordem de criação): notas #1 #2 · acervo a1 a2 · tarefas t1 t2 (da última lista)
-  const isNote = e => !isTask(e) && !isAcervo(e);
+  const isNote = isNoteKind; // só nota de verdade (kinds novos, como gasto, não entram no /inbox)
   const notesPool = () => S.entries.filter(isNote);
   const acervoPool = () => S.entries.filter(isAcervo);
   function nums() {
@@ -436,7 +437,7 @@ export function createCommands(ctx) {
         table([['qualquer texto', 'captura na inbox · use #tags: <span class="dim">ler cap 2</span> <span class="c-act">#tcc</span>']], 'cmd');
         table([['- texto #proj @status >prazo !prio', 'cria tarefa (igual ao /t) · o que faltar vira ↳ auto'], ['https://… contexto', 'guarda o link no acervo'], ['"texto', 'guarda o texto no acervo']], 'cmd');
         const groups = [
-          ['tarefas e projetos', c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
+          ['tarefas e projetos', c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'mudancas', 'projeto', 'status', 'ir'].includes(c.name)],
           ['acervo', c => ['acervo', 'guardar', 'buscar'].includes(c.name)],
           ['memória', c => c.data],
           ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
@@ -714,6 +715,40 @@ export function createCommands(ctx) {
       },
     },
     {
+      name: 'mudancas', alias: ['mudanças', 'eventos'], data: true, args: '[t1]',
+      desc: 'o que mudou nas tarefas (criada, status, prazo, concluída...) · ex: /mudancas · /mudancas t2',
+      run(arg) {
+        const a = String(arg).trim();
+        let alvo = null, title = 'últimas mudanças';
+        if (a) {
+          const targets = resolveTasks(a, 'mudancas', 't1');
+          if (!targets) return;
+          alvo = targets[0].e.id;
+          title = `t${targets[0].n} ${esc(targets[0].e.text)}`;
+        }
+        const evs = eventsOf(S.records || [], alvo).slice(0, alvo ? 50 : 15);
+        if (!evs.length) return term.say(alvo ? 'essa tarefa ainda não tem mudanças registradas (o histórico começou em 02/10/2026).' : 'nenhuma mudança registrada ainda.');
+        const val = (campo, v) => {
+          if (v === null || v === undefined) return '—';
+          if (campo === 'prazo') return esc(fmtDue(v));
+          if (campo === 'feito_em') { const d = new Date(v); return `${hhmm(d)} ${ddmm(d)}`; }
+          return esc(String(v).length > 40 ? String(v).slice(0, 39) + '…' : v);
+        };
+        term.print(`── mudanças · ${title} · ${evs.length} ${'─'.repeat(6)}`, 'sep');
+        for (const ev of evs.slice().reverse()) {
+          const d = new Date(ev.ts), x = ev.data || {};
+          const muds = x.acao === 'alterada'
+            ? Object.entries(x.mudancas || {}).map(([c, [de, para]]) => `${esc(c)} <span class="dim">${val(c, de)} →</span> ${val(c, para)}`).join(' · ')
+            : '';
+          const tone = x.acao === 'apagada' ? 'c-warn' : x.acao === 'alterada' ? 'c-int' : 'c-act';
+          term.print(
+            `<span class="c-meta">${ddmm(d)} ${hhmm(d)}</span> <span class="${tone}">${esc(x.acao || '?')}</span>` +
+            (alvo ? '' : ` ${hl(x.texto || '')}`) + (muds ? ` · ${muds}` : '') +
+            (x.origem && x.origem !== 'usuario' ? ` <span class="dim">(${esc(x.origem)})</span>` : ''));
+        }
+      },
+    },
+    {
       name: 'projeto', alias: ['projetos', 'proj'], data: true, async: true, exec: true,
       args: '[novo nome | renomear velho novo | arquivar nome]',
       desc: 'lista os projetos · cria, renomeia ou arquiva',
@@ -874,8 +909,8 @@ export function createCommands(ctx) {
         // desfazer = restaurar as versões antigas e apagar o que foi criado
         const step = S.undo.pop();
         if (!step) return term.say('nada pra desfazer.');
-        for (const id of step.created || []) await ctx.store.remove(id);
-        for (const e of step.items) await ctx.store.restore(e);
+        for (const id of step.created || []) await ctx.store.remove(id, { origem: 'desfazer' });
+        for (const e of step.items) await ctx.store.restore(e, { origem: 'desfazer' });
         S.lastLatency = t.elapsed();
         const n = step.items.length + (step.created?.length || 0);
         const what = step.items.length === 1 && !step.created?.length ? hl(step.items[0].text) : `${n} ${n === 1 ? 'item' : 'itens'}`;
@@ -1000,7 +1035,7 @@ export function createCommands(ctx) {
             catch { throw new CmdError('E_IMPORT', 'store', 'o arquivo não é um JSON válido', 'use o arquivo gerado pelo <span class="c-hud">/exportar</span>'); }
             const plan = prepareImport(json, [...S.entries, ...(S.records || [])]);
             if (!plan) throw new CmdError('E_IMPORT', 'store', 'não achei uma lista de entradas no arquivo', 'use o arquivo gerado pelo <span class="c-hud">/exportar</span>');
-            for (const e of plan.toAdd) await ctx.store.restore(e);
+            for (const e of plan.toAdd) await ctx.store.restore(e, { origem: 'importar' });
             S.lastLatency = t.elapsed();
             term.ok('store', `importadas ${plan.toAdd.length} · já existiam ${plan.skipped}` +
               (plan.invalid ? ` · <span class="c-warn">ignoradas ${plan.invalid} inválidas</span>` : '') +

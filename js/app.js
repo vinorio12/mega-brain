@@ -10,6 +10,7 @@ import { createUI } from './ui.js';
 import { createBoot, bootMode } from './boot.js';
 import { savedPlace, fetchWeather } from './weather.js';
 import { isRecord, registry, seedEntries } from './tasks.js';
+import { withHistory } from './historico.js';
 
 const CLOUD = Boolean(SUPABASE_URL && SUPABASE_KEY);
 
@@ -144,7 +145,8 @@ async function capture(text) {
 let unsubscribe = null;
 function attachStore(store) {
   unsubscribe?.();
-  ctx.store = store;
+  // toda gravação feita aqui numa tarefa deixa um evento no histórico (veja js/historico.js)
+  ctx.store = withHistory(store);
   // registros (projetos, status) ficam separados das notas/tarefas: não entram no /inbox nem nas contagens
   unsubscribe = store.subscribe(list => {
     S.entries = list.filter(e => !isRecord(e));
@@ -243,7 +245,7 @@ async function migrate(t) {
   const isUuid = id => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
   const todo = local.filter(e => !have.has(e.id));
   for (const e of todo) {
-    await ctx.store.restore({ id: isUuid(e.id) ? e.id : uid(), text: e.text, tags: e.tags || [], kind: e.kind || 'nota', ts: e.ts, day: e.day });
+    await ctx.store.restore({ id: isUuid(e.id) ? e.id : uid(), text: e.text, tags: e.tags || [], kind: e.kind || 'nota', ts: e.ts, day: e.day }, { origem: 'importar' });
   }
   try { localStorage.setItem(MIGRATED_KEY, new Date().toISOString()); } catch {}
   term.ok('store', `migradas ${todo.length} notas · ${local.length - todo.length} já estavam na nuvem · a cópia local foi mantida <span class="c-meta">· ${t.id} · ${t.elapsed()}ms</span>`);

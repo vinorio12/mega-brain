@@ -7,6 +7,7 @@
 
 import { REGISTRO, validarInterpretacao } from './tipos.js';
 import { pessoasNaFrase } from './pessoas.js';
+import { memoriaDe } from './memoria.js';
 import './tipos-base.js';
 import './tipos-financas.js';
 import './tipos-corpo.js';
@@ -15,11 +16,23 @@ export function criarProvedorRegras(registro = REGISTRO) {
   function montar(tipo, r, texto, ctx = {}) {
     const obj = { tipo, campos: r.campos, confianca: r.confianca, origem: 'regra', auto: r.auto || [], provedor: 'regras', texto };
     if (r.erro) obj.erro = r.erro;
+    if (r.motivos) obj.motivos = r.motivos;
     // quem aparece na frase (link e texto guardado não perguntam por nome novo)
     if (ctx.pessoas || ctx.reg) {
       Object.assign(obj, pessoasNaFrase(texto, {
         pessoas: ctx.pessoas || [], projetos: ctx.reg?.projects || [], status: (ctx.reg?.statuses || []).map(s => s.name), ignorar: ctx.ignorarPessoas || [],
       }, { novas: !['link', 'trecho'].includes(tipo) }));
+      // "joão" com dois cadastros: se o projeto já é conhecido, fica quem a memória liga a esse projeto
+      const proj = r.campos?.projeto;
+      if (obj.pessoasAmbiguas.length && proj) {
+        const mem = ctx.memoria || memoriaDe(ctx.entries || [], ctx.records || [], { reg: ctx.reg, pessoas: ctx.pessoas || [] });
+        obj.pessoasAmbiguas = obj.pessoasAmbiguas.filter(a => {
+          const certos = a.ids.filter(id => mem.info('pessoa:' + id).dominante === proj);
+          if (certos.length !== 1) return true;
+          obj.pessoas = [...new Set([...obj.pessoas, certos[0]])];
+          return false;
+        });
+      }
     }
     return validarInterpretacao(obj, registro);
   }

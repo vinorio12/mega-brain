@@ -21,3 +21,7 @@ export const INTERPRETADOR = {
   limiar: 0.7,
   ia: { ligada: false, modelo: 'claude-haiku-4-5-20251001', funcao: 'interpretar', timeoutMs: 4000, limiteDiario: 100 },
 };
+
+// Memória que aprende (Fase 2.5, js/memoria.js): uma pessoa ou palavra só "vota" num projeto quando
+// ele tem pelo menos `dominancia` do peso dela E peso total >= `pesoMinimo`. Pesos: apareceu 1 · você escreveu 2 · você corrigiu 3.
+export const MEMORIA = { dominancia: 0.7, pesoMinimo: 3 };

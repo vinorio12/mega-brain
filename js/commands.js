@@ -182,7 +182,7 @@ export function createCommands(ctx) {
   /* ---------- intérprete: tudo o que é escrito passa por aqui ---------- */
 
   // o que o intérprete precisa saber: projetos e status, entradas (histórico de projetos), aba atual
-  const ictx = (extra = {}) => ({ reg: ctx.reg(), entries: S.entries, aba: S.ctx, now: new Date(), pessoas: pessoasDe(S.records || []), ignorarPessoas: ignorados(), ...extra });
+  const ictx = (extra = {}) => ({ reg: ctx.reg(), entries: S.entries, records: S.records || [], aba: S.ctx, now: new Date(), pessoas: pessoasDe(S.records || []), ignorarPessoas: ignorados(), ...extra });
   // palavras que você disse que não são pessoa (/nao): ficam no aprendizado
   const ignorados = () => (S.records || []).filter(e => e.kind === 'interpretacao' && e.data?.naoPessoa).map(e => e.data.naoPessoa);
 
@@ -319,10 +319,13 @@ export function createCommands(ctx) {
         `<span class="c-int">/sim</span> <span class="dim">·</span> <span class="c-int">/nao</span> <span class="dim">(é nota) · ou /tipo ${outros.map(esc).join(', ')}</span>`, 'auto');
       return;
     }
-    if (['nota', 'link', 'trecho'].includes(r.tipo)) return;
+    if (['nota', 'link', 'trecho'].includes(r.tipo)) return ambiguas(r);
     const c = r.campos, A = k => (r.auto.includes(k) ? '<span class="dim">*</span>' : '');
+    // por que esse projeto: "(João: 8 de 9 na weg)" · "(planilha: fixado)"
+    const mp = r.motivos?.projeto;
+    const porque = mp?.tipo === 'pista' ? ` <span class="dim">(${esc(mp.pista)}: ${mp.estado === 'fixado' ? 'fixado' : `${mp.peso} de ${mp.total}`})</span>` : '';
     const partes = {
-      tarefa: () => [`<span class="c-act">#${esc(c.projeto || '')}</span>${A('projeto')}`, `${c.prazo ? '>' + esc(fmtDue(c.prazo)) : '>sem prazo'}${A('prazo')}`, `!${esc(c.prioridade || 'média')}${A('prioridade')}`],
+      tarefa: () => [c.projeto ? `<span class="c-act">#${esc(c.projeto)}</span>${A('projeto')}${porque}` : '<span class="c-warn">sem projeto</span>', `${c.prazo ? '>' + esc(fmtDue(c.prazo)) : '>sem prazo'}${A('prazo')}`, `!${esc(c.prioridade || 'média')}${A('prioridade')}`],
       gasto: () => [esc(fmtValor(c.valor)), c.descricao ? esc(c.descricao) : '', `${esc(fmtDia(c.data))}${A('data')}`],
       treino: () => [c.duracao_min ? c.duracao_min + 'min' : '', c.distancia_km ? c.distancia_km + 'km' : '', `${esc(fmtDia(c.data))}${A('data')}`],
     };
@@ -331,6 +334,21 @@ export function createCommands(ctx) {
     const corrigir = r.tipo === 'tarefa' ? `/editar ${n}` : '/tipo nota';
     term.print(`<span class="c-int">↳ entendi</span> · ${esc(REGISTRO.get(r.tipo)?.rotulo || r.tipo)} · ${campos.join(' · ')}` +
       ` <span class="dim">· ${r.auto.length ? '* auto · ' : ''}${esc(r.origem)} ${Math.round(r.confianca * 100)}% · /desfazer ou ${corrigir}</span>`, 'auto');
+    // a memória não chutou o projeto: mostra as pistas e como resolver
+    if (r.tipo === 'tarefa' && !c.projeto && mp && ['dividida', 'conflito'].includes(mp.tipo)) {
+      const det = mp.tipo === 'dividida'
+        ? `${esc(mp.pista)} aparece em ${mp.porProjeto.map(([p, w]) => `<span class="c-act">#${esc(p)}</span> ${w}`).join(' · ')}`
+        : mp.pistas.map(x => `${esc(x.pista)} → <span class="c-act">#${esc(x.projeto)}</span>`).join(' · ');
+      const sug = mp.tipo === 'dividida' ? mp.porProjeto[0]?.[0] : mp.pistas[0]?.projeto;
+      term.print(`<span class="c-warn">↳ projeto?</span> ${det} <span class="dim">· não chutei ·</span> <span class="c-int">/editar ${esc(n)} #${esc(sug || 'projeto')}</span>`, 'auto');
+    }
+    ambiguas(r);
+  }
+  // "joão" com dois cadastros e sem como decidir: avisa (o texto fica salvo, só não liga a ninguém)
+  function ambiguas(r) {
+    if (!r.pessoasAmbiguas?.length) return;
+    const nomes = id => S.records.find(e => e.id === id)?.text || '?';
+    term.print(`<span class="c-warn">↳ qual?</span> ${r.pessoasAmbiguas.map(a => `${esc(a.trecho)}: ${a.ids.map(nomes).map(esc).join(' ou ')}`).join(' · ')} <span class="dim">· escreva o nome completo ou use um apelido</span>`, 'auto');
   }
 
   // Acervo: guardar link e texto (mesma fila, nuvem e desfazer de tudo)

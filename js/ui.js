@@ -217,7 +217,7 @@ export function createUI(ctx) {
     const ctxTasks = taskStats(S.ctx ? E.filter(e => inCtx(e)) : E);
     const [memText] = mem();
     const st = ctx.store?.status;
-    const intent = readIntent(inputValue, { mode: S.mode, ctx: S.ctx, catalog: ctx.commands.catalog(), reg: ctx.reg(), entries: S.entries, pessoas: pessoasDe(S.records || []) });
+    const intent = readIntent(inputValue, { mode: S.mode, ctx: S.ctx, catalog: ctx.commands.catalog(), reg: ctx.reg(), entries: S.entries, records: S.records || [], pessoas: pessoasDe(S.records || []) });
 
     set('s-context', '~' + (S.ctx ? '/' + S.ctx : ''), `${ctxTasks.abertas} abertas${ctxTasks.atrasadas ? ` · ${ctxTasks.atrasadas} atrasadas` : ''}`);
     set('s-memory', memText, `${E.length} entradas`);
@@ -250,7 +250,7 @@ export function createUI(ctx) {
 
   // direita: o contexto do momento. Digitando → mostra o que o Enter vai fazer. Parado → tarefas relevantes.
   function renderCtx(E, now) {
-    const intent = readIntent(inputValue, { mode: S.mode, ctx: S.ctx, catalog: ctx.commands.catalog(), reg: ctx.reg(), entries: S.entries, pessoas: pessoasDe(S.records || []) });
+    const intent = readIntent(inputValue, { mode: S.mode, ctx: S.ctx, catalog: ctx.commands.catalog(), reg: ctx.reg(), entries: S.entries, records: S.records || [], pessoas: pessoasDe(S.records || []) });
     const body = $('x-body'), line = $('intent-line');
     let title = 'contexto', sub = '~' + (S.ctx ? '/' + S.ctx : ''), html = '', short = '';
 
@@ -281,14 +281,14 @@ export function createUI(ctx) {
       // cada campo: o valor + "auto" quando o app vai decidir sozinho
       const A = k => intent.auto.includes(k) ? ' <span class="auto-tag">auto</span>' : '';
       html = `<dl class="ctx-intent"><dt>texto</dt><dd>${esc(intent.text)}</dd>` +
-        `<dt>projeto</dt><dd class="c-act">#${esc(intent.projeto)}${A('projeto')}</dd>` +
+        `<dt>projeto</dt><dd class="c-act">${intent.projeto ? "#" + esc(intent.projeto) + A("projeto") : '<span class="c-warn">? (as pistas não decidem: pergunto depois)</span>'}</dd>` +
         `<dt>status</dt><dd class="c-int">@${esc(intent.status)}${A('status')}</dd>` +
         `<dt>prioridade</dt><dd class="${intent.prioridade === 'alta' ? 'c-warn' : ''}">!${esc(intent.prioridade)}${A('prioridade')}</dd>` +
         `<dt>prazo</dt><dd class="c-int">${intent.prazo ? esc(fmtDue(intent.prazo, now)) : '<span class="dim">sem prazo</span>'}${A('prazo')}</dd>` +
         (intent.pessoas?.length ? `<dt>pessoas</dt><dd class="c-act">${intent.pessoas.map(esc).join(', ')}</dd>` : '') + '</dl>' +
         (intent.inferido ? `<div class="ctx-hint">entendi como tarefa (regra, ${Math.round(intent.confianca * 100)}%) · escreva "nota:" antes pra guardar como nota</div>` : '') +
         '<div class="ctx-hint">auto = o app decide · informe com #proj @status >prazo !prio</div>';
-      short = `→ tarefa · #${intent.projeto} · @${intent.status} · !${intent.prioridade}${intent.prazo ? ' · ' + fmtDue(intent.prazo, now) : ''}${intent.auto.length ? ' (auto: ' + intent.auto.join(', ') + ')' : ''}`;
+      short = `→ tarefa · ${intent.projeto ? "#" + intent.projeto : "projeto?"} · @${intent.status} · !${intent.prioridade}${intent.prazo ? ' · ' + fmtDue(intent.prazo, now) : ''}${intent.auto.length ? ' (auto: ' + intent.auto.join(', ') + ')' : ''}`;
     } else if (intent.type === 'task-error') {
       title = 'nova tarefa';
       sub = intent.error === 'prazo' ? 'prazo?' : 'vazia';

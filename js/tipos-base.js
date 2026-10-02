@@ -11,6 +11,7 @@ import { REGISTRO } from './tipos.js';
 import { tagsOf, dayKey } from './util.js';
 import { parseTaskInput, fillByRules, registry, newTask, PRIORITIES, matchStatus } from './tasks.js';
 import { findPessoas, candidatosPessoa } from './pessoas.js';
+import { memoriaDe, decidirProjeto } from './memoria.js';
 import { parseLink, parseSnippet } from './acervo.js';
 import { findDate } from './dates.js';
 import { RASTREAR } from './historico.js';
@@ -97,11 +98,16 @@ export function registrarTiposBase(r = REGISTRO) {
         return explicito ? { confianca: 1, campos: { texto: raw || '-' }, erro: { codigo: p.error, token: p.token || '' } } : null;
       }
       if (data && (p.prazo === null || p.prazo === undefined)) p.prazo = data.data;
-      const { values, auto } = fillByRules(p, { entries, reg, now });
+      // projeto: a memória decide (pessoas e palavras que aprenderam com o uso) · null = não chutou, pergunta
+      const ids = findPessoas(raw, ctx?.pessoas || []).filter(a => a.ids.length === 1).map(a => a.ids[0]);
+      const mem = ctx?.memoria || memoriaDe(entries, ctx?.records || [], { reg, pessoas: ctx?.pessoas || [] });
+      const decidir = texto => decidirProjeto(texto, { mem, pessoas: ids, reg, entries });
+      const { values, auto, motivos } = fillByRules(p, { entries, reg, now, decidir });
       return {
         confianca,
         campos: { texto: p.text, projeto: values.projeto, status: values.status, prazo: values.prazo, prioridade: values.prioridade, tags: [...new Set([values.projeto, ...p.tags].filter(Boolean))] },
         auto,
+        motivos,
       };
     },
     montar: (i, ctx) => {

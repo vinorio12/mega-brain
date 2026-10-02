@@ -45,7 +45,7 @@ export function describeState(key, { tasks = [], mode = null } = {}) {
 
 // O que vai acontecer quando o operador apertar Enter?
 //   catalog: [{ name, alias, args, desc }] dos comandos
-export function readIntent(text, { mode = null, ctx = null, catalog = [], reg = registry([]), entries = [], now = new Date(), pessoas = [], ignorarPessoas = [] } = {}) {
+export function readIntent(text, { mode = null, ctx = null, catalog = [], reg = registry([]), entries = [], records = [], now = new Date(), pessoas = [], ignorarPessoas = [] } = {}) {
   const raw = String(text);
   if (mode) return { type: 'login', field: mode };
   const v = raw.trim();
@@ -64,7 +64,7 @@ export function readIntent(text, { mode = null, ctx = null, catalog = [], reg = 
   }
 
   // texto livre: a mesma leitura que o Enter vai fazer (o intérprete, só regras: instantâneo)
-  const ictx = { reg, entries, aba: ctx, now, pessoas, ignorarPessoas };
+  const ictx = { reg, entries, records, aba: ctx, now, pessoas, ignorarPessoas };
   // nomes das pessoas reconhecidas (pra mostrar na prévia)
   const nomes = x => (x?.pessoas || []).map(id => pessoas.find(p => p.id === id)?.nome).filter(Boolean);
   const r = previa(v, ictx);

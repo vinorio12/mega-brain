@@ -111,6 +111,11 @@ export function validarInterpretacao(obj, registro = REGISTRO) {
   if (strs(obj.pessoasNovas).length) valor.pessoasNovas = strs(obj.pessoasNovas);
   const amb = Array.isArray(obj.pessoasAmbiguas) ? obj.pessoasAmbiguas.filter(a => a && typeof a.trecho === 'string' && strs(a.ids).length > 1) : [];
   if (amb.length) valor.pessoasAmbiguas = amb.map(a => ({ trecho: a.trecho, ids: strs(a.ids) }));
+  // por que o app decidiu cada campo (ex: motivos.projeto = { tipo: 'pista', pista: 'João', ... }) · só dados simples
+  if (obj.motivos && typeof obj.motivos === 'object' && !Array.isArray(obj.motivos)) {
+    const m = Object.fromEntries(Object.entries(obj.motivos).filter(([k, v]) => k in t.campos && v && typeof v === 'object'));
+    if (Object.keys(m).length) valor.motivos = JSON.parse(JSON.stringify(m));
+  }
   if (obj.erro && typeof obj.erro === 'object') valor.erro = { codigo: String(obj.erro.codigo || ''), token: String(obj.erro.token || '') };
   return { ok: true, valor };
 }

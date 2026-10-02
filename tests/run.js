@@ -26,6 +26,7 @@ import { INTERPRETADOR } from '../js/config.js';
 import { registroAprendizado, resumoAprendizado, exportarFrases } from '../js/aprendizado.js';
 import { montarContexto, estimarTokens } from '../js/contexto.js';
 import { pessoasDe, findPessoas, candidatosPessoa, acharPessoa, editApelidos, juntarPessoas, resumoPessoa } from '../js/pessoas.js';
+import { criarMemoria, decidirProjeto } from '../js/memoria.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -1008,6 +1009,82 @@ describe('/pessoa João: tudo de uma pessoa (etapa 5 · Fase 2.5)', () => {
     ok(/esperando Ana/.test(s.term.text()) && /abertas/.test(s.term.text()), s.term.text());
     await s.run('/feito t1');
     eq(s.S.entries.find(e => e.text.startsWith('esperando')).data.status, 'feito');
+  });
+});
+
+describe('memória que aprende (memoria.js · etapa 6 · Fase 2.5)', () => {
+  const reg = registry([]);
+  const pes = [{ id: 'joao', nome: 'João', apelidos: [], chaves: ['joao'] }, { id: 'ana', nome: 'Ana', apelidos: [], chaves: ['ana'] }];
+  let n = 0;
+  const tk = (text, projeto, { pessoas = [], auto = false, ts = 1000 } = {}) => ({ id: 't' + n++, kind: 'tarefa', text, tags: [projeto], ts,
+    data: { projeto, status: 'a fazer', pessoas, ...(auto ? { auto: { campos: ['projeto'], fonte: 'regra' } } : { auto: { campos: ['status'], fonte: 'regra' } }) } });
+  const mem = (E, R = []) => criarMemoria(E, R, { reg, pessoas: pes });
+  test('pesos: escrito 2, decidido pelo app 1, corrigido 3', () => {
+    const E = [tk('a', 'weg', { pessoas: ['joao'] }), tk('b', 'weg', { pessoas: ['joao'], auto: true }), tk('c', 'tcc', { pessoas: ['joao'], auto: true })];
+    const R = [{ kind: 'evento', ts: 5, data: { alvo: E[2].id, acao: 'alterada', mudancas: { projeto: ['pessoal', 'tcc'] }, origem: 'usuario' } }];
+    eq(mem(E, R).info('pessoa:joao').porProjeto, [['weg', 3], ['tcc', 3]]);
+  });
+  test('dominante (≥70% e peso ≥3), dividida, pouca', () => {
+    const m = mem([...Array(4)].map(() => tk('x', 'weg', { pessoas: ['joao'] })).concat([tk('y', 'tcc', { pessoas: ['joao'], auto: true }), tk('z', 'weg', { pessoas: ['ana'], auto: true }), tk('w', 'tcc', { pessoas: ['ana'], auto: true }), tk('v', 'tcc', { pessoas: ['ana'], auto: true })]));
+    eq([m.info('pessoa:joao').estado, m.info('pessoa:joao').dominante], ['dominante', 'weg']);
+    eq(m.info('pessoa:ana').estado, 'dividida');
+    eq(mem([tk('q', 'weg', { pessoas: ['ana'], auto: true })]).info('pessoa:ana').estado, 'pouca');
+  });
+  test('palavras: as genéricas se dividem e não votam; as específicas votam', () => {
+    const E = ['revisar planilha', 'revisar planilha de custos', 'atualizar planilha'].map(t => tk(t, 'weg')).concat(['revisar cap 2', 'revisar resumo'].map(t => tk(t, 'tcc')));
+    const m = mem(E);
+    eq([m.info('palavra:planilha').dominante, m.info('palavra:revisar').estado], ['weg', 'dividida']);
+  });
+  test('fixar, bloquear e limpar por comando (registro memoria) + palavras-chave antigas contam como fixar', () => {
+    const E = [tk('planilha', 'tcc'), tk('planilha', 'tcc')];
+    const R = [{ kind: 'memoria', ts: 10, data: { chave: 'palavra:planilha', acao: 'fixar', projeto: 'weg' } }];
+    eq(mem(E, R).info('palavra:planilha').dominante, 'weg');
+    const R2 = [{ kind: 'memoria', ts: 10, data: { chave: 'palavra:planilha', acao: 'bloquear', projeto: 'tcc' } }];
+    eq(mem(E, R2).info('palavra:planilha').porProjeto, []);
+    const R3 = [{ kind: 'memoria', ts: 5000, data: { chave: 'palavra:planilha', acao: 'limpar' } }];
+    eq(mem(E, R3).info('palavra:planilha').estado, 'nada');
+    const regKw = registry([{ kind: 'projeto', text: 'tcc', ts: 1, data: { ordem: 1, palavras: ['banca de defesa'] } }, { kind: 'status', text: 'a fazer', ts: 2, data: {} }]);
+    const mk = criarMemoria([], [], { reg: regKw, pessoas: pes });
+    eq(decidirProjeto('marcar a banca de defesa', { mem: mk, reg: regKw }).projeto, 'tcc');
+  });
+  test('decidirProjeto: nome > pista > conflito > frase > dividida > pessoal', () => {
+    const E = [...Array(3)].map(() => tk('x', 'weg', { pessoas: ['joao'] })).concat([...Array(3)].map(() => tk('y', 'tcc', { pessoas: ['ana'] })), [tk('relatorio mensal', 'weg', { auto: true })]);
+    const m = mem(E);
+    const d = (t, pessoas = []) => decidirProjeto(t, { mem: m, pessoas, reg, entries: E });
+    eq([d('falar com joão sobre o tcc', ['joao']).projeto, d('falar com joão', ['joao']).projeto, d('joão e ana', ['joao', 'ana']).projeto, d('ver relatorio', []).projeto, d('comprar pão').projeto],
+      ['tcc', 'weg', null, 'weg', 'pessoal']);
+    eq([d('falar com joão', ['joao']).motivo.tipo, d('joão e ana', ['joao', 'ana']).motivo.tipo, d('ver relatorio').motivo.tipo], ['pista', 'conflito', 'frase']);
+    const div = mem([tk('a', 'weg', { pessoas: ['joao'] }), tk('b', 'tcc', { pessoas: ['joao'] })]);
+    eq(decidirProjeto('ligar pro joão', { mem: div, pessoas: ['joao'], reg }), { projeto: null, motivo: { tipo: 'dividida', pista: 'João', porProjeto: [['weg', 2], ['tcc', 2]] } });
+  });
+  const T = { id: 'T0001', elapsed: () => 1 };
+  test('na prática: João quase sempre na weg → tarefa nova com João vai pra weg, com o motivo', async () => {
+    const s = setup([]);
+    await s.run('/pessoa nova João');
+    for (const t of ['falar com João sobre o motor #weg', 'cobrar João do relatório #weg']) await s.run('/t ' + t);
+    await s.ctx.commands.capturar('ligar pro João amanhã', T);
+    const e = s.S.entries.at(-1);
+    eq([e.text, e.data.projeto], ['ligar pro João', 'weg']);
+    ok(/João: 4 de 4/.test(s.term.text()), s.term.text());
+  });
+  test('na prática: João dividido → sem projeto + "↳ projeto?"', async () => {
+    const s = setup([]);
+    await s.run('/pessoa nova João');
+    for (const t of ['falar com João #weg', 'falar com João #tcc']) await s.run('/t ' + t);
+    await s.ctx.commands.capturar('ligar pro João amanhã', T);
+    eq(s.S.entries.at(-1).data.projeto, null);
+    ok(/projeto\?/.test(s.term.text()) && /não chutei/.test(s.term.text()), s.term.text());
+  });
+  test('na prática: corrigiu "planilha" pra weg → o app passa a associar sozinho', async () => {
+    const s = setup([]);
+    s.ctx.store = withHistory(memStore([]));
+    s.ctx.store.subscribe(l => { s.S.entries = l.filter(e => !isRecord(e)); s.S.records = l.filter(isRecord); });
+    await s.ctx.commands.capturar('atualizar planilha amanhã', T);
+    eq(s.S.entries[0].data.projeto, 'pessoal');
+    await s.run('/editar t1 #weg');
+    await s.ctx.store.idle();
+    await s.ctx.commands.capturar('revisar planilha sexta', T);
+    eq(s.S.entries.at(-1).data.projeto, 'weg');
   });
 });
 

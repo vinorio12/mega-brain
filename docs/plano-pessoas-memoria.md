@@ -31,7 +31,7 @@ Uma **pista** é uma pessoa (`pessoa:<id>`) ou uma palavra (`palavra:planilha`).
 |---|---|
 | tarefa com a pista, projeto decidido pelo app e não corrigido | 1 |
 | tarefa com a pista, projeto escrito por você (`#weg`, aba) ou `/sim` | 2 |
-| **correção**: você mudou o projeto (`/mover`, `/editar`, `/tipo`), lido do histórico | 3 |
+| **correção**: você mudou o projeto (`/editar #weg`, `/tipo`), lido do histórico | 3 |
 | **fixar por comando** (`/memoria planilha = weg`) | manda sempre |
 | **bloquear** (`/memoria planilha -tcc`) / **limpar** (esquece o passado da pista) | — |
 
@@ -40,7 +40,7 @@ Uma **pista** é uma pessoa (`pessoa:<id>`) ou uma palavra (`palavra:planilha`).
 - **As palavras-chave do `/palavras` entram aqui** como "fixar" (o que já foi cadastrado continua valendo). `/palavras` vira atalho do `/memoria`.
 - **Dominância:** uma pista só vota se o projeto mais forte tem **≥ 70% do peso e pelo menos 3 de peso**. Ex.: João = weg 8, tcc 1 → vota weg. João = weg 3, tcc 3 → dividida, não vota.
 - **Decidir o projeto da tarefa**, nesta ordem: escrito (`#weg`, aba) → nome do projeto na frase → pistas dominantes (somadas; se duas pistas fortes discordam, não decide) → nada.
-  **Nada decidiu = não chuta**: a tarefa fica sem projeto e a linha pergunta `↳ projeto? João: weg 3 · tcc 3 · /mover t4 weg`.
+  **Nada decidiu = não chuta**: a tarefa fica sem projeto e a linha pergunta `↳ projeto? João: weg 3 · tcc 3 · /editar t4 #weg`.
 - A linha "↳ entendi" mostra o motivo: `#weg* (João: 8 de 9 na weg)`.
 
 ### Comandos

@@ -172,7 +172,7 @@ const tokens = s => ' ' + String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toL
 
 // Projeto mais provável pelo texto: nome do projeto no texto (+5), palavra-chave do projeto (+4, /palavras)
 // e palavras em comum com as tarefas de cada projeto (+1 cada).
-export function guessProject(text, { entries = [], reg = registry([]) } = {}) {
+export function guessProject(text, { entries = [], reg = registry([]), semPadrao = false } = {}) {
   const mine = new Set(words3(text));
   const toks = tokens(text);
   let best = null, bestScore = 0;
@@ -185,6 +185,7 @@ export function guessProject(text, { entries = [], reg = registry([]) } = {}) {
     }
     if (score > bestScore) { best = p; bestScore = score; }
   }
+  if (semPadrao) return best; // null = nenhuma pista (quem chama decide)
   return best || (reg.projects.includes('pessoal') ? 'pessoal' : reg.projects[0] || null);
 }
 
@@ -197,15 +198,21 @@ export function dueFor(prioridade, now = new Date()) {
 
 // Regras simples: preenchem o que não foi informado. Devolve os valores + a lista do que foi automático.
 // (é também o "plano B" quando houver IA: se ela falhar, isto decide)
-export function fillByRules(parsed, { entries = [], reg = registry([]), now = new Date() } = {}) {
+// decidir(texto) → { projeto, motivo } (Fase 2.5: a memória); sem ele, o guessProject de sempre. projeto null = não chutou.
+export function fillByRules(parsed, { entries = [], reg = registry([]), now = new Date(), decidir = null } = {}) {
+  const motivos = {};
   const auto = [];
   const v = { projeto: parsed.projeto, status: parsed.status, prioridade: parsed.prioridade, prazo: parsed.prazo };
-  if (!v.projeto) { v.projeto = guessProject(parsed.text, { entries, reg }); auto.push('projeto'); }
+  if (!v.projeto) {
+    if (decidir) { const d = decidir(parsed.text); v.projeto = d.projeto; motivos.projeto = d.motivo; }
+    else v.projeto = guessProject(parsed.text, { entries, reg });
+    auto.push('projeto');
+  }
   if (!v.status) { v.status = firstStatus(reg); auto.push('status'); }
   if (!v.prioridade) { v.prioridade = 'média'; auto.push('prioridade'); }
   if (v.prazo === null || v.prazo === undefined) { v.prazo = dueFor(v.prioridade, now); auto.push('prazo'); }
   if (v.prazo === '') v.prazo = null; // ">sem" = sem prazo, de propósito
-  return { values: v, auto };
+  return { values: v, auto, motivos };
 }
 
 export function newTask({ text, tags, prazo = null, projeto = null, status = 'a fazer', prioridade = 'média', auto = null }, now = new Date()) {

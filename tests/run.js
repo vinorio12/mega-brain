@@ -16,6 +16,8 @@ import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, ta
 import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
+import { lerMovimento } from '../js/tipos-financas.js';
+import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
 
@@ -766,6 +768,27 @@ describe('provedor de regras (provedor-regras.js · Fase 2)', () => {
     eq(REGISTRO.get('nota').montar(P('oi #weg'), c), { text: 'oi #weg', tags: ['weg'], kind: 'nota', ts: now.getTime(), day: '2026-10-01' });
     const t = REGISTRO.get('tarefa').montar(P('- revisar cap 2 #tcc >sex'), c);
     eq([t.kind, t.text, t.tags, t.data.projeto, t.data.prazo, t.data.status, t.data.auto], ['tarefa', 'revisar cap 2', ['tcc'], 'tcc', '2026-10-02', 'a fazer', { campos: ['status', 'prioridade'], fonte: 'regra' }]);
+  });
+});
+
+describe('gasto, entrada, treino (dado bruto · Fase 2)', () => {
+  const now = new Date(2026, 9, 1, 12, 0);
+  test('lerDuracao', () => eq(
+    ['1h', '1h30', '1 h 30 min', '2 horas', '1 hora e meia', 'uma hora e meia', 'meia hora', 'uma hora', '45 min', '45 minutos', 'às 7h', 'cap 15', ''].map(lerDuracao),
+    [60, 90, 90, 120, 90, 90, 30, 60, 45, 45, null, null, null]));
+  test('lerDistancia', () => eq(['5km', '5,5 km', '10 quilômetros', '12 kms', 'corri muito'].map(lerDistancia), [5, 5.5, 10, 12, null]));
+  test('lerMovimento tira verbo, valor, data e preposição da descrição', () => eq(
+    lerMovimento('me pagaram 200 pelo freela ontem', now), { valor: 20000, explicito: false, descricao: 'pelo freela', data: '2026-09-30', temData: true }));
+  test('montar gasto e treino', () => {
+    const g = provedorRegras.interpretar('gastei 30 no almoço', { now });
+    eq(REGISTRO.get('gasto').montar(g, { now }), { kind: 'gasto', text: 'gastei 30 no almoço', tags: [], ts: now.getTime(), day: '2026-10-01', data: { valor: 3000, descricao: 'almoço', data: '2026-10-01' } });
+    const t = provedorRegras.interpretar('corri 5km', { now });
+    eq(REGISTRO.get('treino').montar(t, { now }).data, { descricao: 'corri 5km', duracao_min: null, distancia_km: 5, data: '2026-10-01' });
+  });
+  test('/buscar acha gasto e não mistura com nota', () => {
+    const res = searchAll([{ id: 'g', kind: 'gasto', text: 'gastei 30 no almoço', tags: [] }, { id: 'n', kind: 'nota', text: 'almoço bom', tags: [] }], 'almoço');
+    eq(res.groups.map(g => g.key), ['nota', 'gasto']);
+    eq(searchAll([{ id: 'g', kind: 'gasto', text: 'x', tags: [] }], 'tipo:gastos').total, 1);
   });
 });
 

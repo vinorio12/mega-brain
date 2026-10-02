@@ -19,6 +19,7 @@ import {
   projectOf, statusChange, finalStatus, firstStatus, fillByRules, matchStatus, statusOf, prioOf, isFinalStatus, briefing, isNoteKind,
 } from './tasks.js';
 import { eventsOf } from './historico.js';
+import { fmtValor } from './valores.js';
 
 export const PHASES = [
   ['0', 'esqueleto · terminal, hud, inbox', 'ok'],
@@ -156,6 +157,13 @@ export function createCommands(ctx) {
     if (tasks.length) { S.taskList = tasks.map(e => e.id); tasks.forEach((e, i) => taskLine(i + 1, e)); }
     if (notes.length) noteRows(notes);
     if (acv.length) acervoCards(acv);
+    // gasto, entrada, treino: só o dado bruto por enquanto (telas nas Fases 3 e 4)
+    for (const e of items.filter(e => !isTask(e) && !isNote(e) && !isAcervo(e))) {
+      const d = e.data || {};
+      const extra = d.valor !== undefined ? fmtValor(d.valor) : [d.duracao_min ? d.duracao_min + 'min' : '', d.distancia_km ? d.distancia_km + 'km' : ''].filter(Boolean).join(' ');
+      const dt = d.data ? d.data.slice(8, 10) + '.' + d.data.slice(5, 7) : '';
+      term.print(`<span class="c-meta">${esc(dt)}</span> <span class="c-int">${esc(e.kind)}</span> ${hl(e.text)}${extra ? ` <span class="c-act">${esc(extra)}</span>` : ''}`);
+    }
   }
 
   // link clicável (sempre http/https, abre em aba nova sem acesso ao app) + contexto

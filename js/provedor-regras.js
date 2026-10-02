@@ -7,6 +7,8 @@
 
 import { REGISTRO, validarInterpretacao } from './tipos.js';
 import './tipos-base.js';
+import './tipos-financas.js';
+import './tipos-corpo.js';
 
 export function criarProvedorRegras(registro = REGISTRO) {
   function montar(tipo, r, texto) {

@@ -47,8 +47,12 @@ export function shortUrl(url, max = 42) {
   } catch { return url; }
 }
 
-const TIPOS = { link: 'link', links: 'link', trecho: 'trecho', trechos: 'trecho', texto: 'trecho', textos: 'trecho', tarefa: 'tarefa', tarefas: 'tarefa', nota: 'nota', notas: 'nota' };
-export const tipoOf = e => (isLink(e) ? 'link' : isSnippet(e) ? 'trecho' : e?.kind === 'tarefa' ? 'tarefa' : 'nota');
+const TIPOS = {
+  link: 'link', links: 'link', trecho: 'trecho', trechos: 'trecho', texto: 'trecho', textos: 'trecho', tarefa: 'tarefa', tarefas: 'tarefa', nota: 'nota', notas: 'nota',
+  gasto: 'gasto', gastos: 'gasto', entrada: 'entrada', entradas: 'entrada', treino: 'treino', treinos: 'treino',
+};
+const OUTROS = ['gasto', 'entrada', 'treino']; // reconhecidos desde a Fase 2; telas nas Fases 3 e 4
+export const tipoOf = e => (isLink(e) ? 'link' : isSnippet(e) ? 'trecho' : e?.kind === 'tarefa' ? 'tarefa' : OUTROS.includes(e?.kind) ? e.kind : 'nota');
 
 // Busca em tudo: "rag", "#tcc", "rag tipo:link". Devolve grupos por tipo (só os que têm resultado).
 export function searchAll(entries, query) {
@@ -62,8 +66,8 @@ export function searchAll(entries, query) {
     if (tag) return (e.tags || []).includes(tag);
     return [e.text, e.data?.url, e.data?.contexto].some(s => String(s || '').toLowerCase().includes(q));
   });
-  const order = ['tarefa', 'nota', 'link', 'trecho'];
-  const titles = { tarefa: 'tarefas', nota: 'notas', link: 'links', trecho: 'textos' };
+  const order = ['tarefa', 'nota', 'link', 'trecho', ...OUTROS];
+  const titles = { tarefa: 'tarefas', nota: 'notas', link: 'links', trecho: 'textos', gasto: 'gastos', entrada: 'entradas', treino: 'treinos' };
   const groups = order.map(t => ({ key: t, title: titles[t], items: hits.filter(e => tipoOf(e) === t) })).filter(g => g.items.length);
   return { groups, total: hits.length, tipo, q };
 }

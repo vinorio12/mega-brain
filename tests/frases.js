@@ -38,6 +38,26 @@ export const FRASES = [
   { frase: 'comprar pão', esperado: { tipo: 'nota', pergunta: true } },
   { frase: 'reunião com orientador sexta', esperado: { tipo: 'nota', pergunta: true } },
 
+  // gasto e entrada (dado bruto, valor em centavos)
+  { frase: 'gastei 30 no almoço', esperado: { tipo: 'gasto', minConfianca: 0.9, campos: { valor: 3000, descricao: 'almoço', data: '2026-10-01' } } },
+  { frase: 'paguei R$ 120,50 de luz', esperado: { tipo: 'gasto', campos: { valor: 12050, descricao: 'luz' } } },
+  { frase: 'gastei 45 reais ontem no mercado', esperado: { tipo: 'gasto', campos: { valor: 4500, descricao: 'mercado', data: '2026-09-30' } } },
+  { frase: 'comprei um tênis por 250 #pessoal', esperado: { tipo: 'gasto', campos: { valor: 25000, tags: ['pessoal'] } } },
+  { frase: 'recebi 1.500 de salário', esperado: { tipo: 'entrada', campos: { valor: 150000, descricao: 'salário' } } },
+  { frase: 'caiu o salário 3.200', esperado: { tipo: 'entrada', campos: { valor: 320000, descricao: 'salário' } } },
+  { frase: 'almoço R$ 32,90', esperado: { tipo: 'nota', pergunta: true } },
+  { frase: 'uber 18,50', esperado: { tipo: 'nota', pergunta: true } },
+  { frase: 'comprei um livro', esperado: { tipo: 'nota', pergunta: false } },
+  { frase: 'pagar o boleto de 120 amanhã', esperado: { tipo: 'tarefa', campos: { prazo: '2026-10-02' } } },
+
+  // treino (dado bruto)
+  { frase: 'treinei peito 1h', esperado: { tipo: 'treino', campos: { duracao_min: 60, data: '2026-10-01' } } },
+  { frase: 'corri 5km em 30 min', esperado: { tipo: 'treino', campos: { distancia_km: 5, duracao_min: 30 } } },
+  { frase: 'joguei futebol ontem 1h30', esperado: { tipo: 'treino', campos: { duracao_min: 90, data: '2026-09-30' } } },
+  { frase: 'malhei', esperado: { tipo: 'treino', campos: { descricao: 'malhei' } } },
+  { frase: 'academia amanhã às 7h', esperado: { tipo: 'nota', pergunta: true } },
+  { frase: 'joguei fora as roupas velhas', esperado: { tipo: 'nota', pergunta: false } },
+
   // acervo
   { frase: 'https://arxiv.org/abs/2005.11401 paper do RAG #tcc', esperado: { tipo: 'link', campos: { url: 'https://arxiv.org/abs/2005.11401', contexto: 'paper do RAG #tcc', tags: ['tcc'] } } },
   { frase: '"a persistência é o caminho do êxito"', esperado: { tipo: 'trecho', campos: { texto: 'a persistência é o caminho do êxito' } } },

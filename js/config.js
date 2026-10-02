@@ -12,3 +12,12 @@ export const SUPABASE_URL = 'https://xfvfgidvqrubdtogtczy.supabase.co';
 export const OPERATORS = { vini: 'hornburg.vinicius@gmail.com' };
 
 export const SUPABASE_KEY = 'sb_publishable__83oomHbJQto-1Z_l5X1xA_Ee-EHveM';
+
+// Intérprete (Fase 2): o que você escreve passa por interpretar() (js/interpretar.js).
+//   limiar: abaixo disto as regras não têm certeza → IA (se ligada) ou salva como nota e pergunta
+//   ia.ligada: false até a Edge Function existir (backlog). A chave da IA fica SÓ no servidor, nunca aqui.
+//   ia.modelo: troque pra outro modelo quando quiser · ia.limiteDiario: trava de custo (chamadas por dia)
+export const INTERPRETADOR = {
+  limiar: 0.7,
+  ia: { ligada: false, modelo: 'claude-haiku-4-5-20251001', funcao: 'interpretar', timeoutMs: 4000, limiteDiario: 100 },
+};

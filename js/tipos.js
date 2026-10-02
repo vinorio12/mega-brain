@@ -8,6 +8,7 @@
 //     auto: ['projeto', 'prazo'],           // campos que o app decidiu sozinho (linha "↳ entendi")
 //     provedor: 'regras', texto: '<o que foi digitado>',
 //     pergunta?: true,                      // não reconheceu: salvou como nota e quer saber o que é
+//     palpite?: 'tarefa',                   // junto com a pergunta: o que as regras acharam, sem certeza
 //     erro?: { codigo, token } }            // ex: prazo inválido num marcador >xyz
 // validarInterpretacao confere tudo isso. Resposta da IA só vale depois de passar aqui.
 //
@@ -102,6 +103,7 @@ export function validarInterpretacao(obj, registro = REGISTRO) {
   const auto = Array.isArray(obj.auto) ? obj.auto.filter(k => k in t.campos) : [];
   const valor = { tipo: t.id, campos, confianca: obj.confianca, origem: obj.origem, auto, texto: obj.texto, provedor: String(obj.provedor || obj.origem) };
   if (obj.pergunta === true) valor.pergunta = true;
+  if (obj.palpite && registro.get(obj.palpite)) valor.palpite = obj.palpite;
   if (obj.erro && typeof obj.erro === 'object') valor.erro = { codigo: String(obj.erro.codigo || ''), token: String(obj.erro.token || '') };
   return { ok: true, valor };
 }

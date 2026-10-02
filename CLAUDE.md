@@ -55,7 +55,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - `js/app.js` boot e ligação das peças · `js/terminal.js` saída, log, tarefas, teclado
 - `js/commands.js` comandos · `js/ui.js` periferia + liga estado, núcleo e satélites · `js/core.js` núcleo (canvas) · `js/state.js` estados e leitura da intenção
 - `js/store.js` memória local · `js/cloud.js` login + memória na nuvem (mesma interface, com cache e fila offline)
-- `js/config.js` URL e chave publishable do Supabase (vazia = modo local)
+- `js/config.js` URL e chave publishable do Supabase (vazia = modo local) · `INTERPRETADOR` (limiar 0.7, IA `ligada: false`, modelo, limite diário)
 - `js/boot.js` sequência de boot (usa o mesmo núcleo) · `js/weather.js` clima (Open-Meteo, padrão Jaraguá do Sul)
 - `js/views.js` visões das tarefas (`viewGroups`, `calendarModel`) · `js/tasks.js` modelo de tarefa, registros, regras automáticas, `briefing`
 - `js/dates.js` datas faladas → AAAA-MM-DD (`parseDue` pro marcador `>sex`, `findDate` pra data dentro de frase, `fmtDue`)
@@ -64,6 +64,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - `js/tipos.js` contrato do intérprete (`validarInterpretacao`) + registro de tipos (`registrarTipo`, `REGISTRO.schema()` pra IA)
 - `js/tipos-base.js` tipos nota, tarefa, link, trecho (`reconhecer` + `montar`) · `js/provedor-regras.js` motor de regras (síncrono, devolve o contrato)
 - `js/tipos-financas.js` gasto e entrada (`lerMovimento`) · `js/tipos-corpo.js` treino (`lerDuracao`, `lerDistancia`): só dado bruto, Fases 3 e 4 expandem
+- `js/interpretar.js` a função única: `interpretar(texto, ctx)` (async, pode usar IA) e `previa` (instantânea, só regras) · `js/provedor-ia.js` IA desligada: pedido curto (`montarPedido`), timeout, resposta validada, `travaDiaria`, cache
 - `tests/frases.js` régua do intérprete: frase → resultado esperado (regras e IA passam na mesma lista; `FRASES_IA` só pra IA)
 - `tests/` testes no navegador · `docs/` passo a passo e planos
 - `sw.js` + `manifest.webmanifest` + `icons/` PWA (ao mudar arquivos do app, aumentar `CACHE` no sw.js)
@@ -112,7 +113,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - Regras: leitor de datas em frases, leitor de valores (centavos), palavras-chave por projeto (`/palavras`) · linha "↳ entendi" depois de salvar · log de frases não entendidas (`/aprendizado`) · régua de frases de exemplo (`tests/frases.js`) que a IA também precisa passar
   - Pra Fase 6: histórico de mudanças (registros `kind: evento`, append-only) e `montarContexto` (resumo enxuto do estado)
   - [x] 0 · plano aprovado e roadmap atualizado
-  - [x] 1 datas em frases (`findDate` em dates.js, 195 testes) · [x] 2 valores (`js/valores.js`: centavos inteiros, 202 testes) · [x] 3 histórico de mudanças (`js/historico.js`: `withHistory` em volta da memória, `/mudancas [t1]`) + kinds desconhecidos escondidos (214 testes) · [x] 4 contrato + registro de tipos (`js/tipos.js`: `criarRegistro`, `REGISTRO`, `validarInterpretacao`, 222 testes) · [x] 5 régua (`tests/frases.js`, 24 frases) + provedor de regras (`js/provedor-regras.js`, tipos em `js/tipos-base.js`) · 255 testes · [x] 6 gasto/entrada/treino brutos (`js/tipos-financas.js`, `js/tipos-corpo.js`; aparecem no `/buscar`, não no `/inbox`; 40 frases, 276 testes) · [ ] 7 `interpretar()` + provedor de IA desligado · [ ] 8 palavras-chave por projeto · [ ] 9 ligar na tela (9a sem mudar nada, 9b texto livre + `/tipo`) · [ ] 10 aprendizado · [ ] 11 `montarContexto` · [ ] 12 fechamento
+  - [x] 1 datas em frases (`findDate` em dates.js, 195 testes) · [x] 2 valores (`js/valores.js`: centavos inteiros, 202 testes) · [x] 3 histórico de mudanças (`js/historico.js`: `withHistory` em volta da memória, `/mudancas [t1]`) + kinds desconhecidos escondidos (214 testes) · [x] 4 contrato + registro de tipos (`js/tipos.js`: `criarRegistro`, `REGISTRO`, `validarInterpretacao`, 222 testes) · [x] 5 régua (`tests/frases.js`, 24 frases) + provedor de regras (`js/provedor-regras.js`, tipos em `js/tipos-base.js`) · 255 testes · [x] 6 gasto/entrada/treino brutos (`js/tipos-financas.js`, `js/tipos-corpo.js`; aparecem no `/buscar`, não no `/inbox`; 40 frases, 276 testes) · [x] 7 `interpretar()` (`js/interpretar.js`: regras → IA se ligada → nota com pergunta + palpite) + provedor de IA desligado (`js/provedor-ia.js`, `INTERPRETADOR` em config.js, ganchos `travaDiaria` e cache) · 287 testes · [ ] 8 palavras-chave por projeto · [ ] 9 ligar na tela (9a sem mudar nada, 9b texto livre + `/tipo`) · [ ] 10 aprendizado · [ ] 11 `montarContexto` · [ ] 12 fechamento
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)
 - [ ] 5. Dashboards: gráficos por área e tendências, só com dados reais

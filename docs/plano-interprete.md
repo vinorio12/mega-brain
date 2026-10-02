@@ -94,7 +94,7 @@ Lista `{ frase, hoje: '2026-10-01', esperado: { tipo, campos parciais, minConfia
 | 4 | **feito** · `js/tipos.js` (registro) + contrato + `validarInterpretacao` | P | tipo inválido/campo faltando é recusado |
 | 5 | **feito** · Régua (`tests/frases.js`) + provedor de regras com `nota`, `tarefa`, `link`, `trecho` | M | frases-base verdes; `- tarefa`, link, aspas dão o mesmo que hoje |
 | 6 | **feito** · `gasto`, `entrada`, `treino` (dado bruto) + frases na régua | M | "gastei 30 no almoço" → gasto 3000 centavos; "treinei peito 1h" → treino |
-| 7 | `interpretar()` (orquestrador, limiar, fallback nota+pergunta) + `provedor-ia.js` desligado + `INTERPRETADOR` em `config.js` | M | régua passa também com IA falsa; falha/lenta/inválida/desligada → nota com pergunta, nunca perde texto |
+| 7 | **feito** · `interpretar()` (orquestrador, limiar, fallback nota+pergunta) + `provedor-ia.js` desligado + `INTERPRETADOR` em `config.js` | M | régua passa também com IA falsa; falha/lenta/inválida/desligada → nota com pergunta, nunca perde texto |
 | 8 | Palavras-chave por projeto + `/palavras`; `guessProject` usa | P | palavra do projeto decide; edição desfaz; sincroniza |
 | 9a | Ligar na tela, **sem mudar comportamento**: `run()` e `readIntent` chamam o motor; `/t` e `- ` passam por ele; `isNote`/`tipoOf`/overview tratam `kind` novos | M | testes antigos todos verdes (181 hoje) + captura de nota/link/texto/tarefa idêntica |
 | 9b | Texto livre vira tarefa/gasto/entrada/treino; linha "↳ entendi"; nota com pergunta; `/tipo` | M | "ligar pro dentista amanhã" vira tarefa com prazo; "bla bla" vira nota + pergunta |

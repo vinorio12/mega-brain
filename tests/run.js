@@ -20,6 +20,9 @@ import { lerMovimento } from '../js/tipos-financas.js';
 import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
+import { criarInterpretador, interpretar, previa } from '../js/interpretar.js';
+import { criarProvedorIA, travaDiaria, montarPedido } from '../js/provedor-ia.js';
+import { INTERPRETADOR } from '../js/config.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -792,19 +795,94 @@ describe('gasto, entrada, treino (dado bruto · Fase 2)', () => {
   });
 });
 
-describe('régua de frases (tests/frases.js · motor de regras)', () => {
-  // até o interpretar() existir (etapa 7): confiança abaixo de 0.7 = nota com pergunta
-  const viaRegras = (frase, c) => {
-    const r = provedorRegras.interpretar(frase, c);
-    return r.confianca >= 0.7 ? r : { ...r, tipo: 'nota', pergunta: true };
-  };
+describe('régua de frases (tests/frases.js · interpretar com regras)', () => {
   const ctxBase = () => ({ reg: registry([]), entries: [] });
+  const { interpretar: viaRegras } = criarInterpretador();
   for (const f of FRASES) {
     test(`"${f.frase}" → ${f.esperado.tipo}${f.esperado.pergunta ? ' + pergunta' : ''}`, async () => {
       const [r] = await rodarFrases(viaRegras, [f], ctxBase);
       if (!r.ok) throw new Error(r.motivo);
     });
   }
+  test('a régua inteira passa também com uma IA (falsa) ligada no encaixe', async () => {
+    let chamadas = 0;
+    // IA de mentira que responde o mesmo que as regras: prova que o encaixe não quebra nada
+    const invoke = async p => { chamadas++; const r = provedorRegras.interpretar(p.texto, { now: new Date(p.hoje + 'T12:00'), reg: registry([]), aba: p.aba }); return { tipo: r.tipo, campos: r.campos, confianca: r.confianca, auto: r.auto }; };
+    const ia = criarProvedorIA({ invoke, config: { ligada: true, modelo: 'teste', timeoutMs: 500 } });
+    const res = await rodarFrases(criarInterpretador({ ia }).interpretar, FRASES, ctxBase);
+    const ruins = res.filter(r => !r.ok);
+    if (ruins.length) throw new Error(ruins.map(r => `${r.frase}: ${r.motivo}`).join('\n'));
+    ok(chamadas > 0 && chamadas < FRASES.length, `a IA só é chamada nos casos de dúvida (${chamadas})`);
+  });
+});
+
+describe('interpretar() + provedor de IA desligado (Fase 2)', () => {
+  const now = new Date(2026, 9, 1, 12, 0);
+  const ctx = { reg: registry([]), entries: [], now };
+  const resposta = { tipo: 'tarefa', campos: { texto: 'comprar pão', prazo: '2026-10-02' }, confianca: 0.9 };
+  const comIA = (invoke, extra = {}) => criarInterpretador({ ia: criarProvedorIA({ invoke, config: { ligada: true, modelo: 'teste', timeoutMs: 50 }, onError: () => {}, ...extra }) });
+  test('IA desligada (o padrão): dúvida vira nota com pergunta e palpite', async () => {
+    const r = await interpretar('comprar pão', ctx);
+    eq([r.tipo, r.pergunta, r.palpite, r.campos.texto, r.origem], ['nota', true, 'tarefa', 'comprar pão', 'regra']);
+    ok(validarInterpretacao(r).ok, 'nota com pergunta também segue o contrato');
+  });
+  test('config padrão: IA desligada, Haiku 4.5, limiar 0.7', () => eq(
+    [INTERPRETADOR.ia.ligada, INTERPRETADOR.ia.modelo, INTERPRETADOR.limiar], [false, 'claude-haiku-4-5-20251001', 0.7]));
+  test('desligada nunca chama o servidor', async () => {
+    let n = 0;
+    const i = criarInterpretador({ ia: criarProvedorIA({ invoke: async () => { n++; return resposta; }, config: { ligada: false } }) });
+    await i.interpretar('comprar pão', ctx);
+    eq(n, 0);
+  });
+  test('ligada: na dúvida a IA decide (origem ia)', async () => {
+    const r = await comIA(async () => resposta).interpretar('comprar pão', ctx);
+    eq([r.tipo, r.origem, r.provedor, r.campos.prazo, r.texto], ['tarefa', 'ia', 'ia-teste', '2026-10-02', 'comprar pão']);
+  });
+  test('ligada: regra com certeza não gasta chamada', async () => {
+    let n = 0;
+    const r = await comIA(async () => { n++; return resposta; }).interpretar('ligar pro dentista amanhã', ctx);
+    eq([r.origem, n], ['regra', 0]);
+  });
+  test('IA com erro, lenta, inválida ou sem certeza → nota com pergunta, texto salvo', async () => {
+    const casos = [
+      async () => { throw new Error('sem rede'); },
+      () => new Promise(() => {}), // nunca responde: corta no timeout
+      async () => ({ tipo: 'foguete', campos: {}, confianca: 1 }),
+      async () => ({ tipo: 'tarefa', campos: {}, confianca: 0.9 }), // falta texto
+      async () => ({ ...resposta, confianca: 0.4 }),
+    ];
+    for (const invoke of casos) {
+      const r = await comIA(invoke).interpretar('comprar pão', ctx);
+      eq([r.tipo, r.pergunta, r.campos.texto], ['nota', true, 'comprar pão']);
+    }
+  });
+  test('trava diária: estourou, fica nas regras', async () => {
+    const mem = new Map();
+    const storage = { getItem: k => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };
+    const guard = travaDiaria(1, { storage, key: 'mb.test.ia', now: () => now });
+    let n = 0;
+    const i = comIA(async () => { n++; return resposta; }, { guard });
+    eq([(await i.interpretar('comprar pão', ctx)).origem, (await i.interpretar('comprar leite', ctx)).tipo, n], ['ia', 'nota', 1]);
+  });
+  test('cache: mesma frase no mesmo dia não chama de novo', async () => {
+    const mem = new Map();
+    const cache = { get: k => mem.get(k), set: (k, v) => mem.set(k, v) };
+    let n = 0;
+    const i = comIA(async () => { n++; return resposta; }, { cache });
+    await i.interpretar('comprar pão', ctx);
+    await i.interpretar('Comprar pão ', ctx);
+    eq(n, 1);
+  });
+  test('pedido pra IA é curto e não leva suas notas', () => {
+    const p = montarPedido('comprar pão', { ...ctx, entries: [{ text: 'segredo' }], aba: 'tcc' }, { modelo: 'm' });
+    eq(Object.keys(p), ['modelo', 'texto', 'hoje', 'dia_semana', 'aba', 'tipos', 'projetos', 'palavras', 'status']);
+    eq([p.hoje, p.dia_semana, p.aba, p.projetos], ['2026-10-01', 'qui', 'tcc', ['tcc', 'weg', 'pessoal']]);
+    ok(!JSON.stringify(p).includes('segredo'));
+    ok(p.tipos.some(t => t.tipo === 'gasto'), 'os tipos vêm do registro');
+  });
+  test('previa é instantânea (sem IA) e igual ao interpretar sem IA', async () => {
+    for (const t of ['comprar pão', 'ligar pro dentista amanhã', 'oi', '- x >nunca']) eq(previa(t, ctx), await interpretar(t, ctx));
+  });
 });
 
 describe('estado do núcleo (deriveState)', () => {

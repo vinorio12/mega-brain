@@ -1,6 +1,6 @@
 # Pessoas + memória que aprende (Fase 2.5)
 
-> Status: **aprovado pelo Vini em 02/10/2026** (respostas abaixo, em "Decisões do Vini"). Mesmo ritual das outras fases: uma etapa por vez,
+> Status: **aprovado pelo Vini em 02/10/2026** · **etapas 1 a 8 feitas (v0.10.0)**, esperando o Vini testar e aprovar. Mesmo ritual das outras fases: uma etapa por vez,
 > testes verdes, `sw.js`, commit em português, `CLAUDE.md` atualizado. Nada de IA: tudo por regras e pelo uso.
 
 ## O que o Vini pediu

@@ -32,6 +32,7 @@ export const PHASES = [
   ['0.5', 'app próprio · pwa, nuvem, login', 'ok'],
   ['1', 'tarefas e projetos · hoje, tcc, weg, pessoal', 'wip'],
   ['2', 'intérprete · escreva do seu jeito (regras; ia encaixável, desligada) · histórico · contexto', 'wip'],
+  ['2.5', 'pessoas e memória · nomes na frase, projeto aprendido pelo uso', 'wip'],
   ['3', 'finanças · gastos, entradas, saldo do mês', ''],
   ['4', 'corpo e hábitos · treino, saúde, padrão semanal', ''],
   ['5', 'dashboards · gráficos e tendências', ''],
@@ -1143,7 +1144,7 @@ export function createCommands(ctx) {
       desc: 'o resumo do seu estado que a IA vai ler (Fase 6) · ex: /contexto · /contexto 14',
       run(arg) {
         const d = Math.min(60, Math.max(1, parseInt(arg, 10) || 7));
-        const texto = montarContexto(S.entries, S.records || [], { reg: ctx.reg(), dias: d });
+        const texto = montarContexto(S.entries, S.records || [], { reg: ctx.reg(), dias: d, pessoas: pessoasDe(S.records || []) });
         term.print(`── contexto · ${d} dias · ${texto.length} caracteres · ≈ ${estimarTokens(texto)} tokens ${'─'.repeat(4)}`, 'sep');
         texto.split('\n').forEach(l => term.print(`<span class="${l.startsWith('  ') ? '' : 'c-int'}">${esc(l).replace(/^ +/, m => '&nbsp;'.repeat(m.length))}</span>`));
         term.print('<span class="dim">é isto (e só isto) que o Coach vai ler · curto de propósito pra gastar pouco</span>');

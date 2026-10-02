@@ -1127,6 +1127,20 @@ describe('/memoria: ver e editar o que o app aprendeu (etapa 7 · Fase 2.5)', ()
   });
 });
 
+describe('contexto e IA sabem das pessoas (etapa 8 · Fase 2.5)', () => {
+  const now = new Date(2026, 9, 8, 12);
+  test('montarContexto: "esperando: João (2) · Ana (1)"', () => {
+    const tk = (id, pessoas, status = 'esperando') => ({ id, kind: 'tarefa', text: id, tags: [], ts: now.getTime(), data: { projeto: 'weg', status, pessoas } });
+    const pes = [{ id: 'j', nome: 'João' }, { id: 'a', nome: 'Ana' }];
+    const t = montarContexto([tk('x', ['j']), tk('y', ['j', 'a']), tk('z', ['a'], 'a fazer')], [], { now, pessoas: pes });
+    ok(t.includes('esperando: João (2) · Ana (1)'), t);
+  });
+  test('pedido da IA leva só nome e apelido', () => {
+    const p = montarPedido('falar com jão', { now, pessoas: [{ id: 'j', nome: 'João Silva', apelidos: ['jão'], chaves: [] }] }, { modelo: 'm' });
+    eq(p.pessoas, ['João Silva (jão)']);
+  });
+});
+
 describe('/ver por status (bug do kanban vazio)', () => {
   const T = { id: 'T0001', elapsed: () => 1 };
   test('/ver kanban e depois /ver a fazer mostram as tarefas; palavra estranha dá erro', async () => {
@@ -1425,7 +1439,7 @@ describe('interpretar() + provedor de IA desligado (Fase 2)', () => {
   });
   test('pedido pra IA é curto e não leva suas notas', () => {
     const p = montarPedido('comprar pão', { ...ctx, entries: [{ text: 'segredo' }], aba: 'tcc' }, { modelo: 'm' });
-    eq(Object.keys(p), ['modelo', 'texto', 'hoje', 'dia_semana', 'aba', 'tipos', 'projetos', 'palavras', 'status']);
+    eq(Object.keys(p), ['modelo', 'texto', 'hoje', 'dia_semana', 'aba', 'tipos', 'projetos', 'palavras', 'pessoas', 'status']);
     eq([p.hoje, p.dia_semana, p.aba, p.projetos], ['2026-10-01', 'qui', 'tcc', ['tcc', 'weg', 'pessoal']]);
     ok(!JSON.stringify(p).includes('segredo'));
     ok(p.tipos.some(t => t.tipo === 'gasto'), 'os tipos vêm do registro');

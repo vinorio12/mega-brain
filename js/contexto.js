@@ -17,7 +17,7 @@ const curto = (s, n = 38) => { const t = String(s || '').replace(/\s+/g, ' ').tr
 const ddmm = key => (key ? `${key.slice(8, 10)}.${key.slice(5, 7)}` : '');
 const diasEntre = (a, b) => Math.round((new Date(b + 'T12:00') - new Date(a + 'T12:00')) / DIA);
 
-export function montarContexto(entries = [], eventos = [], { reg = registry([]), now = new Date(), dias = 7, maxChars = 1500, registro = REGISTRO } = {}) {
+export function montarContexto(entries = [], eventos = [], { reg = registry([]), now = new Date(), dias = 7, maxChars = 1500, registro = REGISTRO, pessoas = [] } = {}) {
   const today = dayKey(now);
   const desde = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (dias - 1)).getTime();
   const tasks = entries.filter(isTask);
@@ -76,6 +76,13 @@ export function montarContexto(entries = [], eventos = [], { reg = registry([]),
     const prox = ab.filter(t => t.data?.prazo > today && prioOf(t) !== 'alta').sort((a, b) => a.data.prazo.localeCompare(b.data.prazo)).slice(0, 3);
     if (prox.length) add(5, `  próximas: ${prox.map(t => `${curto(t.text, 30)} >${ddmm(t.data.prazo)}`).join('; ')}`);
   }
+
+  // por quem você está esperando (Fase 2.5): "esperando: João (2) · Ana (1)"
+  const esperando = new Map();
+  for (const t of open.filter(t => statusOf(t) === 'esperando')) for (const id of t.data?.pessoas || []) esperando.set(id, (esperando.get(id) || 0) + 1);
+  const nomeDe = id => pessoas.find(p => p.id === id)?.nome || eventos.find(e => e.id === id)?.text;
+  const esp = [...esperando].map(([id, n]) => [nomeDe(id), n]).filter(([nm]) => nm).sort((a, b) => b[1] - a[1]);
+  if (esp.length) add(2, `esperando: ${esp.map(([nm, n]) => `${nm} (${n})`).join(' · ')}`);
 
   // outros tipos (gastos, entradas, treinos...) se resumem sozinhos
   for (const tipo of registro.lista()) {

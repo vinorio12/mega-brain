@@ -5,7 +5,7 @@ Tudo entra escrevendo, do seu jeito: notas, tarefas, gastos, treinos, links e te
 Instalável no celular e no PC (PWA), com dados na nuvem e acesso só do dono.
 
 ```
-MB CORE v0.9.0                                  ■ READY  ⇅ ON  ◫ NUVEM  ⋮ 18° 94%
+MB CORE v0.10.0                                 ■ READY  ⇅ ON  ◫ NUVEM  ⋮ 18° 94%
 › ligar pro dentista amanhã
 18:03 OK  task   tarefa t4 · ligar pro dentista · T0007 · 84ms
           ↳ entendi · tarefa · #pessoal* · >amanhã · !média* · * auto · regra 80% · /desfazer ou /editar t4
@@ -22,7 +22,11 @@ MB CORE v0.9.0                                  ■ READY  ⇅ ON  ◫ NUVEM  �
 | `https://… contexto #tag` · `"texto curto` | guarda o link ou o texto no acervo |
 | `nota: …` | guarda como nota, sem tentar entender |
 | `/tipo tarefa` · `/tipo gasto #3` | corrige o que o app entendeu (sem número: a última coisa escrita) |
-| `/palavras tcc +orientador` | palavras que puxam a tarefa pro projeto |
+| `esperando o João mandar o orçamento` · `falar com a Ana amanhã` | reconhece quem já está cadastrado (sem @); "esperando/aguardando" vira @esperando |
+| `/sim` · `/nao` | responde a última pergunta do app ("Carla é uma pessoa?", "era tarefa?") |
+| `/pessoas` · `/pessoa João` · `/pessoa juntar Jão com João` | quem está cadastrado, tudo de uma pessoa, editar e juntar cadastros |
+| `/memoria` · `/memoria planilha = weg` | o que o app aprendeu (pessoa/palavra → projeto) e como corrigir |
+| `/palavras tcc +orientador` | palavras que puxam a tarefa pro projeto (atalho do `/memoria`) |
 | `/inicio` · `/ver lista \| status \| kanban \| calendario` | o essencial e as visões das tarefas |
 | `/editar t2 #weg !alta` · `/mover t3 fazendo` · `/feito t1-t3` | mexe nas tarefas |
 | `/mudancas t2` | o histórico de uma tarefa (criada, status, prazos, concluída) |
@@ -43,6 +47,14 @@ Toda resposta segue o mesmo contrato (`js/tipos.js`): tipo, campos, confiança e
 A régua `tests/frases.js` tem as frases de exemplo com o resultado esperado. As regras passam nela, e a IA vai ter que passar também.
 O que o app não entende vai pro `/aprendizado`. Cada mudança nas tarefas fica num histórico (`/mudancas`), e `/contexto`
 mostra o resumo curto que a IA vai ler quando virar Coach (Fase 6).
+
+## Pessoas e memória
+
+Escreva normal: quem está cadastrado (nome, primeiro nome ou apelido, sem ligar pra acento) fica ligado à entrada.
+Nome novo → "↳ Carla é uma pessoa? /sim". O app aprende em que projeto cada pessoa e cada palavra aparece
+(você escreveu vale 2, você corrigiu vale 3) e usa isso como pista: João quase sempre na WEG → tarefa nova com João vai pra WEG,
+com o motivo na linha "↳ entendi". Pista dividida entre projetos não chuta: a tarefa fica sem projeto e o app pergunta.
+`/memoria` mostra e corrige tudo isso.
 
 ## Como funciona
 
@@ -77,6 +89,7 @@ Abra http://localhost:5173. Os testes ficam em http://localhost:5173/tests/.
 | `js/tipos.js`, `js/tipos-base.js`, `js/tipos-financas.js`, `js/tipos-corpo.js` | contrato + registro de tipos (nota, tarefa, link, trecho, gasto, entrada, treino) |
 | `js/dates.js`, `js/valores.js` | datas faladas e valores em reais (centavos) |
 | `js/historico.js`, `js/aprendizado.js`, `js/contexto.js` | histórico de mudanças, frases não entendidas e o resumo pra IA |
+| `js/pessoas.js`, `js/memoria.js` | pessoas reconhecidas na frase e a memória que aprende o projeto pelo uso |
 | `js/tasks.js`, `js/views.js` | tarefas (modelo, regras automáticas) e visões |
 | `js/acervo.js` | links e textos guardados, busca em tudo |
 | `js/cloud.js`, `js/store.js` | memória na nuvem (com cache e fila offline) e local |

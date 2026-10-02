@@ -40,6 +40,8 @@ export function montarPedido(texto, ctx = {}, { registro = REGISTRO, modelo } = 
     tipos: registro.schema(),
     projetos: reg ? reg.projects : [],
     palavras: reg?.palavras || {},
+    // só nome e apelidos das pessoas cadastradas, pra IA reconhecer quem aparece na frase
+    pessoas: (ctx.pessoas || []).map(p => (p.apelidos?.length ? `${p.nome} (${p.apelidos.join(', ')})` : p.nome)),
     status: reg ? reg.statuses.map(s => s.name) : [],
   };
 }

@@ -16,6 +16,7 @@ const MODULES = [
   { name: 'inbox', phase: '0' },
   { name: 'tarefas', phase: '1' },
   { name: 'ia intérprete', phase: '2' },
+  { name: 'pessoas e memória', phase: '2.5' },
   { name: 'finanças', phase: '3' },
   { name: 'corpo e hábitos', phase: '4' },
   { name: 'dashboards', phase: '5' },

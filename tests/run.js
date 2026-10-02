@@ -14,6 +14,7 @@ import { viewName, viewGroups, calendarModel, parseMonth } from '../js/views.js'
 import { parseLink, parseSnippet, shortUrl, searchAll } from '../js/acervo.js';
 import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord, guessProject, dueFor, fillByRules, matchStatus, briefing, isNoteKind } from '../js/tasks.js';
 import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
+import { criarRegistro, validarInterpretacao } from '../js/tipos.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -683,6 +684,55 @@ describe('histórico de mudanças (historico.js · Fase 2)', () => {
     await s.run('/mudancas t1');
     ok(/mudanças/.test(s.term.text()) && /prazo/.test(s.term.text()) && /desfazer/.test(s.term.text()), 'mostra as mudanças');
   });
+});
+
+describe('registro de tipos + contrato (tipos.js · Fase 2)', () => {
+  const reg = () => {
+    const r = criarRegistro();
+    r.registrar({ id: 'gasto', campos: { valor: { tipo: 'centavos', obrigatorio: true }, descricao: { tipo: 'texto' }, data: { tipo: 'data' } }, rastrear: ['valor'], exemplos: ['gastei 30 no almoço'] });
+    r.registrar({ id: 'tarefa', campos: { texto: { tipo: 'texto', obrigatorio: true }, prioridade: { tipo: 'enum', valores: ['alta', 'média', 'baixa'] }, tags: { tipo: 'lista' } } });
+    return r;
+  };
+  const base = { tipo: 'gasto', campos: { valor: 3000, descricao: 'almoço', data: '2026-10-02' }, confianca: 0.9, origem: 'regra', texto: 'gastei 30 no almoço' };
+  test('registrar e consultar', () => {
+    const r = reg();
+    eq([r.ids(), r.get('gasto').kind, r.get('gasto').rotulo, r.get('xyz')], [['gasto', 'tarefa'], 'gasto', 'gasto', null]);
+  });
+  test('registro recusa id repetido, id inválido e campo de tipo desconhecido', async () => {
+    const r = reg();
+    await throws(() => r.registrar({ id: 'gasto' }));
+    await throws(() => r.registrar({ id: 'Gasto X' }));
+    await throws(() => r.registrar({ id: 'y', campos: { a: { tipo: 'cor' } } }));
+    await throws(() => r.registrar({ id: 'z', campos: { a: { tipo: 'enum' } } }));
+  });
+  test('schema curto pra IA e campos rastreados', () => {
+    const r = reg();
+    eq(r.schema()[0], { tipo: 'gasto', campos: { valor: 'centavos!', descricao: 'texto', data: 'data' }, exemplos: ['gastei 30 no almoço'] });
+    eq(r.schema()[1].campos.prioridade, ['alta', 'média', 'baixa']);
+    eq(r.rastrear(), { gasto: ['valor'] });
+  });
+  test('interpretação válida passa e sai normalizada', () => {
+    const v = validarInterpretacao({ ...base, campos: { ...base.campos, inventado: 1 }, auto: ['data', 'nada'], extra: 'x' }, reg());
+    eq(v, { ok: true, valor: { tipo: 'gasto', campos: { valor: 3000, descricao: 'almoço', data: '2026-10-02' }, confianca: 0.9, origem: 'regra', auto: ['data'], texto: 'gastei 30 no almoço', provedor: 'regra' } });
+  });
+  test('campo opcional vazio sai; pergunta e erro passam', () => {
+    const v = validarInterpretacao({ ...base, campos: { valor: 3000, descricao: '' }, pergunta: true, erro: { codigo: 'prazo', token: '>x' } }, reg()).valor;
+    eq([v.campos, v.pergunta, v.erro], [{ valor: 3000 }, true, { codigo: 'prazo', token: '>x' }]);
+  });
+  test('recusa: tipo, origem, confiança, texto, campos', () => {
+    const r = reg();
+    const bad = [null, [], 'x', { ...base, tipo: 'treino' }, { ...base, origem: 'chute' }, { ...base, confianca: 1.2 }, { ...base, confianca: '0.9' },
+      { ...base, texto: undefined }, { ...base, campos: null }, { ...base, campos: [] }];
+    eq(bad.map(o => validarInterpretacao(o, r).ok), Array(bad.length).fill(false));
+  });
+  test('recusa: campo obrigatório faltando ou com tipo errado', () => {
+    const r = reg();
+    const bad = [{ valor: null }, { valor: 30.5 }, { valor: -1 }, { valor: '3000' }, { valor: 3000, data: '2026-02-30' }, { valor: 3000, data: '02/10' }, { valor: 3000, descricao: 5 }];
+    eq(bad.map(campos => validarInterpretacao({ ...base, campos }, r).ok), Array(bad.length).fill(false));
+    eq(validarInterpretacao({ ...base, tipo: 'tarefa', campos: { texto: 'x', prioridade: 'urgente' } }, r).erro, 'campo prioridade inválido: "urgente"');
+    eq(validarInterpretacao({ ...base, tipo: 'tarefa', campos: { texto: 'x', tags: ['a', 1] } }, r).ok, false);
+  });
+  test('motivo da recusa em português', () => eq(validarInterpretacao({ ...base, campos: {} }, reg()).erro, 'falta o campo valor'));
 });
 
 describe('estado do núcleo (deriveState)', () => {

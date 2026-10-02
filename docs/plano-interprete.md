@@ -91,7 +91,7 @@ Lista `{ frase, hoje: '2026-10-01', esperado: { tipo, campos parciais, minConfia
 | 1 | `findDate` em `dates.js` · **feito** | P | frases de data testadas (fixando `now` = 2026-10-01, quinta) |
 | 2 | **feito** · `js/valores.js` (`parseValor`, `findValor`, `fmtValor`) | P | 30 / 30 reais / R$30,00 / R$30,50 / R$ 1.234,56 testados |
 | 3 | **feito** · Histórico: `evento`, `diffEvent`, `withHistory`, `/mudancas`; kinds desconhecidos escondidos; ligado no `attachStore` (subiu da 8 na revisão) | M | criar/mover/adiar/concluir/desfazer/apagar geram eventos; nada some; nada novo aparece no `/inbox` |
-| 4 | `js/tipos.js` (registro) + contrato + `validarInterpretacao` | P | tipo inválido/campo faltando é recusado |
+| 4 | **feito** · `js/tipos.js` (registro) + contrato + `validarInterpretacao` | P | tipo inválido/campo faltando é recusado |
 | 5 | Régua (`tests/frases.js`) + provedor de regras com `nota`, `tarefa`, `link`, `trecho` | M | frases-base verdes; `- tarefa`, link, aspas dão o mesmo que hoje |
 | 6 | `gasto`, `entrada`, `treino` (dado bruto) + frases na régua | M | "gastei 30 no almoço" → gasto 3000 centavos; "treinei peito 1h" → treino |
 | 7 | `interpretar()` (orquestrador, limiar, fallback nota+pergunta) + `provedor-ia.js` desligado + `INTERPRETADOR` em `config.js` | M | régua passa também com IA falsa; falha/lenta/inválida/desligada → nota com pergunta, nunca perde texto |

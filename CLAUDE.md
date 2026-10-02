@@ -61,6 +61,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - `js/dates.js` datas faladas → AAAA-MM-DD (`parseDue` pro marcador `>sex`, `findDate` pra data dentro de frase, `fmtDue`)
 - `js/valores.js` valores em reais → centavos inteiros (`parseValor`, `findValor`, `fmtValor`)
 - `js/historico.js` histórico de mudanças: `withHistory(store)` anota cada gravação de tarefa como `kind: evento` (origem: `store.restore(e, { origem })`); o que chega da nuvem não gera evento
+- `js/tipos.js` contrato do intérprete (`validarInterpretacao`) + registro de tipos (`registrarTipo`, `REGISTRO.schema()` pra IA)
 - `tests/` testes no navegador · `docs/` passo a passo e planos
 - `sw.js` + `manifest.webmanifest` + `icons/` PWA (ao mudar arquivos do app, aumentar `CACHE` no sw.js)
 - `supabase/*.sql` banco (rodar no SQL Editor) · `tools/icons.ps1` gera os PNGs dos ícones
@@ -108,7 +109,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - Regras: leitor de datas em frases, leitor de valores (centavos), palavras-chave por projeto (`/palavras`) · linha "↳ entendi" depois de salvar · log de frases não entendidas (`/aprendizado`) · régua de frases de exemplo (`tests/frases.js`) que a IA também precisa passar
   - Pra Fase 6: histórico de mudanças (registros `kind: evento`, append-only) e `montarContexto` (resumo enxuto do estado)
   - [x] 0 · plano aprovado e roadmap atualizado
-  - [x] 1 datas em frases (`findDate` em dates.js, 195 testes) · [x] 2 valores (`js/valores.js`: centavos inteiros, 202 testes) · [x] 3 histórico de mudanças (`js/historico.js`: `withHistory` em volta da memória, `/mudancas [t1]`) + kinds desconhecidos escondidos (214 testes) · [ ] 4 contrato + registro de tipos · [ ] 5 régua + regras (nota, tarefa, link, trecho) · [ ] 6 gasto/entrada/treino brutos · [ ] 7 `interpretar()` + provedor de IA desligado · [ ] 8 palavras-chave por projeto · [ ] 9 ligar na tela (9a sem mudar nada, 9b texto livre + `/tipo`) · [ ] 10 aprendizado · [ ] 11 `montarContexto` · [ ] 12 fechamento
+  - [x] 1 datas em frases (`findDate` em dates.js, 195 testes) · [x] 2 valores (`js/valores.js`: centavos inteiros, 202 testes) · [x] 3 histórico de mudanças (`js/historico.js`: `withHistory` em volta da memória, `/mudancas [t1]`) + kinds desconhecidos escondidos (214 testes) · [x] 4 contrato + registro de tipos (`js/tipos.js`: `criarRegistro`, `REGISTRO`, `validarInterpretacao`, 222 testes) · [ ] 5 régua + regras (nota, tarefa, link, trecho) · [ ] 6 gasto/entrada/treino brutos · [ ] 7 `interpretar()` + provedor de IA desligado · [ ] 8 palavras-chave por projeto · [ ] 9 ligar na tela (9a sem mudar nada, 9b texto livre + `/tipo`) · [ ] 10 aprendizado · [ ] 11 `montarContexto` · [ ] 12 fechamento
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)
 - [ ] 5. Dashboards: gráficos por área e tendências, só com dados reais

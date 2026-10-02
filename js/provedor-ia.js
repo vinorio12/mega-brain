@@ -39,7 +39,7 @@ export function montarPedido(texto, ctx = {}, { registro = REGISTRO, modelo } = 
     aba: ctx.aba || null,
     tipos: registro.schema(),
     projetos: reg ? reg.projects : [],
-    palavras: ctx.palavras || {},
+    palavras: reg?.palavras || {},
     status: reg ? reg.statuses.map(s => s.name) : [],
   };
 }

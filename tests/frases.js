@@ -3,6 +3,7 @@
 // ela tem que passar nesta MESMA lista. Frase nova que deu errado no uso real (/aprendizado exportar) entra aqui.
 //
 // esperado: { tipo, campos (só os que importam), pergunta (true = salvou como nota e perguntou), minConfianca }
+// palavras: palavras-chave dos projetos pra essa frase ({ tcc: ['orientador'] })
 // aba: projeto da aba atual (~/weg). Todas as frases são lidas como se hoje fosse quinta, 01/10/2026.
 
 export const HOJE = '2026-10-01';
@@ -32,6 +33,9 @@ export const FRASES = [
   { frase: 'estudar estatística semana que vem', esperado: { tipo: 'tarefa', campos: { texto: 'estudar estatística', prazo: '2026-10-05' } } },
   { frase: 'revisar slides amanhã', aba: 'weg', esperado: { tipo: 'tarefa', campos: { projeto: 'weg', prazo: '2026-10-02' } } },
   { frase: 'mandar email pro orientador sobre o tcc daqui a 3 dias', esperado: { tipo: 'tarefa', campos: { projeto: 'tcc', prazo: '2026-10-04' } } },
+  // palavras-chave do projeto (/palavras tcc +orientador)
+  { frase: 'marcar reunião com o orientador amanhã', palavras: { tcc: ['orientador'] }, esperado: { tipo: 'tarefa', campos: { projeto: 'tcc' } } },
+  { frase: 'marcar reunião com o orientador amanhã', esperado: { tipo: 'tarefa', campos: { projeto: 'pessoal' } } },
 
   // sinal fraco → salva como nota e pergunta
   { frase: 'estudar estatística', esperado: { tipo: 'nota', pergunta: true } },

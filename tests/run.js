@@ -12,7 +12,7 @@ import { parseValor, findValor, fmtValor } from '../js/valores.js';
 import { deriveState, describeState, readIntent } from '../js/state.js';
 import { viewName, viewGroups, calendarModel, parseMonth } from '../js/views.js';
 import { parseLink, parseSnippet, shortUrl, searchAll } from '../js/acervo.js';
-import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord, guessProject, dueFor, fillByRules, matchStatus, briefing, isNoteKind, CONTENT_KINDS } from '../js/tasks.js';
+import { parseTaskInput, groupTasks, doneHistory, projectsSummary, taskStats, taskNumbers, projName, doneAt, registry, seedEntries, seedId, statusOf, projectOf, prioOf, statusChange, isRecord, guessProject, dueFor, fillByRules, matchStatus, briefing, isNoteKind, CONTENT_KINDS, editPalavras } from '../js/tasks.js';
 import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
@@ -795,8 +795,45 @@ describe('gasto, entrada, treino (dado bruto · Fase 2)', () => {
   });
 });
 
+describe('palavras-chave por projeto (Fase 2)', () => {
+  const seeds = (palavras = {}) => seedEntries([], 'local', new Date(2026, 9, 1))
+    .map(e => (e.kind === 'projeto' && palavras[e.text] ? { ...e, data: { ...e.data, palavras: palavras[e.text] } } : e));
+  test('editPalavras: + põe, - tira, sem repetir, minúsculas, sem #', () => eq(
+    editPalavras(['orientador'], ['+Banca', 'orientador', '#defesa', '-orientador', '+', '-nada']), ['banca', 'defesa']));
+  test('registry lê as palavras de cada projeto', () => eq(registry(seeds({ tcc: ['orientador'] })).palavras, { tcc: ['orientador'] }));
+  test('palavra-chave decide o projeto (até com espaço e acento)', () => {
+    const reg = registry(seeds({ tcc: ['orientador', 'banca de defesa'], weg: ['relatório'] }));
+    eq(['mandar email pro orientador', 'marcar a BANCA de defesa', 'revisar relatorio mensal', 'comprar pão'].map(t => guessProject(t, { reg })),
+      ['tcc', 'tcc', 'weg', 'pessoal']);
+  });
+  test('palavra-chave (+4) não vence o nome do projeto escrito (+5)', () => {
+    const reg = registry(seeds({ tcc: ['reunião'] }));
+    eq(guessProject('reunião da weg', { reg }), 'weg');
+  });
+  test('/palavras ensina, /desfazer volta, /t usa', async () => {
+    const s = setup([]);
+    for (const e of seeds()) await s.ctx.store.restore(e);
+    await s.run('/palavras tcc +orientador +Banca');
+    const rec = () => s.S.records.find(e => e.kind === 'projeto' && e.text === 'tcc');
+    eq(rec().data.palavras, ['orientador', 'banca']);
+    await s.run('/palavras tcc -banca');
+    eq(rec().data.palavras, ['orientador']);
+    await s.run('/desfazer');
+    eq(rec().data.palavras, ['orientador', 'banca']);
+    await s.run('/t mandar email pro orientador');
+    eq(s.S.entries.find(e => e.kind === 'tarefa').data.projeto, 'tcc');
+    await s.run('/palavras');
+    ok(/orientador, banca/.test(s.term.text()), 'lista as palavras');
+    await throws(() => s.run('/palavras xyz +a'), 'E_404');
+  });
+});
+
 describe('régua de frases (tests/frases.js · interpretar com regras)', () => {
-  const ctxBase = () => ({ reg: registry([]), entries: [] });
+  // frase com `palavras` (ex: { tcc: ['orientador'] }) roda com essas palavras-chave nos projetos
+  const ctxBase = f => ({
+    reg: registry(seedEntries([], 'local', new Date(2026, 9, 1)).map(e => (e.kind === 'projeto' && f?.palavras?.[e.text] ? { ...e, data: { ...e.data, palavras: f.palavras[e.text] } } : e))),
+    entries: [],
+  });
   const { interpretar: viaRegras } = criarInterpretador();
   for (const f of FRASES) {
     test(`"${f.frase}" → ${f.esperado.tipo}${f.esperado.pergunta ? ' + pergunta' : ''}`, async () => {

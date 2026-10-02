@@ -16,7 +16,7 @@ import { VIEWS, viewName, viewGroups, calendarModel, parseMonth } from './views.
 import { isLink, isSnippet, isAcervo, safeUrl, parseLink, parseSnippet, shortUrl, searchAll } from './acervo.js';
 import {
   isTask, doneAt, projName, parseTaskInput, newTask, groupTasks, doneHistory, projectsSummary, taskNumbers, taskStats,
-  projectOf, statusChange, finalStatus, firstStatus, fillByRules, matchStatus, statusOf, prioOf, isFinalStatus, briefing, isNoteKind,
+  projectOf, statusChange, finalStatus, firstStatus, fillByRules, matchStatus, statusOf, prioOf, isFinalStatus, briefing, isNoteKind, editPalavras,
 } from './tasks.js';
 import { eventsOf } from './historico.js';
 import { fmtValor } from './valores.js';
@@ -445,7 +445,7 @@ export function createCommands(ctx) {
         table([['qualquer texto', 'captura na inbox · use #tags: <span class="dim">ler cap 2</span> <span class="c-act">#tcc</span>']], 'cmd');
         table([['- texto #proj @status >prazo !prio', 'cria tarefa (igual ao /t) · o que faltar vira ↳ auto'], ['https://… contexto', 'guarda o link no acervo'], ['"texto', 'guarda o texto no acervo']], 'cmd');
         const groups = [
-          ['tarefas e projetos', c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'mudancas', 'projeto', 'status', 'ir'].includes(c.name)],
+          ['tarefas e projetos', c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'mudancas', 'projeto', 'palavras', 'status', 'ir'].includes(c.name)],
           ['acervo', c => ['acervo', 'guardar', 'buscar'].includes(c.name)],
           ['memória', c => c.data],
           ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
@@ -754,6 +754,31 @@ export function createCommands(ctx) {
             (alvo ? '' : ` ${hl(x.texto || '')}`) + (muds ? ` · ${muds}` : '') +
             (x.origem && x.origem !== 'usuario' ? ` <span class="dim">(${esc(x.origem)})</span>` : ''));
         }
+      },
+    },
+    {
+      name: 'palavras', alias: ['palavra', 'keywords'], data: true, async: true, exec: true, args: '[projeto] [+palavra] [-palavra]',
+      desc: 'palavras-chave que puxam a tarefa pro projeto · ex: /palavras tcc +orientador +banca · /palavras tcc -banca',
+      async run(arg, signal, t) {
+        const [first, ...rest] = String(arg).trim().split(/\s+/).filter(Boolean);
+        const reg = ctx.reg();
+        const show = p => `<span class="k c-act">#${esc(p)}</span><span>${(reg.palavras[p] || []).map(esc).join(', ') || '<span class="dim">nenhuma</span>'}</span>`;
+        if (!first) {
+          term.print(`── palavras-chave ${'─'.repeat(10)}`, 'sep');
+          reg.projects.forEach(p => term.print(show(p), 'tbl'));
+          return term.print('<span class="dim">/palavras tcc +orientador ensina · a tarefa que tiver a palavra vai pro projeto</span>');
+        }
+        const name = projName(first);
+        const r = name && S.records.find(e => e.kind === 'projeto' && e.text === name && !e.data?.arquivado);
+        if (!r) throw new CmdError('E_404', 'task', `projeto #${first} não existe`, 'veja os projetos com <span class="c-int">/projeto</span> · cria com <span class="c-int">/projeto novo nome</span>');
+        if (!rest.length) return term.print(show(name), 'tbl');
+        const antes = r.data?.palavras || [];
+        const depois = editPalavras(antes, rest);
+        if (JSON.stringify(antes) === JSON.stringify(depois)) return term.say('nada mudou.');
+        S.undo.push({ label: 'palavras-chave', items: [r] });
+        await ctx.store.restore({ ...r, data: { ...(r.data || {}), palavras: depois } });
+        term.ok('task', `palavras de <span class="c-act">#${esc(name)}</span> · ${depois.map(esc).join(', ') || 'nenhuma'} <span class="c-meta">· /desfazer volta · ${t.id}</span>`);
+        ctx.ui.pulse('act');
       },
     },
     {

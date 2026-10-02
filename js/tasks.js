@@ -49,14 +49,28 @@ export function registry(records = []) {
   const byOrder = (a, b) => (a.data?.ordem ?? 99) - (b.data?.ordem ?? 99) || a.ts - b.ts;
   const uniq = list => list.filter((x, i) => list.findIndex(y => y.name === x.name) === i);
   const projects = uniq(records.filter(e => e.kind === 'projeto' && !e.data?.arquivado).sort(byOrder)
-    .map(e => ({ name: String(e.text).toLowerCase(), id: e.id })));
+    .map(e => ({ name: String(e.text).toLowerCase(), id: e.id, palavras: Array.isArray(e.data?.palavras) ? e.data.palavras : [] })));
   const statuses = uniq(records.filter(e => e.kind === 'status').sort(byOrder)
     .map(e => ({ name: String(e.text).toLowerCase(), final: !!e.data?.final, id: e.id })));
   return {
     projects: projects.length ? projects.map(p => p.name) : [...DEFAULT_PROJECTS],
     statuses: statuses.length ? statuses : DEFAULT_STATUSES.map(s => ({ ...s })),
+    // palavras-chave de cada projeto (/palavras): { tcc: ['orientador', 'monografia'] }
+    palavras: Object.fromEntries(projects.filter(p => p.palavras.length).map(p => [p.name, p.palavras])),
     seeded: projects.length > 0 && statuses.length > 0,
   };
+}
+
+// "/palavras tcc +orientador banca -defesa" → lista nova (sem repetir, minúsculas, sem #)
+export function editPalavras(atual = [], tokens = []) {
+  let out = [...atual];
+  for (const raw of tokens) {
+    const tira = raw.startsWith('-');
+    const w = raw.replace(/^[+-]/, '').replace(/^#/, '').trim().toLowerCase();
+    if (!w) continue;
+    out = tira ? out.filter(x => x !== w) : out.includes(w) ? out : [...out, w];
+  }
+  return out;
 }
 export const finalStatus = reg => (reg.statuses.find(s => s.final) || { name: 'feito' }).name;
 export const firstStatus = reg => (reg.statuses.find(s => !s.final) || { name: 'a fazer' }).name;
@@ -153,12 +167,18 @@ const words3 = s => String(s).replace(/#[\p{L}\p{N}_-]+/gu, ' ')
   .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
   .split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !STOP.has(w));
 
-// Projeto mais provável pelo texto: nome do projeto no texto (+5) e palavras em comum com as tarefas de cada projeto.
+// texto como sequência de palavras sem acento: " mandar email pro orientador " (pra achar palavra-chave, até com espaço)
+const tokens = s => ' ' + String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join(' ') + ' ';
+
+// Projeto mais provável pelo texto: nome do projeto no texto (+5), palavra-chave do projeto (+4, /palavras)
+// e palavras em comum com as tarefas de cada projeto (+1 cada).
 export function guessProject(text, { entries = [], reg = registry([]) } = {}) {
   const mine = new Set(words3(text));
+  const toks = tokens(text);
   let best = null, bestScore = 0;
   for (const p of reg.projects) {
     let score = mine.has(squash(p)) ? 5 : 0;
+    for (const k of reg.palavras?.[p] || []) if (toks.includes(tokens(k))) score += 4;
     for (const e of entries) {
       if (!isTask(e) || projectOf(e, reg.projects) !== p) continue;
       for (const w of new Set(words3(e.text))) if (mine.has(w)) score++;

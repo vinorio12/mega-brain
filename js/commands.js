@@ -235,7 +235,48 @@ export function createCommands(ctx) {
     S.ultima = { id: e.id, texto: text }; // o /tipo sem alvo corrige esta
     entendiLine(r, e, n);
     if (r.pergunta) aprender({ texto: text, palpite: r.palpite, confianca: r.confianca, origem: r.origem, era: 'nota' });
+    // perguntas pendentes (/sim, /nao respondem a primeira) · escrever outra coisa troca a fila
+    S.perguntas = [
+      ...(r.pergunta && r.palpite ? [{ tipo: 'tipo', palpite: r.palpite, id: e.id, texto: text, mostrada: true }] : []),
+      ...(r.pessoasNovas || []).map(nome => ({ tipo: 'pessoa', nome, id: e.id, texto: text })),
+    ];
+    mostrarPergunta();
     return { e, n };
+  }
+
+  // mostra a primeira pergunta da fila (se ainda não apareceu)
+  function mostrarPergunta() {
+    const q = S.perguntas?.[0];
+    if (!q || q.mostrada) return;
+    q.mostrada = true;
+    if (q.tipo === 'pessoa') {
+      const mais = S.perguntas.length > 1 ? ` <span class="dim">· depois tem mais ${S.perguntas.length - 1}</span>` : '';
+      term.print(`<span class="c-int">↳ ${esc(q.nome)} é uma pessoa?</span> <span class="c-int">/sim</span> <span class="dim">cadastra e liga ·</span> <span class="c-int">/nao</span> <span class="dim">não pergunto mais</span>${mais}`, 'auto');
+    }
+  }
+
+  // /sim e /nao: respondem a pergunta mais antiga da fila
+  async function responder(sim, t) {
+    const q = S.perguntas?.[0];
+    if (!q) return term.say('nada pra responder agora.');
+    S.perguntas.shift();
+    if (q.tipo === 'tipo') {
+      if (sim) { S.ultima = { id: q.id, texto: q.texto }; await get('tipo').run(q.palpite, null, t); }
+      else { aprender({ texto: q.texto, era: 'nota', corrigido: 'nota' }); term.ok('store', 'fica como nota · anotado no /aprendizado'); }
+    } else if (q.tipo === 'pessoa') {
+      if (sim) {
+        const p = await ctx.store.add({ kind: 'pessoa', text: q.nome, tags: [], ts: Date.now(), day: dayKey(new Date()), data: { apelidos: [], arquivada: false, juntada_em: null } });
+        const entry = S.entries.find(x => x.id === q.id);
+        if (entry) await ctx.store.restore({ ...entry, data: { ...(entry.data || {}), pessoas: [...new Set([...(entry.data?.pessoas || []), p.id])] } });
+        S.undo.push({ label: 'pessoa cadastrada', items: entry ? [entry] : [], created: [p.id] });
+        term.ok('pessoa', `pessoa cadastrada · <span class="c-act">${esc(q.nome)}</span>${entry ? ' · ligada à entrada' : ''} <span class="c-meta">· /pessoa ${esc(q.nome)} · /desfazer volta</span>`);
+        ctx.ui.pulse('act');
+      } else {
+        aprender({ texto: q.nome, naoPessoa: q.nome });
+        term.ok('pessoa', `ok · não pergunto mais sobre <span class="c-act">${esc(q.nome)}</span>`);
+      }
+    }
+    mostrarPergunta();
   }
 
   // guarda pro /aprendizado (frase não entendida ou corrigida). Nunca atrapalha a captura.
@@ -261,7 +302,7 @@ export function createCommands(ctx) {
     if (r.pergunta) {
       const outros = ['tarefa', 'gasto', 'entrada', 'treino'].filter(x => x !== r.palpite);
       term.print(`<span class="c-warn">↳ salvei como nota</span> <span class="dim">· não tive certeza ·</span> era ${esc(r.palpite || 'outra coisa')}? ` +
-        `<span class="c-int">/tipo ${esc(r.palpite || 'tarefa')}</span> <span class="dim">· ou ${outros.map(esc).join(', ')} · deixe assim se é nota</span>`, 'auto');
+        `<span class="c-int">/sim</span> <span class="dim">·</span> <span class="c-int">/nao</span> <span class="dim">(é nota) · ou /tipo ${outros.map(esc).join(', ')}</span>`, 'auto');
       return;
     }
     if (['nota', 'link', 'trecho'].includes(r.tipo)) return;
@@ -529,7 +570,7 @@ export function createCommands(ctx) {
         table([['- texto #proj @status >prazo !prio', 'cria tarefa (igual ao /t) · o que faltar vira ↳ auto'], ['https://… contexto', 'guarda o link no acervo'], ['"texto', 'guarda o texto no acervo']], 'cmd');
         const groups = [
           ['tarefas e projetos', c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
-          ['pessoas', c => ['pessoas', 'pessoa'].includes(c.name)],
+          ['pessoas', c => ['pessoas', 'pessoa', 'sim', 'nao'].includes(c.name)],
           ['intérprete', c => ['tipo', 'palavras', 'aprendizado', 'mudancas', 'contexto'].includes(c.name)],
           ['acervo', c => ['acervo', 'guardar', 'buscar'].includes(c.name)],
           ['memória', c => c.data],
@@ -865,6 +906,14 @@ export function createCommands(ctx) {
       },
     },
     {
+      name: 'sim', alias: ['s', 'yes'], data: true, async: true, exec: true, desc: 'responde sim à última pergunta do app (é uma pessoa? era tarefa?)',
+      async run(arg, signal, t) { await responder(true, t); },
+    },
+    {
+      name: 'nao', alias: ['não', 'n', 'no'], data: true, async: true, exec: true, desc: 'responde não à última pergunta do app (não é pessoa / é nota mesmo)',
+      async run(arg, signal, t) { await responder(false, t); },
+    },
+    {
       name: 'pessoas', alias: ['gente', 'contatos'], data: true, desc: 'quem está cadastrado, com quantas coisas ligadas',
       run() {
         const pes = pessoasDe(S.records || []);
@@ -989,6 +1038,8 @@ export function createCommands(ctx) {
         S.undo.pop(); // o salvar empilhou só a criação; o passo certo inclui a antiga
         S.undo.push({ label: `virou ${REGISTRO.get(tipo).rotulo}`, items: [e], created: [novo.id] });
         S.ultima = { id: novo.id, texto };
+        // perguntas que falavam da versão antiga passam a falar da nova; a do tipo já foi respondida
+        S.perguntas = (S.perguntas || []).filter(q => !(q.tipo === 'tipo' && q.id === e.id)).map(q => (q.id === e.id ? { ...q, id: novo.id } : q));
         aprender({ texto, era: e.kind, corrigido: tipo });
         entendiLine({ ...r, pergunta: false }, novo, n);
       },
@@ -1009,7 +1060,7 @@ export function createCommands(ctx) {
       desc: 'frases que o app não entendeu e as que você corrigiu com /tipo · exportar = formato da régua de testes',
       run(arg) {
         const res = resumoAprendizado(S.records || []);
-        if (!res.total) return term.say('nada ainda · quando o app ficar em dúvida ou você usar /tipo, a frase aparece aqui.');
+        if (!res.total && !res.naoPessoas.length) return term.say('nada ainda · quando o app ficar em dúvida ou você usar /tipo, a frase aparece aqui.');
         if (/^export/i.test(String(arg).trim())) {
           term.print(`── aprendizado · cole em tests/frases.js ${'─'.repeat(6)}`, 'sep');
           exportarFrases(res).forEach(l => term.print(`<span class="${l.trimStart().startsWith('//') ? 'dim' : ''}">${esc(l)}</span>`));
@@ -1025,6 +1076,7 @@ export function createCommands(ctx) {
           term.print('sem resposta', 'tgrp');
           res.semResposta.slice(0, 15).forEach(i => linha(i, `<span class="dim">palpite: ${esc(i.palpite || '—')}</span>`));
         }
+        if (res.naoPessoas.length) term.print(`<span class="dim">não são pessoa (/nao):</span> ${res.naoPessoas.map(esc).join(', ')}`);
         term.print('<span class="dim">/aprendizado exportar gera as linhas pra régua de testes</span>');
       },
     },

@@ -931,6 +931,57 @@ describe('intérprete marca pessoas (etapa 3 · Fase 2.5)', () => {
   });
 });
 
+describe('nome novo pergunta · /sim /nao (etapa 4 · Fase 2.5)', () => {
+  const T = { id: 'T0001', elapsed: () => 1 };
+  const nomes = s => pessoasDe(s.S.records).map(p => p.nome);
+  test('"falar com Carla amanhã" → pergunta → /sim cadastra e liga · /desfazer volta', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('falar com Carla amanhã', T);
+    ok(/Carla é uma pessoa\?/.test(s.term.text()), s.term.text());
+    await s.run('/sim');
+    const carla = pessoasDe(s.S.records)[0];
+    eq([carla.nome, s.S.entries[0].data.pessoas], ['Carla', [carla.id]]);
+    await s.run('/desfazer');
+    eq([nomes(s), s.S.entries[0].data.pessoas], [[], undefined]);
+  });
+  test('/nao: não pergunta mais sobre a palavra', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('ligar pro Itaú amanhã', T);
+    await s.run('/nao');
+    await new Promise(r => setTimeout(r, 0));
+    const antes = s.term.out.length;
+    await s.ctx.commands.capturar('ligar pro Itaú de novo sexta', T);
+    ok(!/é uma pessoa/.test(s.term.out.slice(antes).map(x => x.join(' ')).join('\n')), 'perguntou de novo');
+    eq(nomes(s), []);
+  });
+  test('duas pessoas novas: uma pergunta de cada vez', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('marcar reunião com Carla e Bia amanhã', T);
+    ok(/Carla é uma pessoa/.test(s.term.text()) && !/Bia é uma pessoa/.test(s.term.text()));
+    await s.run('/sim');
+    ok(/Bia é uma pessoa/.test(s.term.text()));
+    await s.run('/sim');
+    eq(nomes(s).sort(), ['Bia', 'Carla']);
+    eq(s.S.entries[0].data.pessoas.length, 2);
+  });
+  test('"era tarefa?": /sim vira tarefa, /nao fica nota e aprende', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('comprar pão', T);
+    await s.run('/sim');
+    eq(s.S.entries.map(e => e.kind), ['tarefa']);
+    await s.ctx.commands.capturar('comprar leite', T);
+    await s.run('/nao');
+    await new Promise(r => setTimeout(r, 0));
+    eq(s.S.entries.map(e => e.kind), ['tarefa', 'nota']);
+    eq(resumoAprendizado(s.S.records).corrigidas.map(i => [i.texto, i.corrigido]).sort(), [['comprar leite', 'nota'], ['comprar pão', 'tarefa']]);
+  });
+  test('sem pergunta pendente: avisa', async () => {
+    const s = setup([]);
+    await s.run('/sim');
+    ok(/nada pra responder/.test(s.term.text()));
+  });
+});
+
 describe('/ver por status (bug do kanban vazio)', () => {
   const T = { id: 'T0001', elapsed: () => 1 };
   test('/ver kanban e depois /ver a fazer mostram as tarefas; palavra estranha dá erro', async () => {
@@ -1021,7 +1072,7 @@ describe('texto livre + "↳ entendi" + /tipo (etapa 9b)', () => {
     const s = setup([]);
     await s.ctx.commands.capturar('comprar pão', T);
     eq(s.S.entries.map(e => e.kind), ['nota']);
-    ok(/salvei como nota/.test(out(s)) && /\/tipo tarefa/.test(out(s)), out(s));
+    ok(/salvei como nota/.test(out(s)) && /era tarefa\?/.test(out(s)) && /\/sim/.test(out(s)), out(s));
     await s.run('/tipo tarefa');
     eq(s.S.entries.map(e => [e.kind, e.text]), [['tarefa', 'comprar pão']]);
     await s.run('/desfazer');

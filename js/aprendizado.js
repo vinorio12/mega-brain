@@ -8,16 +8,19 @@
 import { dayKey } from './util.js';
 
 // registro novo: pergunta (não entendeu) ou correção (/tipo)
-export function registroAprendizado({ texto, palpite = null, confianca = null, origem = 'regra', era = null, corrigido = null }, now = new Date()) {
+// naoPessoa: palavra que você disse (/nao) que não é pessoa, pra o app não perguntar de novo
+export function registroAprendizado({ texto, palpite = null, confianca = null, origem = 'regra', era = null, corrigido = null, naoPessoa = null }, now = new Date()) {
   const t = String(texto || '').trim();
   if (!t) return null;
-  return { kind: 'interpretacao', text: t.slice(0, 2000), tags: [], ts: now.getTime(), day: dayKey(now), data: { palpite, confianca, origem, era, corrigido } };
+  const data = { palpite, confianca, origem, era, corrigido };
+  if (naoPessoa) data.naoPessoa = String(naoPessoa);
+  return { kind: 'interpretacao', text: t.slice(0, 2000), tags: [], ts: now.getTime(), day: dayKey(now), data };
 }
 
 // Junta por frase (a mais nova vale): o que ficou sem resposta e o que foi corrigido.
 export function resumoAprendizado(records = []) {
   const porFrase = new Map();
-  for (const r of records.filter(e => e.kind === 'interpretacao').sort((a, b) => a.ts - b.ts)) {
+  for (const r of records.filter(e => e.kind === 'interpretacao' && !e.data?.naoPessoa).sort((a, b) => a.ts - b.ts)) {
     const k = r.text.trim().toLowerCase();
     const atual = porFrase.get(k) || { texto: r.text, vezes: 0, palpite: null, corrigido: null, era: null, ts: r.ts };
     atual.vezes++;
@@ -28,7 +31,8 @@ export function resumoAprendizado(records = []) {
     porFrase.set(k, atual);
   }
   const itens = [...porFrase.values()].sort((a, b) => b.ts - a.ts);
-  return { total: itens.length, semResposta: itens.filter(i => !i.corrigido), corrigidas: itens.filter(i => i.corrigido) };
+  const naoPessoas = [...new Set(records.filter(e => e.kind === 'interpretacao' && e.data?.naoPessoa).map(e => e.data.naoPessoa))];
+  return { total: itens.length, semResposta: itens.filter(i => !i.corrigido), corrigidas: itens.filter(i => i.corrigido), naoPessoas };
 }
 
 // Linhas no formato de tests/frases.js (corrigidas viram teste; sem resposta vão comentadas pra você decidir)

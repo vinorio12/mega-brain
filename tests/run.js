@@ -25,6 +25,7 @@ import { criarProvedorIA, travaDiaria, montarPedido } from '../js/provedor-ia.js
 import { INTERPRETADOR } from '../js/config.js';
 import { registroAprendizado, resumoAprendizado, exportarFrases } from '../js/aprendizado.js';
 import { montarContexto, estimarTokens } from '../js/contexto.js';
+import { pessoasDe, findPessoas, candidatosPessoa, acharPessoa, editApelidos, juntarPessoas } from '../js/pessoas.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -838,6 +839,36 @@ describe('palavras-chave por projeto (Fase 2)', () => {
     await s.run('/palavras');
     ok(/orientador, banca/.test(s.term.text()), 'lista as palavras');
     await throws(() => s.run('/palavras xyz +a'), 'E_404');
+  });
+});
+
+describe('pessoas (pessoas.js · Fase 2.5)', () => {
+  const P = (id, text, apelidos = [], extra = {}) => ({ id, kind: 'pessoa', text, tags: [], ts: 1, day: '2026-10-02', data: { apelidos, ...extra } });
+  const REC = [P('p1', 'João Silva', ['jão']), P('p2', 'Ana'), P('p3', 'João Pedro'), P('p4', 'Velho', [], { arquivada: true }), P('p5', 'Joca', [], { juntada_em: 'p1' })];
+  const pes = pessoasDe(REC);
+  const ach = t => findPessoas(t, pes).map(a => [a.trecho, a.ids]);
+  test('cadastros ativos (arquivada e juntada saem) com chaves sem acento', () => eq(pes.map(p => [p.id, p.chaves]),
+    [['p1', ['joao silva', 'joao', 'jao']], ['p2', ['ana']], ['p3', ['joao pedro', 'joao']]]));
+  test('acha por nome, apelido, sem acento e maiúscula', () => eq(ach('falar com a ana e o JAO sobre o tcc'), [['ana', ['p2']], ['JAO', ['p1']]]));
+  test('nome composto vence o primeiro nome; "joão" sozinho é ambíguo', () => {
+    eq(ach('ligar pro João Pedro'), [['João Pedro', ['p3']]]);
+    eq(ach('esperando o joão'), [['joão', ['p1', 'p3']]]);
+  });
+  test('palavra inteira só; #tag e @status não contam', () => eq([ach('banana'), ach('#ana'), ach('anabela'), ach('Ana.')], [[], [], [], [['Ana', ['p2']]]]));
+  test('candidatos a nome novo: maiúscula no meio ou depois de "falar com"', () => eq(
+    ['falar com Carla amanhã', 'falar com carla amanhã', 'esperando a bia', 'depende do marcos', 'ligar pro dentista', 'Revisar slides',
+      'café com leite', 'falar com a Ana', 'reunião com orientador', 'mandar email pro rafa'].map(t => candidatosPessoa(t, { pessoas: pes }).map(c => c.nome)),
+    [['Carla'], ['Carla'], ['Bia'], ['Marcos'], [], [], [], [], [], ['Rafa']]));
+  test('candidato ignora projeto, status, dia e o que você disse que não é pessoa', () => eq(
+    candidatosPessoa('falar com Weg na Sexta sobre Itaú', { pessoas: pes, projetos: ['weg'], ignorar: ['itaú'] }), []));
+  test('acharPessoa: exato, apelido, ambíguo, nada', () => eq(
+    [acharPessoa('ana', pes).pessoa?.id, acharPessoa('jão', pes).pessoa?.id, acharPessoa('João', pes).ambiguo?.map(p => p.id), acharPessoa('joão silva', pes).pessoa?.id, acharPessoa('zé', pes)],
+    ['p2', 'p1', ['p1', 'p3'], 'p1', {}]));
+  test('editApelidos e juntarPessoas (apelidos somam, entradas religadas)', () => {
+    eq(editApelidos(['jão'], ['+Joãozinho', 'jão', '-jão', 'João Silva'], 'João Silva'), ['joãozinho']);
+    const E = [{ id: 'e1', kind: 'tarefa', text: 'x', data: { pessoas: ['p5', 'p2'] } }, { id: 'e2', kind: 'nota', text: 'y', data: {} }];
+    const r = juntarPessoas(REC[4], REC[0], E);
+    eq([r.novoPara.data.apelidos, r.novoDe.data.juntada_em, r.religadas.map(e => [e.id, e.data.pessoas])], [['jão', 'joca'], 'p1', [['e1', ['p1', 'p2']]]]);
   });
 });
 

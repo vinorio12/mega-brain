@@ -124,6 +124,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - [ ] 2.5. Pessoas + memória que aprende · plano em `docs/plano-pessoas-memoria.md` (aprovado 02/10/2026: empate = sem projeto + pergunta; status pela frase = esperando e fazendo)
   - Pessoas reconhecidas por nome/apelido sem `@` (registro `kind: pessoa`, `data.pessoas` nas entradas), nome novo pergunta (`/sim`), "esperando o João" → `esperando`, `/pessoa` ver/editar/juntar
   - Memória única (pessoas e palavras): projeto em que cada pista aparece, com peso (aparição 1, escrito 2, correção 3, fixado manda); só vota se dominante (≥70%, peso ≥3); dividida = não chuta, pergunta; `/memoria` edita
+  - [x] 0 plano aprovado · [x] 1 `js/pessoas.js` (`pessoasDe`, `findPessoas`, `candidatosPessoa`, `acharPessoa`, `editApelidos`, `juntarPessoas`; 329 testes) · [ ] 2 cadastro `/pessoa` · [ ] 3 intérprete marca pessoas + esperando/fazendo · [ ] 4 nome novo pergunta + `/sim` `/nao` · [ ] 5 `/pessoa João` vê tudo · [ ] 6 `js/memoria.js` pistas com peso · [ ] 7 `/memoria` · [ ] 8 contexto, IA, fechamento
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)
 - [ ] 5. Dashboards: gráficos por área e tendências, só com dados reais

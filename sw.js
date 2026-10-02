@@ -7,14 +7,14 @@
 //
 // Ao mudar a lista de arquivos, aumente CACHE pra forçar a atualização.
 
-const CACHE = 'mb-shell-v44';
+const CACHE = 'mb-shell-v45';
 const SHELL = [
   './',
   'index.html',
   'manifest.webmanifest',
   'css/style.css',
   'js/acervo.js', 'js/app.js', 'js/aprendizado.js', 'js/boot.js', 'js/cloud.js', 'js/commands.js', 'js/config.js', 'js/contexto.js',
-  'js/core.js', 'js/dates.js', 'js/historico.js', 'js/state.js', 'js/store.js', 'js/tasks.js', 'js/terminal.js', 'js/tipos.js', 'js/tipos-base.js', 'js/tipos-financas.js', 'js/tipos-corpo.js', 'js/provedor-regras.js', 'js/provedor-ia.js', 'js/interpretar.js', 'js/views.js', 'js/ui.js', 'js/util.js', 'js/valores.js', 'js/weather.js',
+  'js/core.js', 'js/dates.js', 'js/historico.js', 'js/pessoas.js', 'js/state.js', 'js/store.js', 'js/tasks.js', 'js/terminal.js', 'js/tipos.js', 'js/tipos-base.js', 'js/tipos-financas.js', 'js/tipos-corpo.js', 'js/provedor-regras.js', 'js/provedor-ia.js', 'js/interpretar.js', 'js/views.js', 'js/ui.js', 'js/util.js', 'js/valores.js', 'js/weather.js',
   'icons/icon.svg', 'icons/icon-32.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
 const LIVE = ['supabase.co', 'open-meteo.com'];

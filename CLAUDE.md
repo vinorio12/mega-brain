@@ -80,7 +80,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 ## Formato das entradas (tabela `entries`)
 { id, text, tags[], kind, ts (epoch ms), day "AAAA-MM-DD", data {} }
 - kind `nota` · `tarefa` (data: projeto, status, prazo, prioridade, feito_em, auto) · `link` (data: url, contexto) · `trecho` · `gasto`/`entrada` (data: valor em centavos, descricao, data) · `treino` (data: descricao, duracao_min, distancia_km, data)
-- registros: kind `projeto` (data: ordem, arquivado, palavras) · `status` (data: ordem, final) · `evento` (histórico, só cresce: data: alvo, alvo_kind, acao, mudancas {campo: [de, para]}, origem, texto), ficam em `S.records`, fora das listas
+- registros: kind `pessoa` (text: nome; data: apelidos, arquivada, juntada_em) · kind `projeto` (data: ordem, arquivado, palavras) · `status` (data: ordem, final) · `evento` (histórico, só cresce: data: alvo, alvo_kind, acao, mudancas {campo: [de, para]}, origem, texto), ficam em `S.records`, fora das listas
 - `interpretacao` (aprendizado: frase que o app não entendeu ou que você corrigiu com /tipo; data: palpite, confianca, era, corrigido), também escondido
 - só `nota`, `tarefa`, `link`, `trecho`, `gasto`, `entrada`, `treino` aparecem (`CONTENT_KINDS` em tasks.js); qualquer outro kind fica escondido. Tipo novo de conteúdo (ex: gasto) precisa entrar nessa lista
 
@@ -124,7 +124,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - [ ] 2.5. Pessoas + memória que aprende · plano em `docs/plano-pessoas-memoria.md` (aprovado 02/10/2026: empate = sem projeto + pergunta; status pela frase = esperando e fazendo)
   - Pessoas reconhecidas por nome/apelido sem `@` (registro `kind: pessoa`, `data.pessoas` nas entradas), nome novo pergunta (`/sim`), "esperando o João" → `esperando`, `/pessoa` ver/editar/juntar
   - Memória única (pessoas e palavras): projeto em que cada pista aparece, com peso (aparição 1, escrito 2, correção 3, fixado manda); só vota se dominante (≥70%, peso ≥3); dividida = não chuta, pergunta; `/memoria` edita
-  - [x] 0 plano aprovado · [x] 1 `js/pessoas.js` (`pessoasDe`, `findPessoas`, `candidatosPessoa`, `acharPessoa`, `editApelidos`, `juntarPessoas`; 329 testes) · [ ] 2 cadastro `/pessoa` · [ ] 3 intérprete marca pessoas + esperando/fazendo · [ ] 4 nome novo pergunta + `/sim` `/nao` · [ ] 5 `/pessoa João` vê tudo · [ ] 6 `js/memoria.js` pistas com peso · [ ] 7 `/memoria` · [ ] 8 contexto, IA, fechamento
+  - [x] 0 plano aprovado · [x] 1 `js/pessoas.js` (`pessoasDe`, `findPessoas`, `candidatosPessoa`, `acharPessoa`, `editApelidos`, `juntarPessoas`; 329 testes) · [x] 2 cadastro: `/pessoas`, `/pessoa nova|apelido|renomear|juntar|arquivar` com `/desfazer` (332 testes) · [ ] 3 intérprete marca pessoas + esperando/fazendo · [ ] 4 nome novo pergunta + `/sim` `/nao` · [ ] 5 `/pessoa João` vê tudo · [ ] 6 `js/memoria.js` pistas com peso · [ ] 7 `/memoria` · [ ] 8 contexto, IA, fechamento
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)
 - [ ] 5. Dashboards: gráficos por área e tendências, só com dados reais

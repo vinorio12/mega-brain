@@ -7,7 +7,7 @@
 //
 // Ao mudar a lista de arquivos, aumente CACHE pra forçar a atualização.
 
-const CACHE = 'mb-shell-v45';
+const CACHE = 'mb-shell-v46';
 const SHELL = [
   './',
   'index.html',

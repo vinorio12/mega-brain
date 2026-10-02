@@ -872,6 +872,47 @@ describe('pessoas (pessoas.js · Fase 2.5)', () => {
   });
 });
 
+describe('cadastro de pessoas (/pessoa · Fase 2.5)', () => {
+  const pes = s => pessoasDe(s.S.records).map(p => [p.nome, p.apelidos]).sort((a, b) => b[0].localeCompare(a[0]));
+  test('nova (com apelido), apelido, renomear (nome velho vira apelido), arquivar, desfazer', async () => {
+    const s = setup([]);
+    await s.run('/pessoa nova João Silva +jão');
+    await s.run('/pessoa nova Ana');
+    eq(pes(s), [['João Silva', ['jão']], ['Ana', []]]);
+    await s.run('/pessoa apelido jão +joca -jão');
+    eq(pes(s)[0], ['João Silva', ['joca']]);
+    await s.run('/pessoa renomear Ana = Ana Paula');
+    eq(pes(s)[1], ['Ana Paula', ['ana']]);
+    await s.run('/desfazer');
+    eq(pes(s)[1], ['Ana', []]);
+    await s.run('/pessoa arquivar ana');
+    eq(pes(s).length, 1);
+    ok(s.S.records.some(e => e.kind === 'pessoa' && e.text === 'Ana'), 'arquivar não apaga');
+  });
+  test('juntar: apelidos somam, entradas religadas, um /desfazer volta tudo', async () => {
+    const s = setup([]);
+    await s.run('/pessoa nova João');
+    await s.run('/pessoa nova Jão');
+    const [joao, jao] = pessoasDe(s.S.records);
+    await s.ctx.store.restore({ id: 'tk', kind: 'tarefa', text: 'falar com jão', tags: [], ts: 5, day: '2026-10-02', data: { pessoas: [jao.id] } });
+    await s.run('/pessoa juntar Jão com João');
+    eq([pes(s), s.S.entries.find(e => e.id === 'tk').data.pessoas], [[['João', ['jão']]], [joao.id]]);
+    await s.run('/desfazer');
+    eq([pes(s).length, s.S.entries.find(e => e.id === 'tk').data.pessoas], [2, [jao.id]]);
+  });
+  test('erros: ambíguo, desconhecido, repetido', async () => {
+    const s = setup([]);
+    await s.run('/pessoa nova João Silva');
+    await s.run('/pessoa nova João Pedro');
+    await throws(() => s.run('/pessoa joão'), 'E_AMBIGUO');
+    await throws(() => s.run('/pessoa zé'), 'E_404');
+    await s.run('/pessoa nova joão silva');
+    eq(pessoasDe(s.S.records).length, 2);
+    await s.run('/pessoas');
+    ok(/João Pedro/.test(s.term.text()) && /João Silva/.test(s.term.text()));
+  });
+});
+
 describe('/ver por status (bug do kanban vazio)', () => {
   const T = { id: 'T0001', elapsed: () => 1 };
   test('/ver kanban e depois /ver a fazer mostram as tarefas; palavra estranha dá erro', async () => {

@@ -6,14 +6,21 @@
 // Devolve sempre o contrato de js/tipos.js, já validado.
 
 import { REGISTRO, validarInterpretacao } from './tipos.js';
+import { pessoasNaFrase } from './pessoas.js';
 import './tipos-base.js';
 import './tipos-financas.js';
 import './tipos-corpo.js';
 
 export function criarProvedorRegras(registro = REGISTRO) {
-  function montar(tipo, r, texto) {
+  function montar(tipo, r, texto, ctx = {}) {
     const obj = { tipo, campos: r.campos, confianca: r.confianca, origem: 'regra', auto: r.auto || [], provedor: 'regras', texto };
     if (r.erro) obj.erro = r.erro;
+    // quem aparece na frase (link e texto guardado não perguntam por nome novo)
+    if (ctx.pessoas || ctx.reg) {
+      Object.assign(obj, pessoasNaFrase(texto, {
+        pessoas: ctx.pessoas || [], projetos: ctx.reg?.projects || [], status: (ctx.reg?.statuses || []).map(s => s.name), ignorar: ctx.ignorarPessoas || [],
+      }, { novas: !['link', 'trecho'].includes(tipo) }));
+    }
     return validarInterpretacao(obj, registro);
   }
 
@@ -27,7 +34,7 @@ export function criarProvedorRegras(registro = REGISTRO) {
     if (forcado) {
       const tipo = registro.get(forcado);
       const r = tipo?.reconhecer?.(t, ctx);
-      if (r) { const v = montar(forcado, { ...r, confianca: 1 }, t); if (v.ok) return v.valor; }
+      if (r) { const v = montar(forcado, { ...r, confianca: 1 }, t, ctx); if (v.ok) return v.valor; }
     }
 
     let best = null;
@@ -38,11 +45,11 @@ export function criarProvedorRegras(registro = REGISTRO) {
       if (r && (!best || r.confianca > best.r.confianca)) best = { tipo, r };
     }
     if (best) {
-      const v = montar(best.tipo.id, best.r, t);
+      const v = montar(best.tipo.id, best.r, t, ctx);
       if (v.ok) return v.valor;
       console.warn('regras: resposta fora do contrato', best.tipo.id, v.erro);
     }
-    const v = montar('nota', nota.reconhecer(t, ctx), t);
+    const v = montar('nota', nota.reconhecer(t, ctx), t, ctx);
     return v.valor;
   }
 

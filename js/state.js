@@ -45,7 +45,7 @@ export function describeState(key, { tasks = [], mode = null } = {}) {
 
 // O que vai acontecer quando o operador apertar Enter?
 //   catalog: [{ name, alias, args, desc }] dos comandos
-export function readIntent(text, { mode = null, ctx = null, catalog = [], reg = registry([]), entries = [], now = new Date() } = {}) {
+export function readIntent(text, { mode = null, ctx = null, catalog = [], reg = registry([]), entries = [], now = new Date(), pessoas = [], ignorarPessoas = [] } = {}) {
   const raw = String(text);
   if (mode) return { type: 'login', field: mode };
   const v = raw.trim();
@@ -64,7 +64,9 @@ export function readIntent(text, { mode = null, ctx = null, catalog = [], reg = 
   }
 
   // texto livre: a mesma leitura que o Enter vai fazer (o intérprete, só regras: instantâneo)
-  const ictx = { reg, entries, aba: ctx, now };
+  const ictx = { reg, entries, aba: ctx, now, pessoas, ignorarPessoas };
+  // nomes das pessoas reconhecidas (pra mostrar na prévia)
+  const nomes = x => (x?.pessoas || []).map(id => pessoas.find(p => p.id === id)?.nome).filter(Boolean);
   const r = previa(v, ictx);
   if (r.tipo === 'link') return { type: 'link', url: r.campos.url, contexto: r.campos.contexto || '', tags: r.campos.tags || [] };
   if (r.tipo === 'trecho') return { type: 'trecho', text: r.campos.texto, tags: r.campos.tags || [] };
@@ -74,13 +76,13 @@ export function readIntent(text, { mode = null, ctx = null, catalog = [], reg = 
     if (t.erro) return { type: 'task-error', error: t.erro.codigo, token: t.erro.token };
     // prévia completa: o que foi informado + o que as regras vão decidir
     const c = t.campos;
-    return { type: 'task', text: c.texto, tags: c.tags || [], projeto: c.projeto, status: c.status, prazo: c.prazo || null, prioridade: c.prioridade, auto: t.auto };
+    return { type: 'task', text: c.texto, tags: c.tags || [], projeto: c.projeto, status: c.status, prazo: c.prazo || null, prioridade: c.prioridade, auto: t.auto, ...(nomes(t).length ? { pessoas: nomes(t) } : {}) };
   }
 
   // tarefa deduzida do texto livre ("ligar pro dentista amanhã")
   if (r.tipo === 'tarefa') {
     const c = r.campos;
-    return { type: 'task', text: c.texto, tags: c.tags || [], projeto: c.projeto, status: c.status, prazo: c.prazo || null, prioridade: c.prioridade, auto: r.auto, inferido: true, confianca: r.confianca };
+    return { type: 'task', text: c.texto, tags: c.tags || [], projeto: c.projeto, status: c.status, prazo: c.prazo || null, prioridade: c.prioridade, auto: r.auto, inferido: true, confianca: r.confianca, ...(nomes(r).length ? { pessoas: nomes(r) } : {}) };
   }
   // gasto, entrada, treino... (dado bruto)
   if (r.tipo !== 'nota') return { type: 'registro', tipo: r.tipo, campos: r.campos, auto: r.auto, confianca: r.confianca };

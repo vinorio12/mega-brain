@@ -18,7 +18,8 @@ export function criarInterpretador({ regras = provedorRegras, ia = null, config 
 
   function comoNota(r, texto, ctx) {
     const n = registro.get('nota').reconhecer(texto, ctx);
-    return { tipo: 'nota', campos: n.campos, confianca: r.confianca, origem: r.origem, auto: [], provedor: r.provedor, texto: r.texto, pergunta: true, palpite: r.tipo };
+    const pes = Object.fromEntries(['pessoas', 'pessoasNovas', 'pessoasAmbiguas'].filter(k => r[k]).map(k => [k, r[k]]));
+    return { tipo: 'nota', campos: n.campos, confianca: r.confianca, origem: r.origem, auto: [], provedor: r.provedor, texto: r.texto, pergunta: true, palpite: r.tipo, ...pes };
   }
   const certeza = (r, ctx) => r.confianca >= limiar || !!r.erro || !!ctx.forcar;
 

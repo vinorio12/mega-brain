@@ -58,8 +58,9 @@ const NAO_NOME = new Set(('segunda terca quarta quinta sexta sabado domingo hoje
   'setembro outubro novembro dezembro semana mes ano dia noite tarde manha equipe time pessoal galera turma todos todas gente ele ela eles elas voce ' +
   'voces mim ele ela nos dele dela professor professora orientador orientadora chefe gerente cliente cliente mae pai irmao irma vo vovo avo tia tio ' +
   'banco mercado medico dentista eu tu isso isto aquilo tudo nada alguem ninguem cada outro outra').split(' '));
-// começos que pedem uma pessoa depois (vale mesmo em minúscula, como se digita no celular)
-const GATILHO = /(?:^|[\s,;(])(?:falar|conversar|reuniao|reunir|almocar|jantar|sair|encontro)\s+com\s+(?:o\s+|a\s+)?$|(?:^|[\s,;(])(?:ligar|perguntar|avisar|mandar\s+\S+|responder|cobrar|pedir)\s+(?:pro|pra|pros|pras|para\s+[oa]|ao|a|o)\s+$|(?:^|[\s,;(])(?:esperando|aguardando|cobrar|avisar|encontrar|ver)\s+(?:o|a)\s+$|(?:^|[\s,;(])(?:depende|retorno|resposta|aprovacao|ok)\s+(?:do|da|de)\s+$/;
+// Só verbos que pedem gente: "falar com ana", "ligar pro rafa". Depois de "esperando o" pode vir coisa
+// ("esperando o orçamento"), então ali só vale nome com maiúscula ou alguém já cadastrado.
+const GATILHO = /(?:^|[\s,;(])(?:falar|conversar|reuniao|reunir|encontro)\s+com\s+(?:o\s+|a\s+)?$|(?:^|[\s,;(])(?:ligar|perguntar|mandar\s+\S+|responder|pedir)\s+(?:pro|pra|pros|pras|para\s+[oa]|ao)\s+$/;
 
 // Possíveis nomes novos na frase (ainda não cadastrados). ignorar: palavras que você já disse que não são pessoa (/nao).
 export function candidatosPessoa(texto, { pessoas = [], projetos = [], status = [], ignorar = [] } = {}) {
@@ -113,4 +114,16 @@ export function juntarPessoas(de, para, entries = []) {
     ...e, data: { ...e.data, pessoas: [...new Set(e.data.pessoas.map(id => (id === de.id ? para.id : id)))] },
   }));
   return { novoPara, novoDe, religadas };
+}
+
+// Tudo sobre pessoas numa frase, no formato do contrato do intérprete:
+//   { pessoas: [ids sem dúvida], pessoasAmbiguas: [{ trecho, ids }], pessoasNovas: ['Carla'] }
+export function pessoasNaFrase(texto, { pessoas = [], projetos = [], status = [], ignorar = [] } = {}, { novas = true } = {}) {
+  const achados = findPessoas(texto, pessoas);
+  const out = {
+    pessoas: [...new Set(achados.filter(a => a.ids.length === 1).map(a => a.ids[0]))],
+    pessoasAmbiguas: achados.filter(a => a.ids.length > 1).map(a => ({ trecho: a.trecho, ids: a.ids })),
+    pessoasNovas: novas ? candidatosPessoa(texto, { pessoas, projetos, status, ignorar }).map(c => c.nome) : [],
+  };
+  return out;
 }

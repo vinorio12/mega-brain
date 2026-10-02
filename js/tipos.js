@@ -9,6 +9,7 @@
 //     provedor: 'regras', texto: '<o que foi digitado>',
 //     pergunta?: true,                      // não reconheceu: salvou como nota e quer saber o que é
 //     palpite?: 'tarefa',                   // junto com a pergunta: o que as regras acharam, sem certeza
+//     pessoas?: ['id'], pessoasNovas?: ['Carla'], pessoasAmbiguas?: [{ trecho, ids }]   // Fase 2.5
 //     erro?: { codigo, token } }            // ex: prazo inválido num marcador >xyz
 // validarInterpretacao confere tudo isso. Resposta da IA só vale depois de passar aqui.
 //
@@ -104,6 +105,12 @@ export function validarInterpretacao(obj, registro = REGISTRO) {
   const valor = { tipo: t.id, campos, confianca: obj.confianca, origem: obj.origem, auto, texto: obj.texto, provedor: String(obj.provedor || obj.origem) };
   if (obj.pergunta === true) valor.pergunta = true;
   if (obj.palpite && registro.get(obj.palpite)) valor.palpite = obj.palpite;
+  // pessoas (Fase 2.5): ids cadastrados que aparecem · nomes novos (pra perguntar) · nomes que batem com mais de um cadastro
+  const strs = v => (Array.isArray(v) ? [...new Set(v.filter(x => typeof x === 'string' && x))] : []);
+  if (strs(obj.pessoas).length) valor.pessoas = strs(obj.pessoas);
+  if (strs(obj.pessoasNovas).length) valor.pessoasNovas = strs(obj.pessoasNovas);
+  const amb = Array.isArray(obj.pessoasAmbiguas) ? obj.pessoasAmbiguas.filter(a => a && typeof a.trecho === 'string' && strs(a.ids).length > 1) : [];
+  if (amb.length) valor.pessoasAmbiguas = amb.map(a => ({ trecho: a.trecho, ids: strs(a.ids) }));
   if (obj.erro && typeof obj.erro === 'object') valor.erro = { codigo: String(obj.erro.codigo || ''), token: String(obj.erro.token || '') };
   return { ok: true, valor };
 }

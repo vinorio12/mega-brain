@@ -182,12 +182,17 @@ export function createCommands(ctx) {
   /* ---------- intérprete: tudo o que é escrito passa por aqui ---------- */
 
   // o que o intérprete precisa saber: projetos e status, entradas (histórico de projetos), aba atual
-  const ictx = (extra = {}) => ({ reg: ctx.reg(), entries: S.entries, aba: S.ctx, now: new Date(), ...extra });
+  const ictx = (extra = {}) => ({ reg: ctx.reg(), entries: S.entries, aba: S.ctx, now: new Date(), pessoas: pessoasDe(S.records || []), ignorarPessoas: ignorados(), ...extra });
+  // palavras que você disse que não são pessoa (/nao): ficam no aprendizado
+  const ignorados = () => (S.records || []).filter(e => e.kind === 'interpretacao' && e.data?.naoPessoa).map(e => e.data.naoPessoa);
 
   // Grava o que o intérprete entendeu (qualquer tipo registrado) e mostra a confirmação. Tudo entra no /desfazer.
   async function salvar(interp, t) {
     const tipo = REGISTRO.get(interp.tipo);
-    const e = await ctx.store.add(tipo.montar(interp, ictx()));
+    const doc = tipo.montar(interp, ictx());
+    // quem aparece na frase fica ligado à entrada (o texto continua como foi escrito)
+    if (interp.pessoas?.length) doc.data = { ...(doc.data || {}), pessoas: interp.pessoas };
+    const e = await ctx.store.add(doc);
     S.lastLatency = t.elapsed();
     const queued = ctx.store.pending() > 0;
     const meta = `<span class="c-meta">· ${t.id} · ${S.lastLatency}ms</span>`;
@@ -817,6 +822,7 @@ export function createCommands(ctx) {
           if (v === null || v === undefined) return '—';
           if (campo === 'prazo') return esc(fmtDue(v));
           if (campo === 'feito_em') { const d = new Date(v); return `${hhmm(d)} ${ddmm(d)}`; }
+          if (campo === 'pessoas') return esc((v || []).map(id => S.records.find(e => e.id === id)?.text || '?').join(', ') || '—');
           return esc(String(v).length > 40 ? String(v).slice(0, 39) + '…' : v);
         };
         term.print(`── mudanças · ${title} · ${evs.length} ${'─'.repeat(6)}`, 'sep');

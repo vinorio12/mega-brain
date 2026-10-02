@@ -9,7 +9,8 @@
 
 import { REGISTRO } from './tipos.js';
 import { tagsOf, dayKey } from './util.js';
-import { parseTaskInput, fillByRules, registry, newTask, PRIORITIES } from './tasks.js';
+import { parseTaskInput, fillByRules, registry, newTask, PRIORITIES, matchStatus } from './tasks.js';
+import { findPessoas, candidatosPessoa } from './pessoas.js';
 import { parseLink, parseSnippet } from './acervo.js';
 import { findDate } from './dates.js';
 import { RASTREAR } from './historico.js';
@@ -25,6 +26,21 @@ const strip = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 export function comecaComVerbo(texto) {
   const w = strip(String(texto).trim().split(/\s+/)[0] || '').replace(/[^a-z]/g, '');
   return (w.length >= 3 || w === 'ir') && /(ar|er|ir)$/.test(w) && !NAO_VERBO.has(w);
+}
+
+// "tô fazendo os slides", "estou fazendo", "comecei o relatório", "já comecei a ler"
+const FAZENDO = /^(?:eu\s+)?(?:(?:t[oô]|tou|estou|to)\s+fazendo|(?:j[aá]\s+)?comecei)(?=\s|$)/i;
+// "esperando o João…", "aguardando a Ana", "depende do Pedro", "esperando retorno da Bia": só vale se vier uma pessoa
+const ESPERA = /(?:^|\s)(?:esperando|aguardando|esperar|aguardar|depende)\s+(?:(?:de|do|da|dos|das|o|a|os|as)\s+)?(?:(?:retorno|resposta|aprova[cç][aã]o|ok|confirma[cç][aã]o)\s+(?:do|da|de|dos|das)\s+)?/gi;
+export function esperandoAlguem(texto, ctx = {}) {
+  const pessoas = ctx.pessoas || [];
+  const known = findPessoas(texto, pessoas);
+  const novos = candidatosPessoa(texto, { pessoas, projetos: ctx.reg?.projects || [], ignorar: ctx.ignorarPessoas || [] });
+  for (const m of String(texto).matchAll(ESPERA)) {
+    const pos = m.index + m[0].length;
+    if (known.some(a => a.inicio === pos) || novos.some(c => c.inicio === pos)) return true;
+  }
+  return false;
 }
 
 const ctxDe = ctx => ({ reg: ctx?.reg || registry([]), entries: ctx?.entries || [], now: ctx?.now || new Date(), aba: ctx?.aba || null });
@@ -61,6 +77,9 @@ export function registrarTiposBase(r = REGISTRO) {
       const intro = raw.match(INTRO);
       if (intro) raw = raw.slice(intro[0].length);
       const marcador = /(^|\s)[@>!]\S/.test(raw);
+      // status pela frase (Fase 2.5): "esperando o João…" → esperando · "tô fazendo…", "comecei…" → fazendo
+      const espera = esperandoAlguem(raw, ctx);
+      const fazendo = FAZENDO.test(raw);
       // data falada ("amanhã", "dia 15"), só se não tem >prazo e se não é passado
       let data = /(^|\s)>\S/.test(raw) ? null : findDate(raw, now);
       if (data && data.data < today) data = null;
@@ -68,10 +87,11 @@ export function registrarTiposBase(r = REGISTRO) {
       if (data && !data.resto.split(/\s+/).some(w => w && !/^[#@>!]/.test(w))) data = null;
       const verbo = comecaComVerbo(raw);
 
-      let confianca = explicito ? 1 : marcador ? 0.9 : intro ? 0.8 : verbo && data ? 0.8 : verbo ? 0.6 : data && data.data > today ? 0.6 : 0;
+      let confianca = explicito ? 1 : marcador ? 0.9 : intro || espera || fazendo ? 0.8 : verbo && data ? 0.8 : verbo ? 0.6 : data && data.data > today ? 0.6 : 0;
       if (!confianca) return null;
 
       const p = parseTaskInput(data ? data.resto : raw, { ctx: aba, reg, now });
+      if (!p.error && !p.status && (espera || fazendo)) p.status = matchStatus(espera ? 'esperando' : 'fazendo', reg.statuses);
       if (p.error) {
         // marcador errado: na tarefa explícita é erro pra mostrar; em texto livre, não era tarefa
         return explicito ? { confianca: 1, campos: { texto: raw || '-' }, erro: { codigo: p.error, token: p.token || '' } } : null;

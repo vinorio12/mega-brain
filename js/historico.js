@@ -15,7 +15,7 @@ import { dayKey } from './util.js';
 // campos acompanhados por tipo de entrada ('text' = o texto; o resto fica em data)
 // (o registro de tipos da etapa 4 passa a fornecer esta lista)
 export const RASTREAR = {
-  tarefa: ['text', 'projeto', 'status', 'prazo', 'prioridade', 'feito_em'],
+  tarefa: ['text', 'projeto', 'status', 'prazo', 'prioridade', 'feito_em', 'pessoas'],
 };
 
 const ORIGENS = ['usuario', 'regra', 'ia', 'desfazer', 'importar'];

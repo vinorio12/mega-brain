@@ -7,6 +7,8 @@
 // aba: projeto da aba atual (~/weg). Todas as frases são lidas como se hoje fosse quinta, 01/10/2026.
 
 export const HOJE = '2026-10-01';
+// pessoas cadastradas durante a régua (esperado.pessoas compara pelos nomes; pessoasNovas = nomes que o app vai perguntar)
+export const PESSOAS = ['João Silva', 'Ana', 'Pedro'];
 
 export const FRASES = [
   // nota: nada de outro tipo → nota, sem perguntar
@@ -62,6 +64,19 @@ export const FRASES = [
   { frase: 'academia amanhã às 7h', esperado: { tipo: 'nota', pergunta: true } },
   { frase: 'joguei fora as roupas velhas', esperado: { tipo: 'nota', pergunta: false } },
 
+  // pessoas (Fase 2.5): cadastradas João Silva, Ana, Pedro
+  { frase: 'esperando o João mandar o orçamento', esperado: { tipo: 'tarefa', campos: { status: 'esperando' }, pessoas: ['João Silva'] } },
+  { frase: 'aguardando a Ana aprovar o relatório da weg', esperado: { tipo: 'tarefa', campos: { status: 'esperando', projeto: 'weg' }, pessoas: ['Ana'] } },
+  { frase: 'depende do pedro', esperado: { tipo: 'tarefa', campos: { status: 'esperando' }, pessoas: ['Pedro'] } },
+  { frase: 'esperando a Bia responder', esperado: { tipo: 'tarefa', campos: { status: 'esperando' }, pessoas: [], pessoasNovas: ['Bia'] } },
+  { frase: 'esperando o orçamento do fornecedor', esperado: { tipo: 'nota', pergunta: false, pessoasNovas: [] } },
+  { frase: 'tô fazendo os slides do tcc', esperado: { tipo: 'tarefa', campos: { status: 'fazendo', projeto: 'tcc' } } },
+  { frase: 'comecei o relatório', esperado: { tipo: 'tarefa', campos: { status: 'fazendo' } } },
+  { frase: 'falar com o joão amanhã', esperado: { tipo: 'tarefa', campos: { prazo: '2026-10-02', status: 'a fazer' }, pessoas: ['João Silva'] } },
+  { frase: 'falar com Carla amanhã', esperado: { tipo: 'tarefa', pessoas: [], pessoasNovas: ['Carla'] } },
+  { frase: 'almoço com a Ana foi ótimo', esperado: { tipo: 'nota', pergunta: false, pessoas: ['Ana'] } },
+  { frase: 'gastei 50 no presente da Ana', esperado: { tipo: 'gasto', campos: { valor: 5000 }, pessoas: ['Ana'] } },
+
   // acervo
   { frase: 'https://arxiv.org/abs/2005.11401 paper do RAG #tcc', esperado: { tipo: 'link', campos: { url: 'https://arxiv.org/abs/2005.11401', contexto: 'paper do RAG #tcc', tags: ['tcc'] } } },
   { frase: '"a persistência é o caminho do êxito"', esperado: { tipo: 'trecho', campos: { texto: 'a persistência é o caminho do êxito' } } },
@@ -81,7 +96,10 @@ export async function rodarFrases(interpretar, frases = FRASES, ctxBase = () => 
   const [y, m, d] = HOJE.split('-').map(Number);
   const out = [];
   for (const f of frases) {
-    const ctx = { ...ctxBase(f), now: new Date(y, m - 1, d, 12, 0), aba: f.aba || null };
+    const base = ctxBase(f);
+    // pessoas cadastradas na régua (a não ser que o contexto já traga as suas)
+    const pessoas = base.pessoas || PESSOAS.map((nome, i) => ({ id: 'pessoa' + i, nome, apelidos: [], chaves: [...new Set([nome, nome.split(' ')[0]].map(s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()))] }));
+    const ctx = { ...base, pessoas, now: new Date(y, m - 1, d, 12, 0), aba: f.aba || null };
     let r, motivo = '';
     try { r = await interpretar(f.frase, ctx); } catch (e) { motivo = 'erro: ' + e.message; }
     const e = f.esperado;
@@ -92,6 +110,10 @@ export async function rodarFrases(interpretar, frases = FRASES, ctxBase = () => 
     for (const [k, v] of Object.entries(e.campos || {})) {
       if (!motivo && !same(r.campos?.[k], v)) motivo = `${k}: veio ${JSON.stringify(r.campos?.[k])}, esperado ${JSON.stringify(v)}`;
     }
+    // pessoas: compara pelos nomes (os ids mudam de um cadastro pro outro)
+    const nomes = (r?.pessoas || []).map(id => pessoas.find(p => p.id === id)?.nome);
+    if (!motivo && e.pessoas !== undefined && !same(nomes, e.pessoas)) motivo = `pessoas: veio ${JSON.stringify(nomes)}, esperado ${JSON.stringify(e.pessoas)}`;
+    if (!motivo && e.pessoasNovas !== undefined && !same(r.pessoasNovas || [], e.pessoasNovas)) motivo = `pessoas novas: veio ${JSON.stringify(r.pessoasNovas || [])}, esperado ${JSON.stringify(e.pessoasNovas)}`;
     out.push({ frase: f.frase, ok: !motivo, motivo, veio: r });
   }
   return out;

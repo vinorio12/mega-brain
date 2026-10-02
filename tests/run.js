@@ -856,9 +856,9 @@ describe('pessoas (pessoas.js · Fase 2.5)', () => {
   });
   test('palavra inteira só; #tag e @status não contam', () => eq([ach('banana'), ach('#ana'), ach('anabela'), ach('Ana.')], [[], [], [], [['Ana', ['p2']]]]));
   test('candidatos a nome novo: maiúscula no meio ou depois de "falar com"', () => eq(
-    ['falar com Carla amanhã', 'falar com carla amanhã', 'esperando a bia', 'depende do marcos', 'ligar pro dentista', 'Revisar slides',
-      'café com leite', 'falar com a Ana', 'reunião com orientador', 'mandar email pro rafa'].map(t => candidatosPessoa(t, { pessoas: pes }).map(c => c.nome)),
-    [['Carla'], ['Carla'], ['Bia'], ['Marcos'], [], [], [], [], [], ['Rafa']]));
+    ['falar com Carla amanhã', 'falar com carla amanhã', 'esperando a Bia', 'depende do Marcos', 'ligar pro dentista', 'Revisar slides',
+      'café com leite', 'falar com a Ana', 'reunião com orientador', 'mandar email pro rafa', 'esperando o orçamento', 'ligar o carro'].map(t => candidatosPessoa(t, { pessoas: pes }).map(c => c.nome)),
+    [['Carla'], ['Carla'], ['Bia'], ['Marcos'], [], [], [], [], [], ['Rafa'], [], []]));
   test('candidato ignora projeto, status, dia e o que você disse que não é pessoa', () => eq(
     candidatosPessoa('falar com Weg na Sexta sobre Itaú', { pessoas: pes, projetos: ['weg'], ignorar: ['itaú'] }), []));
   test('acharPessoa: exato, apelido, ambíguo, nada', () => eq(
@@ -910,6 +910,24 @@ describe('cadastro de pessoas (/pessoa · Fase 2.5)', () => {
     eq(pessoasDe(s.S.records).length, 2);
     await s.run('/pessoas');
     ok(/João Pedro/.test(s.term.text()) && /João Silva/.test(s.term.text()));
+  });
+});
+
+describe('intérprete marca pessoas (etapa 3 · Fase 2.5)', () => {
+  const T = { id: 'T0001', elapsed: () => 1 };
+  test('cadastrou → escreveu normal → entrada ligada à pessoa, status pela frase', async () => {
+    const s = setup([]);
+    await s.run('/pessoa nova João Silva +jão');
+    const joao = pessoasDe(s.S.records)[0];
+    await s.ctx.commands.capturar('esperando o jão mandar o orçamento', T);
+    await s.ctx.commands.capturar('almoço com o João foi bom', T);
+    const [t1, n1] = s.S.entries;
+    eq([t1.kind, t1.text, t1.data.status, t1.data.pessoas], ['tarefa', 'esperando o jão mandar o orçamento', 'esperando', [joao.id]]);
+    eq([n1.kind, n1.data.pessoas], ['nota', [joao.id]]);
+  });
+  test('prévia mostra quem foi reconhecido', () => {
+    const pes = [{ id: 'p1', nome: 'Ana', apelidos: [], chaves: ['ana'] }];
+    eq(readIntent('falar com a ana amanhã', { pessoas: pes, now: new Date(2026, 9, 1, 12) }).pessoas, ['Ana']);
   });
 });
 

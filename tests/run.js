@@ -8,6 +8,7 @@ import { createLocalStore } from '../js/store.js';
 import { createCloudStore } from '../js/cloud.js';
 import { createTerminal } from '../js/terminal.js';
 import { parseDue, fmtDue, findDate } from '../js/dates.js';
+import { parseValor, findValor, fmtValor } from '../js/valores.js';
 import { deriveState, describeState, readIntent } from '../js/state.js';
 import { viewName, viewGroups, calendarModel, parseMonth } from '../js/views.js';
 import { parseLink, parseSnippet, shortUrl, searchAll } from '../js/acervo.js';
@@ -178,6 +179,26 @@ describe('datas em frases (findDate · Fase 2)', () => {
     [null, null, null, null, null, null, null, null, null, null]));
   test('duas datas: vale a primeira', () => eq(d('amanhã ou sexta'), '2026-10-02'));
   test('pontuação em volta não sobra', () => eq(findDate('amanhã, ligar pro banco', now).resto, 'ligar pro banco'));
+});
+
+describe('valores (valores.js · Fase 2)', () => {
+  test('parseValor: os jeitos de escrever → centavos', () => eq(
+    ['30', '30 reais', 'R$30,00', 'R$30,50', 'r$ 30,50', 'R$ 1.234,56', '30,5', '30.50', '1.234', '1 real', '50 centavos', '2 mil', 'R$ 2 mil', '2 mil reais', '50 conto', '0,99'].map(parseValor),
+    [3000, 3000, 3000, 3050, 3050, 123456, 3050, 3050, 123400, 100, 50, 200000, 200000, 200000, 5000, 99]));
+  test('parseValor: o que não é valor → null', () => eq(
+    ['abc', '', '30,555', '30 reais e pouco', 'R$', null].map(parseValor), [null, null, null, null, null, null]));
+  test('findValor tira o valor do texto', () => eq(findValor('gastei 30 no almoço'),
+    { centavos: 3000, trecho: '30', resto: 'gastei no almoço', explicito: false, inicio: 7, fim: 9 }));
+  test('findValor: explícito (R$, reais) ou solto', () => eq(
+    ['almoço R$ 32,90 #pessoal', 'uber 18,50', 'recebi 1.500 de salário', 'paguei 50 conto no tênis', 'pagas 30'].map(s => [findValor(s).centavos, findValor(s).explicito]),
+    [[3290, true], [1850, false], [150000, false], [5000, true], [3000, false]]));
+  test('findValor: explícito ganha de número solto', () => eq(
+    [findValor('paguei 20 e depois R$ 35').centavos, findValor('gastei 30 reais e 20 de gorjeta').centavos], [3500, 3000]));
+  test('hora, distância, capítulo, dia e data não são valor', () => eq(
+    ['treinei 1h', 'corri 5km', 'corri 5 km', 'ler cap 15', 'reunião às 15', 'prova dia 15', 'prova 15/10', '3x10 supino', 'supino 4 séries', '15:30', 'aula 3', '#tcc2', 'dia 15 de outubro', 'dormi 8 horas'].map(findValor),
+    Array(14).fill(null)));
+  test('fmtValor', () => eq([3000, 123456, 5, -500, 0, 100000000].map(fmtValor),
+    ['R$ 30,00', 'R$ 1.234,56', 'R$ 0,05', '-R$ 5,00', 'R$ 0,00', 'R$ 1.000.000,00']));
 });
 
 describe('tarefas · lógica (tasks.js)', () => {

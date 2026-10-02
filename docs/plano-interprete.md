@@ -62,12 +62,20 @@ Linha curta após salvar: `↳ entendi · tarefa · #tcc · >sex · !média · a
 - **Valores** (`js/valores.js`, `parseValor`): `30`, `30 reais`, `R$30,00`, `R$30,50`, `R$ 1.234,56`, `30,5`; resultado em **centavos inteiros** (sem float). Número solto só vira valor com palavra de contexto (gastei, paguei, recebi…); com `R$`/`reais` vale sozinho.
 - **Palavras-chave por projeto**: ficam em `data.palavras` do registro do projeto (sincroniza, entra no `/desfazer`). Comando `/palavras <projeto> [+palavra] [-palavra]`. `guessProject` passa a somar: nome (+5), palavra-chave (+4), histórico (+1). Regras da fase 1 (projeto/status/prazo automáticos) passam a rodar dentro do reconhecedor de `tarefa`.
 - Tarefa a partir de texto livre: marcadores (`#proj @st >prazo !prio`) 0.9 · "preciso / tenho que / lembrar de" 0.8 · verbo no infinitivo no começo + data 0.8 · só o verbo 0.6 (abaixo do limiar = nota com pergunta). `- ` e `/t` = 1.0.
+- **Nota normal não pergunta nada** (revisão 02/10): texto sem nenhum indício de outro tipo é `nota` com confiança 0.8. A pergunta só aparece quando há indício fraco (verbo sem data, número sem contexto, "academia" sem "treinei"…). Senão toda nota viraria pergunta.
 
 ### 6. Aprendizado
 Frase que as regras não entendem (e as correções do `/tipo`) viram registro `kind: 'interpretacao'` (`isRecord`, sincroniza, sai do `/inbox`) com `{ texto, resultado, corrigido? }`. `/aprendizado` lista e conta; `/aprendizado exportar` gera o formato da régua de testes (uma correção vira teste novo fácil, e depois exemplo pra IA).
 
 ### 7. Histórico de mudanças (pra Fase 6)
 Registros **append-only** `kind: 'evento'` (`isRecord`): `{ alvo: id, campo, de, para, origem: usuario|regra|ia|desfazer|importar }` + `ts`. Cobre: criada, cada troca de `status` (conclusão = status final), cada `prazo` (adiamento = prazo maior), `prioridade`, `projeto`, `texto`, apagada, restaurada. Escolhi **linhas de evento** em vez de array dentro da tarefa porque: (a) dois aparelhos editando não perdem evento, (b) `/desfazer` não apaga história (ele mesmo gera evento `origem: desfazer`), (c) apagar a tarefa não apaga o passado. Ponto único: `withHistory(store)` envolve `add/restore/remove`, calcula o diff antes/depois e grava os eventos; os campos rastreados vêm de `rastrear` no registro de tipos. Nenhum comando precisa lembrar de gravar. Tarefas antigas não ganham eventos inventados (o contexto usa `ts`/`feito_em` delas).
+
+Ajustes da revisão (02/10):
+- **Uma linha por gravação**, não por campo: `{ alvo, alvo_kind, mudancas: { status: [de, para], prazo: [de, para] }, origem }`. Menos linhas e a mudança fica junta. O `text` da linha nunca é vazio (o banco exige 1+ letra): ex. `t · status · prazo`.
+- **A origem vem de quem grava**: `store.restore(entry, { origem: 'desfazer' })`; sem nada = `usuario`.
+- **Só gravações feitas neste aparelho geram evento**. O que chega da nuvem/tempo real/outra aba não gera de novo (senão dois aparelhos duplicariam).
+- **Tipos desconhecidos ficam escondidos**: hoje o app trata como nota tudo que não é tarefa nem acervo, então um `kind: 'evento'` apareceria no `/inbox`. Antes de gravar qualquer `kind` novo, a regra vira "só é nota o que é `nota` (ou não tem kind)"; o resto vai pra `S.records`. Isso vai pro ar junto, na mesma etapa.
+- **Sobe pra etapa 3**: cada commit já vai pro ar (Pages publica a `main`), então quanto antes, mais história a Fase 6 vai ter. Os campos rastreados da tarefa ficam numa lista em `historico.js` até o registro de tipos existir (etapa 4), que depois passa a fornecer.
 
 ### 8. `montarContexto(entries, eventos, { reg, now, dias = 7, maxChars = 1500 })`
 Função pura (`js/contexto.js`) que devolve texto enxuto: data; por projeto, abertas / atrasadas (com dias e nº de adiamentos) / o que andou na semana (concluídas, mudanças de status) / o que travou (sem evento há N dias, em `esperando` há tempo, adiada 2x+). Corta por prioridade até caber em `maxChars`. Cada tipo pode registrar `resumo()` pra entrar no contexto (finanças, treino). Comando de depuração `/contexto` mostra o texto e uma estimativa de tokens (chars/4). Só existe e é testada; a IA lê na Fase 6.
@@ -80,14 +88,14 @@ Lista `{ frase, hoje: '2026-10-01', esperado: { tipo, campos parciais, minConfia
 | # | Etapa | Tam. | Pronto quando |
 |---|---|---|---|
 | 0 | Plano em `docs/plano-interprete.md`; `CLAUDE.md`: Fase 2 detalhada, **Fase 6 reescrita** (Coach = assistente que lê o contexto completo e sugere next steps, updates, prioridades, resumo do dia e revisão semanal), backlog "ligar provedor IA (Haiku) + travas de custo: limite diário e cache"; `PHASES` do `/roadmap` | P | só docs, commit |
-| 1 | `findDate` em `dates.js` | P | frases de data testadas (fixando `now` = 2026-10-01, quinta) |
-| 2 | `js/valores.js` (`parseValor`, `fmtValor`) | P | 30 / 30 reais / R$30,00 / R$30,50 / R$ 1.234,56 testados |
-| 3 | `js/tipos.js` (registro) + contrato + `validarInterpretacao` | P | tipo inválido/campo faltando é recusado |
-| 4 | Régua (`tests/frases.js`) + provedor de regras com `nota`, `tarefa`, `link`, `trecho` | M | frases-base verdes; `- tarefa`, link, aspas dão o mesmo que hoje |
-| 5 | `gasto`, `entrada`, `treino` (dado bruto) + frases na régua | M | "gastei 30 no almoço" → gasto 3000 centavos; "treinei peito 1h" → treino |
-| 6 | `interpretar()` (orquestrador, limiar, fallback nota+pergunta) + `provedor-ia.js` desligado + `INTERPRETADOR` em `config.js` | M | régua passa também com IA falsa; falha/lenta/inválida/desligada → nota com pergunta, nunca perde texto |
-| 7 | Palavras-chave por projeto + `/palavras`; `guessProject` usa | P | palavra do projeto decide; edição desfaz; sincroniza |
-| 8 | Histórico: `evento`, `diffEvents`, `withHistory`, `isRecord` aceita `evento`; ligado no `attachStore` | M | criar/mover/adiar/concluir/desfazer/apagar geram eventos; nada some |
+| 1 | `findDate` em `dates.js` · **feito** | P | frases de data testadas (fixando `now` = 2026-10-01, quinta) |
+| 2 | `js/valores.js` (`parseValor`, `findValor`, `fmtValor`) | P | 30 / 30 reais / R$30,00 / R$30,50 / R$ 1.234,56 testados |
+| 3 | Histórico: `evento`, `diffEvents`, `withHistory`; kinds desconhecidos escondidos; ligado no `attachStore` (subiu da 8 na revisão) | M | criar/mover/adiar/concluir/desfazer/apagar geram eventos; nada some; nada novo aparece no `/inbox` |
+| 4 | `js/tipos.js` (registro) + contrato + `validarInterpretacao` | P | tipo inválido/campo faltando é recusado |
+| 5 | Régua (`tests/frases.js`) + provedor de regras com `nota`, `tarefa`, `link`, `trecho` | M | frases-base verdes; `- tarefa`, link, aspas dão o mesmo que hoje |
+| 6 | `gasto`, `entrada`, `treino` (dado bruto) + frases na régua | M | "gastei 30 no almoço" → gasto 3000 centavos; "treinei peito 1h" → treino |
+| 7 | `interpretar()` (orquestrador, limiar, fallback nota+pergunta) + `provedor-ia.js` desligado + `INTERPRETADOR` em `config.js` | M | régua passa também com IA falsa; falha/lenta/inválida/desligada → nota com pergunta, nunca perde texto |
+| 8 | Palavras-chave por projeto + `/palavras`; `guessProject` usa | P | palavra do projeto decide; edição desfaz; sincroniza |
 | 9a | Ligar na tela, **sem mudar comportamento**: `run()` e `readIntent` chamam o motor; `/t` e `- ` passam por ele; `isNote`/`tipoOf`/overview tratam `kind` novos | M | testes antigos todos verdes (181 hoje) + captura de nota/link/texto/tarefa idêntica |
 | 9b | Texto livre vira tarefa/gasto/entrada/treino; linha "↳ entendi"; nota com pergunta; `/tipo` | M | "ligar pro dentista amanhã" vira tarefa com prazo; "bla bla" vira nota + pergunta |
 | 10 | Aprendizado: registro `interpretacao`, `/aprendizado [exportar]` | P | frase desconhecida registrada; correção `/tipo` grava o par |
@@ -98,9 +106,10 @@ Lista `{ frase, hoje: '2026-10-01', esperado: { tipo, campos parciais, minConfia
 1. **Limiar 0.7**, ajustável em `config.js`.
 2. **A pergunta não bloqueia**: é uma linha + `/tipo`. Perguntar travando o prompt atrapalharia a captura rápida do celular.
 3. **Eventos como linhas** (explicado em 7), não array na tarefa.
-4. **Gasto/entrada/treino gravam com `kind` próprio** e não aparecem no `/inbox` (hoje `isNote` = "não é tarefa nem acervo" os engoliria; 9a ajusta).
+4. **Gasto/entrada/treino gravam com `kind` próprio** e não aparecem no `/inbox` (a etapa 3 já troca a regra: só é nota o que é `nota`).
 5. **Edge Function `interpretar` e travas de custo ficam no backlog**, como você pediu. O cliente já nasce com o contrato e os ganchos.
 6. Frase de data é **removida do texto** da tarefa ("ligar pro dentista amanhã" → texto "ligar pro dentista", prazo amanhã); o original fica no evento `criada`.
+7. Datas (etapa 1): numa quinta, "próxima sexta" e "sexta que vem" = amanhã; "sexta da semana que vem" = a outra. "próxima quinta" nunca é hoje. "mês que vem" = dia 1. "segunda/quarta/quinta/sexta" sozinhas só valem com preposição, "-feira", "que vem" ou no fim da frase. Em frase livre, data com ponto (15.10) não vale (confunde com "nota 7.5"); no marcador `>15.10` vale.
 
 ## Riscos
 - **Tarefa criada sem querer** por texto livre: limiar conservador, linha "entendi" sempre visível, `/desfazer`, log de aprendizado.

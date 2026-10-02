@@ -25,7 +25,7 @@ import { criarProvedorIA, travaDiaria, montarPedido } from '../js/provedor-ia.js
 import { INTERPRETADOR } from '../js/config.js';
 import { registroAprendizado, resumoAprendizado, exportarFrases } from '../js/aprendizado.js';
 import { montarContexto, estimarTokens } from '../js/contexto.js';
-import { pessoasDe, findPessoas, candidatosPessoa, acharPessoa, editApelidos, juntarPessoas } from '../js/pessoas.js';
+import { pessoasDe, findPessoas, candidatosPessoa, acharPessoa, editApelidos, juntarPessoas, resumoPessoa } from '../js/pessoas.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -979,6 +979,35 @@ describe('nome novo pergunta · /sim /nao (etapa 4 · Fase 2.5)', () => {
     const s = setup([]);
     await s.run('/sim');
     ok(/nada pra responder/.test(s.term.text()));
+  });
+});
+
+describe('/pessoa João: tudo de uma pessoa (etapa 5 · Fase 2.5)', () => {
+  const now = new Date(2026, 9, 10, 12);
+  const tk = (id, data, ts = now.getTime() - 864e5) => ({ id, kind: 'tarefa', text: id, tags: [], ts, day: '2026-10-09', data: { status: 'a fazer', pessoas: ['p1'], ...data } });
+  const E = [
+    tk('esp', { status: 'esperando', projeto: 'weg' }), tk('ab', { projeto: 'weg' }), tk('ab2', { projeto: 'tcc' }),
+    tk('feita', { status: 'feito', feito_em: now.getTime() - 2 * 864e5, projeto: 'weg' }), tk('velha', { status: 'feito', feito_em: now.getTime() - 60 * 864e5, projeto: 'weg' }),
+    tk('outra', { pessoas: ['p2'] }),
+    { id: 'n1', kind: 'nota', text: 'nota', tags: [], ts: 9, data: { pessoas: ['p1'] } },
+    { id: 'g1', kind: 'gasto', text: 'gasto', tags: [], ts: 9, data: { pessoas: ['p1'], valor: 100 } },
+  ];
+  const EV = [{ id: 'ev', kind: 'evento', ts: 5, data: { alvo: 'ab', acao: 'criada' } }, { id: 'ev2', kind: 'evento', ts: 6, data: { alvo: 'outra', acao: 'criada' } }];
+  test('resumoPessoa separa esperando, abertas, feitas (30d), notas, outros, projetos', () => {
+    const r = resumoPessoa('p1', E, EV, { now });
+    eq([r.total, r.esperando.map(e => e.id), r.abertas.map(e => e.id), r.feitas.map(e => e.id), r.notas.map(e => e.id), r.outros.map(e => e.id), r.projetos, r.eventos.map(e => e.id)],
+      [7, ['esp'], ['ab', 'ab2'], ['feita'], ['n1'], ['g1'], [['weg', 4], ['tcc', 1]], ['ev']]);
+  });
+  test('/pessoa Ana mostra os grupos e numera as tarefas (/feito t1 funciona)', async () => {
+    const s = setup([]);
+    await s.run('/pessoa nova Ana');
+    const T = { id: 'T0001', elapsed: () => 1 };
+    await s.ctx.commands.capturar('esperando a Ana mandar o contrato', T);
+    await s.ctx.commands.capturar('ligar pra Ana amanhã', T);
+    await s.run('/pessoa ana');
+    ok(/esperando Ana/.test(s.term.text()) && /abertas/.test(s.term.text()), s.term.text());
+    await s.run('/feito t1');
+    eq(s.S.entries.find(e => e.text.startsWith('esperando')).data.status, 'feito');
   });
 });
 

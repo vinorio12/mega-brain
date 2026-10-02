@@ -127,3 +127,31 @@ export function pessoasNaFrase(texto, { pessoas = [], projetos = [], status = []
   };
   return out;
 }
+
+// Tudo de uma pessoa (/pessoa João). entries = notas/tarefas/...; eventos = histórico (kind 'evento').
+//   esperando: tarefas abertas em "esperando" ligadas a ela · abertas: o resto das abertas
+//   feitas: concluídas nos últimos `dias` · notas e outros (gasto, treino...) · projetos: [[nome, quantas]]
+export function resumoPessoa(id, entries = [], eventos = [], { now = new Date(), dias = 30, projetos = [] } = {}) {
+  const dela = entries.filter(e => (e.data?.pessoas || []).includes(id));
+  const tarefa = e => e.kind === 'tarefa';
+  const feitoEm = e => e.data?.feito_em ?? e.data?.feito ?? null;
+  const abertasTodas = dela.filter(e => tarefa(e) && !feitoEm(e));
+  const esperando = abertasTodas.filter(e => e.data?.status === 'esperando');
+  const desde = now.getTime() - dias * 864e5;
+  const cont = new Map();
+  for (const e of dela.filter(tarefa)) {
+    const p = e.data?.projeto || (e.tags || []).find(t => projetos.includes(t));
+    if (p) cont.set(p, (cont.get(p) || 0) + 1);
+  }
+  const ids = new Set(dela.map(e => e.id));
+  return {
+    total: dela.length,
+    esperando,
+    abertas: abertasTodas.filter(e => !esperando.includes(e)),
+    feitas: dela.filter(e => tarefa(e) && feitoEm(e) >= desde),
+    notas: dela.filter(e => !e.kind || e.kind === 'nota').sort((a, b) => b.ts - a.ts),
+    outros: dela.filter(e => e.kind && !['nota', 'tarefa'].includes(e.kind)).sort((a, b) => b.ts - a.ts),
+    projetos: [...cont].sort((a, b) => b[1] - a[1]),
+    eventos: eventos.filter(ev => ev.kind === 'evento' && ids.has(ev.data?.alvo)).sort((a, b) => b.ts - a.ts),
+  };
+}

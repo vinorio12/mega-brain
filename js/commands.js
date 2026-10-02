@@ -24,7 +24,7 @@ import { REGISTRO } from './tipos.js';
 import { previa, interpretar } from './interpretar.js';
 import { registroAprendizado, resumoAprendizado, exportarFrases } from './aprendizado.js';
 import { montarContexto, estimarTokens } from './contexto.js';
-import { pessoasDe, acharPessoa, editApelidos, juntarPessoas, fold } from './pessoas.js';
+import { pessoasDe, acharPessoa, editApelidos, juntarPessoas, fold, resumoPessoa } from './pessoas.js';
 
 export const PHASES = [
   ['0', 'esqueleto · terminal, hud, inbox', 'ok'],
@@ -290,10 +290,24 @@ export function createCommands(ctx) {
 
   // cartão de uma pessoa: nome, apelidos e o que está ligado a ela
   function mostrarPessoa(r) {
-    const ligadas = S.entries.filter(e => (e.data?.pessoas || []).includes(r.id));
-    term.print(`── ${esc(r.text)} ${'─'.repeat(10)}`, 'sep');
-    term.print(`<span class="k">apelidos</span><span>${(r.data?.apelidos || []).map(esc).join(', ') || '<span class="dim">nenhum</span>'}</span>`, 'tbl');
-    term.print(`<span class="k">ligadas</span><span>${ligadas.length}</span>`, 'tbl');
+    const res = resumoPessoa(r.id, S.entries, S.records || [], { projetos: ctx.reg().projects });
+    const ap = (r.data?.apelidos || []).length ? ` <span class="dim">· ${r.data.apelidos.map(esc).join(', ')}</span>` : '';
+    term.print(`── ${esc(r.text)}${ap} · ${res.total} ligadas ${'─'.repeat(8)}`, 'sep');
+    if (!res.total) return term.say(`nada ligado a ${esc(r.text)} ainda · escreva normal ("falar com ${esc(r.text.split(' ')[0])} amanhã") que o app liga sozinho.`);
+    if (res.projetos.length) term.print(`<span class="k">projetos</span><span>${res.projetos.map(([p, n]) => `<span class="c-act">#${esc(p)}</span> ${n}`).join(' · ')}</span>`, 'tbl');
+    // tarefas numeradas t1, t2... (dá pra usar /feito t1 direto daqui)
+    const grupos = [
+      { key: 'esperando', title: `esperando ${r.text.split(' ')[0]}`, items: res.esperando },
+      { key: 'abertas', title: 'abertas', items: res.abertas },
+      { key: 'feitas', title: 'feitas em 30 dias', items: res.feitas },
+    ].filter(g => g.items.length);
+    if (grupos.length) showTaskGroups(grupos, grupos.flatMap(g => g.items.map(e => e.id)), g => g.title);
+    if (res.notas.length) { term.print(`notas <span class="c-meta">${res.notas.length}</span>`, 'tgrp'); noteRows(res.notas.slice(0, 5)); }
+    if (res.outros.length) { term.print(`outros <span class="c-meta">${res.outros.length}</span>`, 'tgrp'); showByType(res.outros.slice(0, 5)); }
+    if (res.eventos.length) {
+      term.print('últimas mudanças', 'tgrp');
+      for (const ev of res.eventos.slice(0, 4)) term.print(`<span class="c-meta">${ddmm(new Date(ev.ts))}</span> ${esc(ev.data?.acao || '')} · ${hl(ev.data?.texto || '')}${ev.data?.acao === 'alterada' ? ` <span class="dim">(${Object.keys(ev.data.mudancas || {}).map(esc).join(', ')})</span>` : ''}`);
+    }
   }
 
   // A linha curta "↳ entendi": o que o app concluiu sozinho, pra conferir e corrigir.

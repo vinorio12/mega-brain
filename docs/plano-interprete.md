@@ -1,6 +1,6 @@
 # Fase 2 · Intérprete (regras agora, IA encaixável depois)
 
-> Status: **aprovado pelo Vini em 01/10/2026**, em execução. Uma etapa por vez; no fim de cada uma: testes verdes (`/tests/`),
+> Status: **aprovado pelo Vini em 01/10/2026** · revisado em 02/10 · **etapas 1 a 11 feitas**, 12 (fechamento) esperando o Vini testar no celular e aprovar. Uma etapa por vez; no fim de cada uma: testes verdes (`/tests/`),
 > teste no navegador, `sw.js` (SHELL + CACHE), commit em português e `CLAUDE.md` atualizado.
 > Quem for executar: leia o `CLAUDE.md` inteiro antes e explique ao Vini o que vai fazer antes de fazer.
 
@@ -100,7 +100,7 @@ Lista `{ frase, hoje: '2026-10-01', esperado: { tipo, campos parciais, minConfia
 | 9b | **feito** · Texto livre vira tarefa/gasto/entrada/treino; linha "↳ entendi"; nota com pergunta; `/tipo` | M | "ligar pro dentista amanhã" vira tarefa com prazo; "bla bla" vira nota + pergunta |
 | 10 | **feito** · Aprendizado: registro `interpretacao`, `/aprendizado [exportar]` | P | frase desconhecida registrada; correção `/tipo` grava o par |
 | 11 | **feito** · `montarContexto` + `/contexto` | M | testado com tarefas/eventos fixos; cabe em `maxChars` |
-| 12 | Fechamento: `/ajuda` (grupo "intérprete"), README, `docs/`, `VERSION` 0.9.0, `PHASES`, `CLAUDE.md` | P | Vini testa no celular e aprova |
+| 12 | **feito (falta o Vini aprovar)** · Fechamento: `/ajuda` (grupo "intérprete"), README, `docs/`, `VERSION` 0.9.0, `PHASES`, `CLAUDE.md` | P | Vini testa no celular e aprova |
 
 ## Decisões que tomei (mude se discordar)
 1. **Limiar 0.7**, ajustável em `config.js`.

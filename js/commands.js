@@ -29,7 +29,7 @@ export const PHASES = [
   ['0', 'esqueleto · terminal, hud, inbox', 'ok'],
   ['0.5', 'app próprio · pwa, nuvem, login', 'ok'],
   ['1', 'tarefas e projetos · hoje, tcc, weg, pessoal', 'wip'],
-  ['2', 'intérprete · escrever sem decorar comando (regras, ia depois)', 'wip'],
+  ['2', 'intérprete · escreva do seu jeito (regras; ia encaixável, desligada) · histórico · contexto', 'wip'],
   ['3', 'finanças · gastos, entradas, saldo do mês', ''],
   ['4', 'corpo e hábitos · treino, saúde, padrão semanal', ''],
   ['5', 'dashboards · gráficos e tendências', ''],

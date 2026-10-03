@@ -161,10 +161,17 @@ export function createCore(canvas, satEls = {}) {
       if (!s) { el.hidden = true; continue; }
       el.hidden = false;
       el.dataset.side = s[2];
-      const [x, y] = satPos(k);
-      el.style.left = x + 'px';
-      el.style.top = y + 'px';
+      // posição fixa no left/top (só muda no resize); a flutuação vai por --dx/--dy (translate3d, suave)
+      el.style.left = s[0] + 'px';
+      el.style.top = s[1] + 'px';
+      floatSat(k, el);
     }
+  }
+  function floatSat(k, el) {
+    const s = G.sats?.[k], p = satPos(k);
+    if (!s || !p) return;
+    el.style.setProperty('--dx', (p[0] - s[0]).toFixed(2) + 'px');
+    el.style.setProperty('--dy', (p[1] - s[1]).toFixed(2) + 'px');
   }
 
   // Satélites flutuando em volta do núcleo: cada um balança alguns graus pra lá e pra cá
@@ -401,7 +408,7 @@ export function createCore(canvas, satEls = {}) {
         if (!shown[k]) continue;
         const [sx, sy] = satPos(k); // posição flutuando (o rótulo HTML vai junto)
         const el = satEls[k];
-        if (el && !el.hidden) { el.style.left = sx + 'px'; el.style.top = sy + 'px'; }
+        if (el && !el.hidden) floatSat(k, el);
         const ang = Math.atan2(sy - cy, sx - cx);
         const x0 = cx + Math.cos(ang) * R * 1.1, y0 = cy + Math.sin(ang) * R * 1.1;
         const len = sCon;

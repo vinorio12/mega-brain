@@ -224,10 +224,12 @@ ul, ol, dl, dd { margin: 0; padding: 0; list-style: none; }
 .sat span { color: var(--tx); }
 .sat small { color: var(--meta); font-size: 10.5px; }
 .sat.is-active b { color: var(--int); }
-.sat[data-side="left"]   { transform: translate(calc(-100% - 12px), -50%); text-align: right; }
-.sat[data-side="right"]  { transform: translate(12px, -50%); }
-.sat[data-side="bottom"] { transform: translate(-50%, 8px); text-align: center; }
-.sat[data-side="top"]    { transform: translate(-50%, calc(-100% - 8px)); text-align: center; }
+/* a flutuação entra por --dx/--dy num translate3d: a placa de vídeo move em frações de pixel (suave, sem tremer) */
+.sat { will-change: transform; --dx: 0px; --dy: 0px; }
+.sat[data-side="left"]   { transform: translate3d(var(--dx), var(--dy), 0) translate(calc(-100% - 12px), -50%); text-align: right; }
+.sat[data-side="right"]  { transform: translate3d(var(--dx), var(--dy), 0) translate(12px, -50%); }
+.sat[data-side="bottom"] { transform: translate3d(var(--dx), var(--dy), 0) translate(-50%, 8px); text-align: center; }
+.sat[data-side="top"]    { transform: translate3d(var(--dx), var(--dy), 0) translate(-50%, calc(-100% - 8px)); text-align: center; }
 .sat[hidden] { display: none; }
 
 /* OVERVIEW: o geral, no lugar do núcleo enquanto aberto */

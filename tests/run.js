@@ -1204,6 +1204,34 @@ describe('cartões, fatura e parcelas · funções puras (etapa 1 · Fase 3b)', 
   });
 });
 
+describe('intérprete: parcelas e cartão pelo nome (etapa 2 · Fase 3b)', () => {
+  const now = new Date(2026, 9, 1, 12);
+  const cartoes = [{ id: 'c1', nome: 'nubank' }, { id: 'c2', nome: 'inter' }];
+  const L = (s, o = {}) => lerFinanca(s, { now, cartoes, ...o });
+  const pick = (r, ks) => Object.fromEntries(ks.map(k => [k, r?.[k] ?? null]));
+  test('parcelas: total + quantidade, sem o "3x" na descrição', () => {
+    eq(pick(L('comprei um tênis 300 em 3x'), ['valor', 'parcelas', 'descricao']), { valor: 30000, parcelas: 3, descricao: 'tênis' });
+    eq(pick(L('fone 3x de 100'), ['valor', 'parcelas', 'descricao']), { valor: 30000, parcelas: 3, descricao: 'fone' });
+    eq(pick(L('tv 2.000 parcelado em 10x'), ['valor', 'parcelas', 'descricao']), { valor: 200000, parcelas: 10, descricao: 'tv' });
+    eq(pick(L('sofá 1.500 em 5 parcelas'), ['valor', 'parcelas']), { valor: 150000, parcelas: 5 });
+    eq([L('mercado 87').parcelas, L('mercado 87 1x').parcelas, L('mercado 87 em 99x').parcelas], [null, null, null]);
+  });
+  test('cartão pelo nome: "no nubank" e "no cartão do inter" = crédito nesse cartão; nome solto no meio não vale', () => {
+    eq(pick(L('gastei 45 no ifood no nubank'), ['forma', 'cartao', 'lugar']), { forma: 'credito', cartao: 'c1', lugar: 'ifood' });
+    eq(pick(L('almoço 30 no cartão do inter'), ['forma', 'cartao', 'descricao']), { forma: 'credito', cartao: 'c2', descricao: 'almoço' });
+    eq(pick(L('uber 20 nubank'), ['forma', 'cartao']), { forma: 'credito', cartao: 'c1' });
+    eq(pick(L('paguei 50 de inter no pix'), ['forma', 'cartao']), { forma: 'pix', cartao: null });
+  });
+  test('captura: parcelado vira gasto no crédito (sem perguntar forma) e mostra as parcelas', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('100 em 3x no cartão', { id: 'T0001', elapsed: () => 1 });
+    const g = s.S.entries.find(e => e.kind === 'gasto');
+    eq([g.data.valor, g.data.parcelas, g.data.forma], [10000, 3, 'credito']);
+    const txt = s.term.text().replace(/<[^>]+>/g, '');
+    ok(/3x \(R\$ 33,34 \+ 2× R\$ 33,33\)/.test(txt) && !/↳ forma\?/.test(txt), txt);
+  });
+});
+
 describe('palavras-chave por projeto (Fase 2)', () => {
   const seeds = (palavras = {}) => seedEntries([], 'local', new Date(2026, 9, 1))
     .map(e => (e.kind === 'projeto' && palavras[e.text] ? { ...e, data: { ...e.data, palavras: palavras[e.text] } } : e));

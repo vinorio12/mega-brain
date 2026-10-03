@@ -78,6 +78,13 @@ export const FRASES = [
   { frase: 'caiu o salário 3.200', esperado: { tipo: 'entrada', campos: { valor: 320000, categoria: 'salário' } } },
   { frase: 'recebi 1.500 do freela', esperado: { tipo: 'entrada', campos: { valor: 150000, categoria: 'freela' } } },
   { frase: 'transferi 200 pra poupança', esperado: { tipo: 'transferencia', campos: { valor: 20000, conta: 'poupança', sentido: 'para' } } },
+  // parcelas e cartão (Fase 3b) · a 22 (fatura depois do fechamento) é teste de mesDaFatura em run.js
+  { frase: 'comprei um tênis 300 em 3x', esperado: { tipo: 'gasto', campos: { valor: 30000, categoria: 'vestuário', forma: 'credito', parcelas: 3 } } },
+  { frase: 'fone 3x de 100', esperado: { tipo: 'gasto', campos: { valor: 30000, forma: 'credito', parcelas: 3 } } },
+  { frase: '100 em 3x no cartão', esperado: { tipo: 'gasto', campos: { valor: 10000, forma: 'credito', parcelas: 3 } } },
+  { frase: 'geladeira 2.400 em 12 vezes', esperado: { tipo: 'gasto', campos: { valor: 240000, forma: 'credito', parcelas: 12 } } },
+  { frase: 'mercado 87 1x no crédito', esperado: { tipo: 'gasto', campos: { valor: 8700, forma: 'credito', parcelas: undefined } } },
+  { frase: 'treinei 3x essa semana', esperado: { tipo: 'treino' } },
   // pegadinhas
   { frase: 'abasteci 200 no posto', esperado: { tipo: 'nota', pergunta: true, palpite: 'gasto' } },
   { frase: 'estorno de 45 do ifood', entries: [{ id: 'g-ifood', kind: 'gasto', text: 'gastei 45 no ifood', ts: 1, day: '2026-09-28', data: { valor: 4500, descricao: 'ifood', lugar: 'ifood', data: '2026-09-28', categoria: 'alimentação' } }],

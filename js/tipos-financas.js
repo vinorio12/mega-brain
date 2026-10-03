@@ -20,7 +20,7 @@ import { tagsOf, dayKey } from './util.js';
 import { findValor } from './valores.js';
 import { findDate } from './dates.js';
 import { comecaComVerbo } from './tipos-base.js';
-import { lerFinanca, categoriaSemente, categoriasDe, tipoDaPalavra, verbosAprendidos, acharEstornado, linhaContexto, FORMAS } from './financas.js';
+import { lerFinanca, categoriaSemente, categoriasDe, cartoesDe, tipoDaPalavra, verbosAprendidos, acharEstornado, linhaContexto, FORMAS } from './financas.js';
 import { memoriaDe, decidirPorPistas, campoCategoria } from './memoria.js';
 import { findPessoas } from './pessoas.js';
 import { FINANCAS } from './config.js';
@@ -39,7 +39,7 @@ export function lerMovimento(texto, now = new Date()) {
 // Decide se a frase é dinheiro e de que tipo. → { tipo, confianca, f (a leitura) } | null
 export function tipoFinanceiro(texto, ctx = {}) {
   const now = ctx.now || new Date();
-  const f = lerFinanca(texto, { now, pessoas: ctx.pessoas || [], aprendidos: verbosAprendidos(ctx.records || []) });
+  const f = lerFinanca(texto, { now, pessoas: ctx.pessoas || [], aprendidos: verbosAprendidos(ctx.records || []), cartoes: cartoesDe(ctx.records || []) });
   if (!f) return null;
   // palavra conhecida: pela semente ou pela memória (o que você já ensinou: "xpto" → lazer)
   const naMemoria = w => {
@@ -54,6 +54,7 @@ export function tipoFinanceiro(texto, ctx = {}) {
   if (f.estorno) return { tipo: 'entrada', confianca: 0.9, f };
   if (f.verbo) return { tipo: f.verbo.tipo, confianca: 0.9, f };
   if (f.forma === 'pix' && f.direcao) return { tipo: f.direcao === 'de' ? 'entrada' : 'gasto', confianca: 0.85, f };
+  if (f.parcelas) return { tipo: 'gasto', confianca: 0.85, f }; // "fone 3x de 100": parcelado é compra
   if (conhecida) return { tipo: conhecida, confianca: 0.85, f };
   if (categoriaSemente(texto, 'gasto', { lugar: f.lugar }) || f.palavras.some(w => naMemoria(w) === 'gasto')) return { tipo: 'gasto', confianca: 0.6, f };
   if (f.explicito) return { tipo: 'gasto', confianca: 0.65, f };
@@ -100,8 +101,9 @@ function registrarMovimento(r, id, rotulo, exemplos) {
     campos: {
       valor: { tipo: 'centavos', obrigatorio: true }, descricao: { tipo: 'texto' }, data: { tipo: 'data' },
       categoria: { tipo: 'texto' }, forma: campoForma, lugar: { tipo: 'texto' }, ref: { tipo: 'texto' }, tags: { tipo: 'lista' },
+      parcelas: { tipo: 'numero' }, cartao: { tipo: 'texto' }, // Fase 3b: compra parcelada (total + quantidade) e o cartão (id)
     },
-    rastrear: ['valor', 'descricao', 'data', 'categoria', 'forma', 'lugar', 'pessoas', 'ref'],
+    rastrear: ['valor', 'descricao', 'data', 'categoria', 'forma', 'lugar', 'pessoas', 'ref', 'cartao', 'parcelas'],
     exemplos,
     reconhecer(texto, ctx) {
       const now = ctx?.now || new Date();
@@ -116,6 +118,8 @@ function registrarMovimento(r, id, rotulo, exemplos) {
       if (cat.categoria && cat.motivo.tipo !== 'estorno') auto.push('categoria');
       const motivos = { categoria: cat.motivo };
       let forma = f.forma;
+      const parcelas = id === 'gasto' ? f.parcelas : null;
+      if (!forma && parcelas) { forma = 'credito'; auto.push('forma'); } // parcelado sem forma = crédito, sem perguntar
       if (!forma) {
         const fm = decidirForma(texto, ctx || {});
         forma = fm.forma;
@@ -125,7 +129,7 @@ function registrarMovimento(r, id, rotulo, exemplos) {
       const ref = id === 'entrada' && f.estorno ? acharEstornado(texto, f.valor, ctx?.entries || [], { now })?.id : null;
       return {
         confianca: forcado ? 1 : t.confianca,
-        campos: { valor: f.valor, descricao: f.descricao, data: f.data, categoria: cat.categoria, forma, lugar: f.lugar, ref, tags: tagsOf(texto) },
+        campos: { valor: f.valor, descricao: f.descricao, data: f.data, categoria: cat.categoria, forma, lugar: f.lugar, ref, parcelas, cartao: f.cartao, tags: tagsOf(texto) },
         auto,
         motivos,
       };
@@ -135,7 +139,7 @@ function registrarMovimento(r, id, rotulo, exemplos) {
       const c = i.campos;
       // sem categoria = as pistas se dividiram e o app perguntou (fica "sem categoria" até você responder)
       const data = { valor: c.valor, descricao: c.descricao || '', data: c.data || dayKey(now) };
-      for (const k of ['categoria', 'forma', 'lugar', 'ref']) if (c[k]) data[k] = c[k];
+      for (const k of ['categoria', 'forma', 'lugar', 'ref', 'cartao', 'parcelas']) if (c[k]) data[k] = c[k];
       if (i.auto?.length) data.auto = { campos: i.auto, fonte: i.origem };
       return { kind: id, text: i.texto, tags: c.tags || tagsOf(i.texto), ts: now.getTime(), day: dayKey(now), data };
     },

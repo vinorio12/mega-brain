@@ -131,8 +131,9 @@ const SOBRA = /^(?:gastei|paguei|comprei|torrei|desembolsei|recebi|ganhei|entrou
 const NAO_LUGAR = new Set('almoco jantar janta lanche cafe fim final comeco meio mes semana dia total'.split(' '));
 
 // "gastei 45 no ifood ontem" → { valor: 4500, data: ontem, temData, forma: null, lugar: 'ifood', verbo: { tipo: 'gasto', palavra: 'gastei' }, ... }
-// opts: { now, pessoas (cadastro, pra direção do pix), aprendidos: { gasto: ['abasteci'], entrada: [] } (verbos que você ensinou) }
-export function lerFinanca(texto, { now = new Date(), pessoas = [], aprendidos = {} } = {}) {
+// opts: { now, pessoas (cadastro, pra direção do pix), aprendidos: { gasto: ['abasteci'], entrada: [] } (verbos que você ensinou),
+//         cartoes (cartoesDe: "no nubank" = crédito nesse cartão) }
+export function lerFinanca(texto, { now = new Date(), pessoas = [], aprendidos = {}, cartoes = [] } = {}) {
   const original = String(texto ?? '').normalize('NFC').trim();
   const v = findValor(original);
   if (!v) return null;
@@ -140,6 +141,34 @@ export function lerFinanca(texto, { now = new Date(), pessoas = [], aprendidos =
   let resto = d ? d.resto : v.resto;
   const low = strip(original);
   const ws = palavras(original);
+  const corta = (txt, i, n) => (txt.slice(0, i) + ' ' + txt.slice(i + n)).replace(/\s+/g, ' ').trim();
+
+  // parcelas (Fase 3b): "fone 3x de 100" = 3 de 100 (total 300) · "tênis 300 em 3x", "em 3 vezes", "parcelado em 3x" = 300 no total
+  let parcelas = null, valor = v.centavos;
+  const pDe = original.slice(0, v.inicio).match(/(?<![\p{L}\d])(\d{1,2})\s*x\s+de\s+$/iu);
+  if (pDe) {
+    parcelas = +pDe[1];
+    valor = v.centavos * parcelas;
+    const m = resto.match(/(?<![\p{L}\d])\d{1,2}\s*x\s+de(?![\p{L}])/iu);
+    if (m) resto = corta(resto, m.index, m[0].length);
+  } else {
+    const m = resto.match(/(?<![\p{L}\d])(?:parcelad[oa]\s+)?(?:em\s+)?(\d{1,2})\s*(?:x|vezes|parcelas)(?![\p{L}\d])/iu);
+    if (m) { parcelas = +m[1]; resto = corta(resto, m.index, m[0].length); }
+  }
+  resto = resto.replace(/(?<![\p{L}])parcelad[oa](?![\p{L}])/iu, ' ').replace(/\s+/g, ' ').trim();
+  if (!(parcelas >= 2 && parcelas <= 48)) parcelas = null; // "1x" é à vista
+
+  // cartão pelo nome (Fase 3b): "no nubank", "no cartão do inter", ou o nome no fim da frase → crédito nesse cartão
+  let forma = null, formaTrecho = null, cartao = null;
+  for (const c of cartoes) {
+    const nome = strip(c.nome).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    const lr = strip(resto);
+    const m = lr.match(new RegExp(`(?<![a-z0-9])((?:no|na|pelo|pela|com\\s+o|com\\s+a)\\s+)?(cartao\\s+(?:do|da|de)\\s+)?${nome}(?![a-z0-9])`));
+    if (!m || (!m[1] && !m[2] && m.index + m[0].length < lr.length)) continue; // sem "no"/"cartão do", só vale no fim
+    cartao = c.id; forma = 'credito'; formaTrecho = resto.slice(m.index, m.index + m[0].length);
+    resto = corta(resto, m.index, m[0].length);
+    break;
+  }
 
   // verbo: o primeiro forte da frase; "caiu"/"entrou" são fracos ("o celular caiu e gastei 300" é gasto)
   // (low tem as mesmas posições do original: só tira o acento de cada letra)
@@ -156,8 +185,7 @@ export function lerFinanca(texto, { now = new Date(), pessoas = [], aprendidos =
   if (ME_PAGOU.test(low)) verbo = { tipo: 'entrada', palavra: low.match(ME_PAGOU)[0] };
 
   // forma de pagamento escrita
-  let forma = null, formaTrecho = null;
-  for (const [f, re] of FORMA_RE) {
+  for (const [f, re] of (forma ? [] : FORMA_RE)) {
     const m = strip(resto).match(re);
     if (m) { forma = f; formaTrecho = resto.slice(m.index, m.index + m[0].length); resto = (resto.slice(0, m.index) + ' ' + resto.slice(m.index + m[0].length)).replace(/\s+/g, ' ').trim(); break; }
   }
@@ -201,7 +229,7 @@ export function lerFinanca(texto, { now = new Date(), pessoas = [], aprendidos =
   const primeira = palavras(v.resto)[0] || null;
 
   return {
-    valor: v.centavos,
+    valor, parcelas, cartao,
     explicito: v.explicito || /,\d{2}\b/.test(v.trecho),
     data: d ? d.data : dayKey(now),
     temData: !!d,

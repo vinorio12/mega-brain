@@ -318,6 +318,7 @@ export function createUI(ctx) {
       sub = 'enter guarda';
       const rows = [
         c.valor !== undefined ? ['valor', `<span class="c-act">${esc(fmtValor(c.valor))}</span>`] : null,
+        c.parcelas ? ['parcelas', `${c.parcelas}x de ${esc(fmtValor(Math.floor(c.valor / c.parcelas)))}`] : null,
         dinheiro ? ['categoria', c.categoria ? esc(c.categoria) + A('categoria') : '<span class="c-warn">vou perguntar</span>'] : null,
         dinheiro && intent.tipo === 'gasto' ? ['forma', c.forma ? esc(FORMA_ROTULO[c.forma] || c.forma) + A('forma') : '<span class="c-warn">vou perguntar</span>'] : null,
         c.lugar ? ['lugar', esc(c.lugar)] : null,

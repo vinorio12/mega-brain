@@ -18,7 +18,7 @@ const DEPOIS = String.raw`(?![\p{L}\d%º°ª/:]|[.,]\d)`;
 // palavras antes do número que dizem "isto não é dinheiro"
 const NAO_ANTES = String.raw`(?<!(?<![\p{L}\d])(?:dia|cap|capitulo|capítulo|pag|pág|pagina|página|as|às|n|nº|numero|número|versao|versão|v|item|questao|questão|exercicio|exercício|aula|semana|top)\s+)`;
 // unidades depois do número que dizem "isto não é dinheiro"
-const NAO_DEPOIS = String.raw`(?!\s*(?:h|hs|hrs?|horas?|min|mins|minutos?|seg|segundos?|km|kms|m|metros?|kg|kgs|quilos?|g|gramas?|l|litros?|x|vezes|series|séries|reps?|repeti\p{L}*|dias?|semanas?|mes|mês|meses|anos?|pessoas?|anos?|%|de\s+(?:${MESES}))(?![\p{L}\d]))`;
+const NAO_DEPOIS = String.raw`(?!\s*(?:h|hs|hrs?|horas?|min|mins|minutos?|seg|segundos?|km|kms|m|metros?|kg|kgs|quilos?|g|gramas?|l|litros?|x|vezes|parcelas?|series|séries|reps?|repeti\p{L}*|dias?|semanas?|mes|mês|meses|anos?|pessoas?|anos?|%|de\s+(?:${MESES}))(?![\p{L}\d]))`;
 
 const RULES = [
   { explicito: true, re: String.raw`r\$\s*(?<n>${NUM})(?<mil>\s*mil)?` },

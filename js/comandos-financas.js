@@ -12,7 +12,7 @@ import { fmtDia, findDate } from './dates.js';
 import { parseMonth } from './views.js';
 import { seedId } from './tasks.js';
 import { decidirCategoria } from './tipos-financas.js';
-import { lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
+import { cartoesDe, parcelasDe, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
 
 export const KINDS_FINANCAS = ['gasto', 'entrada', 'transferencia'];
 export const isFinanca = e => KINDS_FINANCAS.includes(e?.kind);
@@ -47,6 +47,12 @@ export function criarFinancas(h) {
     return e;
   }
 
+  // "3x de R$ 100,00" · com sobra de centavos: "3x (R$ 33,34 + 2× R$ 33,33)"
+  const textoParcelas = (total, n) => {
+    const p = parcelasDe(total, n);
+    return p[0] === p[n - 1] ? `${n}x de ${fmtValor(p[0])}` : `${n}x (${fmtValor(p[0])} + ${n - 1}× ${fmtValor(p[n - 1])})`;
+  };
+
   /* ---------- linha "↳ entendi" e perguntas ---------- */
 
   // por que essa categoria/forma: "(xpto: 4 de 4)" · "(fixado)"
@@ -59,10 +65,11 @@ export function criarFinancas(h) {
     if (r.tipo === 'transferencia') {
       partes = [esc(fmtValor(c.valor)), c.conta ? `${c.sentido === 'de' ? 'da' : 'pra'} ${esc(c.conta)}` : '', '<span class="dim">não mexe no saldo</span>', `${esc(fmtDia(c.data))}${A('data')}`];
     } else {
+      const cartao = c.cartao && cartoesDe(S.records || []).find(x => x.id === c.cartao);
       partes = [
-        esc(fmtValor(c.valor)),
+        esc(fmtValor(c.valor)) + (c.parcelas ? ` <span class="c-int">${esc(textoParcelas(c.valor, c.parcelas))}</span>` : ''),
         c.categoria ? `<span class="c-act">${esc(c.categoria)}</span>${A('categoria')}${porque(r.motivos?.categoria)}` : '<span class="c-warn">sem categoria</span>',
-        c.forma ? `${esc(formaTxt(c.forma))}${A('forma')}${porque(r.motivos?.forma)}` : '',
+        c.forma ? `${esc(formaTxt(c.forma))}${cartao ? ' ' + esc(cartao.nome) : ''}${A('forma')}${porque(r.motivos?.forma)}` : '',
         c.lugar ? esc(c.lugar) : '', ...nomes.map(esc),
         `${esc(fmtDia(c.data))}${A('data')}`,
       ];

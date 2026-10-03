@@ -17,7 +17,7 @@ import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
 import { lerMovimento } from '../js/tipos-financas.js';
-import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura } from '../js/financas.js';
+import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura, parcelasNoMes } from '../js/financas.js';
 import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
@@ -1279,6 +1279,58 @@ describe('cartões por comando e memória do cartão (etapa 3 · Fase 3b)', () =
     await s.run('/memoria ifood = nubank');
     await s.ctx.commands.capturar('ifood 50 no cartão', T);
     eq(s.S.entries.filter(e => e.kind === 'gasto').at(-1).data.cartao, nubank);
+  });
+});
+
+describe('fatura e saldo: à vista + faturas que vencem no mês (etapa 4 · Fase 3b)', () => {
+  const T = { id: 'T0001', elapsed: () => 1 };
+  const plain = s => s.term.text().replace(/<[^>]+>/g, '');
+  const nubank = { id: 'c1', nome: 'nubank', fechamento: 3, vencimento: 10, padrao: true, arquivado: false };
+  const G = (id, valor, data, extra) => ({ id, kind: 'gasto', text: id, ts: 1, day: data, data: { valor, data, ...extra } });
+  const E = [
+    G('tenis', 30000, '2026-10-15', { forma: 'credito', parcelas: 3, categoria: 'vestuário' }), // 1ª parcela na fatura de novembro
+    G('almoco', 5000, '2026-10-05', { forma: 'pix', categoria: 'alimentação' }),
+    { id: 'sal', kind: 'entrada', text: 'sal', ts: 1, day: '2026-10-05', data: { valor: 320000, data: '2026-10-05', categoria: 'salário' } },
+    G('luz', 12000, '2026-09-20', { forma: 'credito', categoria: 'moradia' }),   // depois do fechamento de set → fatura que vence 10/10
+    G('bar', 9000, '2026-10-02', { forma: 'credito', categoria: 'lazer' }),      // antes do fechamento de out → mesma fatura
+  ];
+  test('saldo = entradas − à vista − faturas que vencem no mês', () => {
+    const r = resumoMes(E, '2026-10', { cartoes: [nubank] });
+    eq([r.aVista, r.gastos, r.saldo, r.provisorio], [5000, 26000, 294000, false]);
+    eq(r.faturas, [{ cartao: 'c1', nome: 'nubank', total: 21000, vence: '2026-10-10', itens: 2 }]);
+    eq(r.porCategoria, [['moradia', 12000], ['lazer', 9000], ['alimentação', 5000]]);
+  });
+  test('parcelas: cada uma na fatura do seu mês, e só ela entra nas categorias', () => {
+    eq(['2026-11', '2026-12', '2027-01', '2027-02'].map(m => resumoMes(E, m, { cartoes: [nubank] }).faturas[0]?.total ?? 0), [10000, 10000, 10000, 0]);
+    eq(resumoMes(E, '2026-11', { cartoes: [nubank] }).porCategoria, [['vestuário', 10000]]);
+    eq(parcelasNoMes(E, '2026-12', [nubank]).map(p => [p.e.id, p.k + 1, p.n, p.valor]), [['tenis', 2, 3, 10000]]);
+  });
+  test('sem cartão: crédito no mês da compra (provisório, como na 3a)', () => {
+    const r = resumoMes(E, '2026-10');
+    eq([r.gastos, r.credito, r.provisorio, r.faturas], [44000, 39000, true, []]);
+  });
+  test('cartão arquivado: os gastos dele continuam na fatura', () => {
+    const velho = { ...nubank, id: 'c9', nome: 'velho', padrao: false, arquivado: true };
+    const r = resumoMes([G('x', 7000, '2026-10-01', { forma: 'credito', cartao: 'c9' })], '2026-10', { cartoes: [nubank, velho] });
+    eq(r.faturas.map(f => [f.nome, f.total]), [['velho', 7000]]);
+  });
+  test('/fatura e /mes na tela (mês calculado, sem depender de hoje)', async () => {
+    const s = setup([]);
+    await s.run('/cartao novo nubank fecha 3 vence 10');
+    await s.ctx.commands.capturar('comprei um tênis 300 em 3x', T);
+    const c = cartoesDe(s.S.records)[0];
+    const hoje = dayKey(new Date());
+    const m1 = mesDaFatura(hoje, c), m3 = mesDaFatura(hoje, c, 2);
+    await s.run('/fatura nubank ' + m1);
+    ok(/fatura nubank/.test(plain(s)) && /1\/3/.test(plain(s)) && /total R\$ 100,00/.test(plain(s)), plain(s));
+    s.term.out.length = 0;
+    await s.run('/fatura nubank ' + m3);
+    ok(/3\/3/.test(plain(s)), plain(s));
+    s.term.out.length = 0;
+    await s.run('/mes ' + m1);
+    ok(/fatura nubank/.test(plain(s)) && /à vista/.test(plain(s)) && !/provisório/.test(plain(s)), plain(s));
+    await s.run('/fatura');
+    await throws(() => s.run('/fatura zzz'), 'E_404');
   });
 });
 

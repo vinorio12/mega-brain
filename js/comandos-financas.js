@@ -12,7 +12,7 @@ import { fmtDia, findDate } from './dates.js';
 import { parseMonth } from './views.js';
 import { seedId } from './tasks.js';
 import { decidirCategoria } from './tipos-financas.js';
-import { cartoesDe, cartaoPadrao, vencimentoDa, proximaFatura, parcelasDe, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
+import { cartoesDe, cartaoPadrao, vencimentoDa, proximaFatura, parcelasDe, parcelasNoMes, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
 
 export const KINDS_FINANCAS = ['gasto', 'entrada', 'transferencia'];
 export const isFinanca = e => KINDS_FINANCAS.includes(e?.kind);
@@ -21,6 +21,8 @@ export function criarFinancas(h) {
   const { S, term, ctx, usage } = h;
   const cats = () => categoriasDe(S.records || []);
   const formaTxt = f => FORMA_ROTULO[f] || f;
+  // as contas do mês precisam de todos os cartões (os arquivados também: os gastos deles continuam nas faturas)
+  const opts = () => ({ cartoes: cartoesDe(S.records || [], { todos: true }) });
 
   /* ---------- números f1, f2... ---------- */
 
@@ -154,16 +156,21 @@ export function criarFinancas(h) {
 
   function mostrarMes(mes) {
     const now = new Date();
-    const r = resumoMes(S.entries, mes), ant = resumoMes(S.entries, mesAnterior(mes));
+    const r = resumoMes(S.entries, mes, opts()), ant = resumoMes(S.entries, mesAnterior(mes), opts());
     const vs = variacao(r.gastos, ant.gastos);
     term.print(`── ${esc(fmtMes(mes, now))} · finanças ${'─'.repeat(10)}`, 'sep');
     if (!r.n.gastos && !r.n.entradas && !r.n.transferencias) {
       return term.say(`nada lançado em ${esc(fmtMes(mes, now))} · escreva normal: <span class="c-int">gastei 45 no ifood</span> · <span class="c-int">caiu o salário 3.200</span>`);
     }
+    const comFatura = r.faturas.length > 0;
     h.table([
-      ['saldo', `<span class="${r.saldo < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(r.saldo))}</span> <span class="dim">entradas − gastos · não é o saldo do banco</span>`],
+      ['saldo', `<span class="${r.saldo < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(r.saldo))}</span> <span class="dim">entradas − ${comFatura ? 'à vista − faturas' : 'gastos'} · não é o saldo do banco</span>`],
       ['entradas', `${esc(fmtValor(r.entradas))} <span class="dim">· ${r.n.entradas}</span>`],
       ['gastos', `${esc(fmtValor(r.gastos))} <span class="dim">· ${r.n.gastos}${vs === null ? '' : ` · vs ${esc(fmtMes(mesAnterior(mes), now))} ${vs > 0 ? '+' : ''}${vs}%`}</span>`],
+      ...(comFatura ? [
+        ['à vista', `${esc(fmtValor(r.aVista))} <span class="dim">pix, débito, dinheiro, boleto</span>`],
+        ...r.faturas.map(f => [`fatura ${esc(f.nome)}`, `${esc(fmtValor(f.total))} <span class="dim">vence ${esc(fmtDia(f.vence, now))} · ${f.itens} ${f.itens === 1 ? 'item' : 'itens'} · /fatura ${esc(f.nome)}</span>`]),
+      ] : []),
     ]);
     if (r.porCategoria.length) {
       term.print('por categoria', 'tgrp');
@@ -173,13 +180,56 @@ export function criarFinancas(h) {
       }
     }
     const notas = [
-      r.credito ? `crédito ${esc(fmtValor(r.credito))} conta no mês da compra (provisório até cadastrar cartões)` : '',
+      r.provisorio ? `crédito ${esc(fmtValor(r.credito))} conta no mês da compra (provisório até cadastrar cartões · <span class="c-int">/cartao novo nubank fecha 3 vence 10</span>)` : '',
       r.semForma ? `${r.semForma} sem forma · <span class="c-int">/gastos</span> mostra · <span class="c-int">/forma f3 pix</span>` : '',
       r.semCategoria ? `${r.semCategoria} sem categoria · <span class="c-int">/cat f3 alimentação</span>` : '',
       r.transferencias.para || r.transferencias.de ? `transferências: ${r.transferencias.para ? esc(fmtValor(r.transferencias.para)) + ' guardado' : ''}${r.transferencias.para && r.transferencias.de ? ' · ' : ''}${r.transferencias.de ? esc(fmtValor(r.transferencias.de)) + ' resgatado' : ''} (não mexem no saldo)` : '',
     ].filter(Boolean);
     notas.forEach(n => term.print(`<span class="dim">${n}</span>`));
     term.print(`<span class="dim">/gastos [categoria] · /entradas · /mes -1 (mês passado)</span>`);
+  }
+
+  // /fatura [cartão] [mês]: sem cartão escrito e com vários, a próxima de cada um; com um cartão, a fatura inteira
+  function mostrarFatura(raw) {
+    const now = new Date();
+    const ativos = cartoesDe(S.records || []);
+    if (!ativos.length) return term.say('nenhum cartão ainda · <span class="c-int">/cartao novo nubank fecha 3 vence 10</span> cadastra · até lá, o crédito conta no mês da compra');
+    let mes = null, nome = [];
+    for (const w of String(raw).trim().split(/\s+/).filter(Boolean)) { const m = parseMonth(w, now); if (m) mes = m; else nome.push(w); }
+    const c = nome.length ? cartoesDe(S.records || [], { todos: true }).find(x => x.id === regCartaoQualquer(nome.join(' ')).id) : ativos.length === 1 ? ativos[0] : null;
+    if (!c) {
+      term.print(`── faturas ${'─'.repeat(12)}`, 'sep');
+      for (const k of ativos) {
+        const mk = mes || proximaFatura(k, now), d = vencimentoDa(k, mk);
+        const total = parcelasNoMes(S.entries, mk, opts().cartoes).filter(p => p.cartao.id === k.id).reduce((s, p) => s + p.valor, 0);
+        term.print(`<span class="k c-act">${esc(k.nome)}</span><span>${esc(fmtValor(total))} <span class="dim">vence ${esc(fmtDia(d.vence, now))} · ${statusFatura(d, now)}</span></span>`, 'tbl');
+      }
+      return term.print('<span class="dim">/fatura nubank mostra os itens · /fatura nubank -1 (a anterior) · /fatura nubank +1 (a próxima)</span>');
+    }
+    // "+1"/"-1" contam a partir da próxima fatura do cartão, não do mês de hoje
+    const base = proximaFatura(c, now);
+    const rel = String(raw).match(/(?:^|\s)([+-]\d{1,2})(?=\s|$)/);
+    const mk = rel ? parseMonth(rel[1], new Date(+base.slice(0, 4), +base.slice(5, 7) - 1, 1)) : mes || base;
+    const d = vencimentoDa(c, mk);
+    const itens = parcelasNoMes(S.entries, mk, opts().cartoes).filter(p => p.cartao.id === c.id).sort((a, b) => String(a.e.data?.data).localeCompare(String(b.e.data?.data)));
+    const total = itens.reduce((s, p) => s + p.valor, 0);
+    term.print(`── fatura ${esc(c.nome)} · vence ${esc(fmtDia(d.vence, now))} · ${statusFatura(d, now)} ${'─'.repeat(6)}`, 'sep');
+    term.print(`<span class="dim">compras de ${esc(ddmmDe(d.de))} a ${esc(ddmmDe(dayKey(new Date(+d.fecha.slice(0, 4), +d.fecha.slice(5, 7) - 1, +d.fecha.slice(8, 10) - 1))))} · fecha ${esc(ddmmDe(d.fecha))}</span>`);
+    if (!itens.length) return term.say('nada nessa fatura.');
+    for (const p of itens) {
+      const x = p.e.data || {};
+      term.print(`<span class="n">${esc(numero(p.e))}</span><span class="d">${esc(ddmmDe(x.data || p.e.day))}</span><span class="v">${esc(fmtValor(p.valor))}</span>` +
+        `<span><span class="tmeta">${x.categoria ? `<span class="c-act">${esc(x.categoria)}</span>` : '<span class="c-warn">sem categoria</span>'}${p.n > 1 ? ` · <span class="c-int">${p.k + 1}/${p.n}</span>` : ''}</span> <span class="dim">${hl(p.e.text)}</span></span>`, 'fin');
+    }
+    term.print(`<span class="c-act">total ${esc(fmtValor(total))}</span> <span class="dim">· ${itens.length} ${itens.length === 1 ? 'item' : 'itens'} · /fatura ${esc(c.nome)} +1 (a próxima)</span>`);
+  }
+  // aberta (ainda entra compra) · fechada (esperando o vencimento) · vencida
+  const statusFatura = (d, now) => { const hoje = dayKey(now); return hoje < d.fecha ? 'aberta' : hoje <= d.vence ? '<span class="c-warn">fechada</span>' : 'vencida'; };
+  // acha o cartão pelo nome, inclusive arquivado (pra ver faturas antigas)
+  function regCartaoQualquer(nome) {
+    const k = String(nome).trim().toLowerCase();
+    const r = (S.records || []).find(e => e.kind === 'cartao' && String(e.text).toLowerCase() === k);
+    return r || regCartao(nome);
   }
 
   function mostrarLista(kind, raw) {
@@ -298,7 +348,7 @@ export function criarFinancas(h) {
   }
 
   function listarCategorias() {
-    const r = resumoMes(S.entries, dayKey(new Date()).slice(0, 7));
+    const r = resumoMes(S.entries, dayKey(new Date()).slice(0, 7), opts());
     const noMes = new Map([...r.porCategoria, ...r.entradasPorCategoria.map(([c, v]) => ['e:' + c, v])]);
     for (const tipo of ['gasto', 'entrada']) {
       term.print(`── categorias de ${tipo} ${'─'.repeat(10)}`, 'sep');
@@ -486,6 +536,11 @@ export function criarFinancas(h) {
       name: 'categoria', data: true, async: true, exec: true, args: 'nova pets [entrada] | renomear mercado = supermercado | arquivar pets',
       desc: 'cria, renomeia ou arquiva categorias · renomear muda nos lançamentos também',
       async run(arg, signal, t) { await categoria(arg, t); },
+    },
+    {
+      name: 'fatura', alias: ['faturas'], data: true, args: '[cartão] [mês | +1 | -1]',
+      desc: 'a fatura do cartão: o que entra, as parcelas (2/3), o total e quando vence · sem cartão: a próxima de cada um',
+      run(arg) { mostrarFatura(arg); },
     },
     {
       name: 'cartoes', alias: ['cartões'], data: true, desc: 'os seus cartões: fechamento, vencimento, o padrão e a próxima fatura',

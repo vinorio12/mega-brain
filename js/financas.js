@@ -302,25 +302,44 @@ export function fmtMes(mes, now = null) {
   return MESES_CURTOS[m - 1] + (now && now.getFullYear() === y ? '' : '/' + y);
 }
 
-// Saldo do mês (decisão do Vini): entradas − gastos do mês, qualquer forma. Não é o saldo do banco.
-// Na 3a o crédito conta no mês da compra (provisório até existirem cartões, na 3b). Transferência fica fora.
-//   → { mes, entradas, gastos, saldo, porCategoria: [[cat, centavos]], entradasPorCategoria, credito, semForma, transferencias: { para, de }, n: { gastos, entradas, transferencias } }
-export function resumoMes(entries = [], mes) {
+// Saldo do mês (decisão do Vini): entradas − (o que sai à vista no mês + as faturas que VENCEM no mês). Não é o saldo do banco.
+//   à vista = pix, débito, dinheiro, boleto e sem forma, no mês da compra
+//   faturas = cada parcela de cada compra no crédito, na fatura do seu cartão (Fase 3b: parcelasNoMes)
+//   sem cartão cadastrado (ou crédito sem cartão que se ache): conta no mês da compra, como na 3a (provisorio)
+// Transferência fica fora.  opts.cartoes = cartoesDe(records, { todos: true }) (os arquivados também: os gastos deles continuam)
+//   → { mes, entradas, gastos, aVista, saldo, porCategoria: [[cat, centavos]], entradasPorCategoria, faturas: [{ cartao, nome, total, vence, itens }],
+//       credito (provisório), provisorio, semForma, semCategoria, transferencias: { para, de }, n: { gastos, entradas, transferencias } }
+export function resumoMes(entries = [], mes, { cartoes = [] } = {}) {
   const doMes = entries.filter(e => mesDe(e) === mes);
   const de = k => doMes.filter(e => e.kind === k);
-  const soma = l => l.reduce((s, e) => s + (Number.isInteger(e.data?.valor) ? e.data.valor : 0), 0);
-  const porCat = l => [...l.reduce((m, e) => { const c = e.data?.categoria || 'sem categoria'; return m.set(c, (m.get(c) || 0) + (e.data?.valor || 0)); }, new Map())]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const val = e => (Number.isInteger(e.data?.valor) ? e.data.valor : 0);
+  const soma = l => l.reduce((s, e) => s + val(e), 0);
   const gastos = de('gasto'), entradas = de('entrada'), transf = de('transferencia');
+  // crédito com cartão vai pra fatura; o resto sai no mês da compra
+  const naFatura = e => e.data?.forma === 'credito' && !!cartaoDoGasto(e, cartoes);
+  const aVista = gastos.filter(e => !naFatura(e));
+  const parc = parcelasNoMes(entries, mes, cartoes);
+  const porCat = itens => [...itens.reduce((m, [c, v]) => m.set(c || 'sem categoria', (m.get(c || 'sem categoria') || 0) + v), new Map())]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const faturas = new Map();
+  for (const p of parc) {
+    const f = faturas.get(p.cartao.id) || { cartao: p.cartao.id, nome: p.cartao.nome, total: 0, vence: p.vence, itens: 0 };
+    f.total += p.valor; f.itens++;
+    faturas.set(p.cartao.id, f);
+  }
+  const totalFaturas = parc.reduce((s, p) => s + p.valor, 0);
+  const credito = soma(aVista.filter(e => e.data?.forma === 'credito'));
   return {
     mes,
-    entradas: soma(entradas), gastos: soma(gastos), saldo: soma(entradas) - soma(gastos),
-    porCategoria: porCat(gastos), entradasPorCategoria: porCat(entradas),
-    credito: soma(gastos.filter(e => e.data?.forma === 'credito')),
-    semForma: gastos.filter(e => !e.data?.forma).length,
-    semCategoria: [...gastos, ...entradas].filter(e => !e.data?.categoria).length,
+    entradas: soma(entradas), aVista: soma(aVista), gastos: soma(aVista) + totalFaturas, saldo: soma(entradas) - soma(aVista) - totalFaturas,
+    porCategoria: porCat([...aVista.map(e => [e.data?.categoria, val(e)]), ...parc.map(p => [p.e.data?.categoria, p.valor])]),
+    entradasPorCategoria: porCat(entradas.map(e => [e.data?.categoria, val(e)])),
+    faturas: [...faturas.values()].sort((a, b) => a.vence.localeCompare(b.vence)),
+    credito, provisorio: credito > 0,
+    semForma: aVista.filter(e => !e.data?.forma).length,
+    semCategoria: [...aVista, ...parc.map(p => p.e), ...entradas].filter(e => !e.data?.categoria).length,
     transferencias: { para: soma(transf.filter(e => e.data?.sentido !== 'de')), de: soma(transf.filter(e => e.data?.sentido === 'de')) },
-    n: { gastos: gastos.length, entradas: entradas.length, transferencias: transf.length },
+    n: { gastos: aVista.length + parc.length, entradas: entradas.length, transferencias: transf.length },
   };
 }
 // quanto mudou em %: (atual − anterior) / anterior · sem base (anterior 0) → null
@@ -355,18 +374,18 @@ export function seedCategorias(records = [], owner = 'local', now = new Date(), 
 
 // O que o painel da direita mostra (poucas linhas): saldo, gastos, comparação com o mês passado e as 3 categorias que mais pesaram.
 // vazio = nada lançado no mês (o painel mostra NA, mas não some)
-export function hudFinancas(entries = [], now = new Date()) {
+export function hudFinancas(entries = [], now = new Date(), opts = {}) {
   const mes = dayKey(now).slice(0, 7), ant = mesAnterior(mes);
-  const r = resumoMes(entries, mes), a = resumoMes(entries, ant);
+  const r = resumoMes(entries, mes, opts), a = resumoMes(entries, ant, opts);
   return { mes, mesAnterior: ant, saldo: r.saldo, gastos: r.gastos, entradas: r.entradas, vs: variacao(r.gastos, a.gastos), top: r.porCategoria.slice(0, 3), vazio: !r.n.gastos && !r.n.entradas };
 }
 
 // Uma linha pro montarContexto (a IA lê na Fase 6): totais e categorias do mês, nunca cada lançamento.
 //   "finanças out: entradas R$ 3.200,00 · gastos R$ 162,00 (3) · vs set +12% · saldo R$ 3.038,00 · top: alimentação R$ 75,00, mercado R$ 87,00"
-export function linhaContexto(entries = [], now = new Date()) {
-  const h = hudFinancas(entries, now);
+export function linhaContexto(entries = [], now = new Date(), opts = {}) {
+  const h = hudFinancas(entries, now, opts);
   if (h.vazio) return null;
-  const n = resumoMes(entries, h.mes).n.gastos;
+  const n = resumoMes(entries, h.mes, opts).n.gastos;
   const top = h.top.map(([c, v]) => `${c} ${fmtValor(v)}`).join(', ');
   return `finanças ${fmtMes(h.mes, now)}: entradas ${fmtValor(h.entradas)} · gastos ${fmtValor(h.gastos)} (${n})` +
     `${h.vs === null ? '' : ` · vs ${fmtMes(h.mesAnterior, now)} ${h.vs > 0 ? '+' : ''}${h.vs}%`} · saldo ${fmtValor(h.saldo)}${top ? ` · top: ${top}` : ''}`;
@@ -376,13 +395,35 @@ export function linhaContexto(entries = [], now = new Date()) {
 
 // Cartões = registros escondidos: { kind: 'cartao', text: 'nubank', data: { fechamento: 3, vencimento: 10, padrao, arquivado } }
 // → [{ id, nome, fechamento, vencimento, padrao }] (os ativos, na ordem em que foram criados)
-export function cartoesDe(records = []) {
+// (todos: true inclui os arquivados, com arquivado: true · as contas da fatura usam assim, porque os gastos deles continuam)
+export function cartoesDe(records = [], { todos = false } = {}) {
   const dia = v => Math.min(31, Math.max(1, Math.round(Number(v)) || 1));
-  return records.filter(e => e.kind === 'cartao' && !e.data?.arquivado).sort((a, b) => a.ts - b.ts)
-    .map(e => ({ id: e.id, nome: String(e.text).toLowerCase(), fechamento: dia(e.data?.fechamento), vencimento: dia(e.data?.vencimento ?? 10), padrao: !!e.data?.padrao }));
+  return records.filter(e => e.kind === 'cartao' && (todos || !e.data?.arquivado)).sort((a, b) => a.ts - b.ts)
+    .map(e => ({ id: e.id, nome: String(e.text).toLowerCase(), fechamento: dia(e.data?.fechamento), vencimento: dia(e.data?.vencimento ?? 10), padrao: !!e.data?.padrao, arquivado: !!e.data?.arquivado }));
 }
-// o padrão: o marcado (se dois aparelhos marcaram, o mais novo) · senão o primeiro · sem cartão: null
-export const cartaoPadrao = cartoes => cartoes.filter(c => c.padrao).pop() || cartoes[0] || null;
+// o padrão: o marcado (se dois aparelhos marcaram, o mais novo) · senão o primeiro · sem cartão: null (arquivado nunca é padrão)
+export const cartaoPadrao = cartoes => { const at = cartoes.filter(c => !c.arquivado); return at.filter(c => c.padrao).pop() || at[0] || null; };
+// o cartão de um gasto no crédito: o gravado · senão o padrão (decisão do plano: o padrão vale na hora de ler)
+export const cartaoDoGasto = (e, cartoes) => cartoes.find(c => c.id === e.data?.cartao) || cartaoPadrao(cartoes);
+
+// As parcelas que caem nas faturas que VENCEM no mês: [{ e, cartao, k (0..n-1), n, valor, vence, fecha }]
+export function parcelasNoMes(entries = [], mes, cartoes = []) {
+  const out = [];
+  if (!cartoes.length) return out;
+  for (const e of entries) {
+    if (e.kind !== 'gasto' || e.data?.forma !== 'credito') continue;
+    const c = cartaoDoGasto(e, cartoes);
+    const data = e.data?.data || e.day;
+    if (!c || !data) continue;
+    const n = e.data?.parcelas >= 2 ? e.data.parcelas : 1;
+    for (let k = 0; k < n; k++) {
+      const f = faturaDaCompra(data, c, k);
+      if (f.mes > mes) break;
+      if (f.mes === mes) { out.push({ e, cartao: c, k, n, valor: parcelasDe(e.data?.valor || 0, n)[k], vence: f.vence, fecha: f.fecha }); break; }
+    }
+  }
+  return out;
+}
 
 // "tênis 300 em 3x" → [10000, 10000, 10000] · 10000 em 3x → [3334, 3333, 3333] (a sobra dos centavos vai na primeira)
 export function parcelasDe(total, n = 1) {

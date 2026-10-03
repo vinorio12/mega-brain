@@ -8,7 +8,7 @@ import { PHASES } from './commands.js';
 import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary, isNoteKind } from './tasks.js';
 import { fmtDue, fmtDia } from './dates.js';
 import { fmtValor } from './valores.js';
-import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes } from './financas.js';
+import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes, cartoesDe } from './financas.js';
 import { shortUrl, isAcervo, isLink, safeUrl } from './acervo.js';
 import { deriveState, describeState, readIntent, LISTEN_MS, FAULT_MS } from './state.js';
 import { pessoasDe } from './pessoas.js';
@@ -373,7 +373,7 @@ export function createUI(ctx) {
     ].map(([k, v]) => `<li><span>${k}</span><b>${v}</b></li>`).join('');
 
     // finanças do mês: poucas linhas, só dado real (sem lançamento → NA, mas o campo fica)
-    const fin = hudFinancas(E, now);
+    const fin = hudFinancas(E, now, { cartoes: cartoesDe(S.records || [], { todos: true }) });
     $('x-fin-sub').textContent = fmtMes(fin.mes, now);
     const na = '<span class="dim">NA</span>';
     $('x-fin').innerHTML = [
@@ -471,8 +471,8 @@ export function createUI(ctx) {
       `<div class="ov-bar"><i class="${p.atrasadas ? 'late' : ''}" style="width:${Math.round(p.abertas / max * 100)}%"></i></div></div>`).join('');
 
     // finanças do mês: saldo e as categorias que mais pesaram, com barra
-    const fin = hudFinancas(E, now);
-    const rm = resumoMes(E, fin.mes);
+    const fin = hudFinancas(E, now, { cartoes: cartoesDe(S.records || [], { todos: true }) });
+    const rm = resumoMes(E, fin.mes, { cartoes: cartoesDe(S.records || [], { todos: true }) });
     const maxCat = Math.max(1, ...rm.porCategoria.map(([, v]) => v));
     const finHtml = fin.vazio ? '<div class="ov-empty">nada lançado este mês</div>' :
       `<div class="ov-row"><span class="n">saldo</span><span class="${fin.saldo < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(fin.saldo))}</span><span class="r dim"></span></div>` +

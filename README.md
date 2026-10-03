@@ -5,7 +5,7 @@ Tudo entra escrevendo, do seu jeito: notas, tarefas, gastos, treinos, links e te
 Instalável no celular e no PC (PWA), com dados na nuvem e acesso só do dono.
 
 ```
-MB CORE v0.11.0                                 ■ READY  ⇅ ON  ◫ NUVEM  ⋮ 18° 94%
+MB CORE v0.12.0                                 ■ READY  ⇅ ON  ◫ NUVEM  ⋮ 18° 94%
 › ligar pro dentista amanhã
 18:03 OK  task   tarefa t4 · ligar pro dentista · T0007 · 84ms
           ↳ entendi · tarefa · #pessoal* · >amanhã · !média* · * auto · regra 80% · /desfazer ou /editar t4
@@ -27,7 +27,7 @@ MB CORE v0.11.0                                 ■ READY  ⇅ ON  ◫ NUVEM  �
 | `/sim` · `/nao` | responde a última pergunta do app ("Carla é uma pessoa?", "era tarefa?") |
 | `/pessoas` · `/pessoa João` · `/pessoa juntar Jão com João` | quem está cadastrado, tudo de uma pessoa, editar e juntar cadastros |
 | `/memoria` · `/memoria planilha = weg` · `/memoria ifood = alimentação` | o que o app aprendeu (pessoa/palavra → projeto, categoria, forma) e como corrigir |
-| `/mes` · `/gastos alimentação` · `/cat f3 lazer` · `/forma pix` | o mês em dinheiro, a lista numerada e as correções |
+| `/mes` · `/gastos alimentação` · `/fatura nubank` · `/cat f3 lazer` · `/forma pix` | o mês em dinheiro, a lista numerada, a fatura do cartão e as correções |
 | `/palavras tcc +orientador` | palavras que puxam a tarefa pro projeto (atalho do `/memoria`) |
 | `/inicio` · `/ver lista \| status \| kanban \| calendario` | o essencial e as visões das tarefas |
 | `/editar t2 #weg !alta` · `/mover t3 fazendo` · `/feito t1-t3` | mexe nas tarefas |
@@ -69,11 +69,17 @@ lugar e pessoa, e mostra na linha "↳ entendi" com um número (f1, f2...).
 - **Categoria e forma aprendem pelo uso**, na mesma memória dos projetos: ifood → alimentação, posto → transporte, ifood → crédito.
   Quando o app não sabe, salva e pergunta (`/cat alimentação`, `/forma pix`); a resposta vira pista pro próximo.
   Verbo novo ("abasteci") só entra no vocabulário depois do seu `/sim`.
-- **Saldo do mês** = entradas − gastos do mês (não é o saldo do banco). Até existirem cartões, o crédito conta no mês da compra.
-- Comandos: `/mes [-1]` · `/gastos [categoria] [mês]` · `/entradas` · `/editar f3 45,90 débito ontem` · `/categorias` ·
-  `/categoria nova|renomear|arquivar` · `/categorizar` (dá categoria aos lançamentos antigos) · `/memoria ifood = alimentação`.
+- **Cartões e parcelas:** `/cartao novo nubank fecha 3 vence 10` (o primeiro vira o padrão). `comprei um tênis 300 em 3x`,
+  `fone 3x de 100` e `almoço 40 no nubank` vão pra fatura certa: compra antes do fechamento entra na fatura do mês; no dia do
+  fechamento ou depois, na seguinte. Uma compra parcelada aparece uma vez na lista ("crédito nubank 3x") e cada parcela
+  (centavos, a sobra na primeira: 100 em 3x = 33,34 + 33,33 + 33,33) entra na fatura do seu mês.
+- **Saldo do mês** = entradas − o que sai à vista no mês (pix, débito, dinheiro, boleto) − as faturas que vencem no mês.
+  Não é o saldo do banco. Sem cartão cadastrado, o crédito conta no mês da compra.
+- Comandos: `/mes [-1]` · `/gastos [categoria] [mês]` · `/entradas` · `/fatura [cartão] [+1]` · `/cartoes` · `/cartao novo|padrao|renomear|arquivar` ·
+  `/editar f3 45,90 débito ontem` · `/editar f3 3x` · `/editar f3 inter` · `/categorias` · `/categoria nova|renomear|arquivar` ·
+  `/categorizar` (dá categoria aos lançamentos antigos) · `/memoria ifood = alimentação` · `/memoria ifood = nubank`.
 
-Próximas partes: cartões, fatura e parcelas (3b) e contas recorrentes (3c).
+Próxima parte: contas recorrentes e assinaturas (3c).
 
 ## Como funciona
 

@@ -8,7 +8,7 @@ import { PHASES } from './commands.js';
 import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary, isNoteKind } from './tasks.js';
 import { fmtDue, fmtDia } from './dates.js';
 import { fmtValor } from './valores.js';
-import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes, cartoesDe } from './financas.js';
+import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes, cartoesDe, proximasFaturas } from './financas.js';
 import { shortUrl, isAcervo, isLink, safeUrl } from './acervo.js';
 import { deriveState, describeState, readIntent, LISTEN_MS, FAULT_MS } from './state.js';
 import { pessoasDe } from './pessoas.js';
@@ -477,6 +477,9 @@ export function createUI(ctx) {
     const finHtml = fin.vazio ? '<div class="ov-empty">nada lançado este mês</div>' :
       `<div class="ov-row"><span class="n">saldo</span><span class="${fin.saldo < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(fin.saldo))}</span><span class="r dim"></span></div>` +
       `<div class="ov-row"><span class="n">gastos</span><span>${esc(fmtValor(fin.gastos))}</span><span class="r dim">${fin.vs === null ? '' : `${fin.vs > 0 ? '+' : ''}${fin.vs}%`}</span></div>` +
+      // a próxima fatura de cada cartão (Fase 3b)
+      proximasFaturas(E, cartoesDe(S.records || [], { todos: true }), now).map(f =>
+        `<div class="ov-row"><span class="n">${esc(f.nome)}</span><span>${esc(fmtValor(f.total))}</span><span class="r dim">vence ${esc(ddmm(new Date(f.vence + 'T12:00')))}</span></div>`).join('') +
       rm.porCategoria.slice(0, 5).map(([c, v]) =>
         `<div class="ov-proj"><div class="top"><span>${esc(c)}</span><span>${esc(fmtValor(v))}</span></div><div class="ov-bar"><i style="width:${Math.round(v / maxCat * 100)}%"></i></div></div>`).join('');
 

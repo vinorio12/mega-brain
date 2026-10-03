@@ -17,7 +17,7 @@ import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
 import { lerMovimento } from '../js/tipos-financas.js';
-import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura, parcelasNoMes } from '../js/financas.js';
+import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura, parcelasNoMes, proximasFaturas } from '../js/financas.js';
 import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
@@ -1365,6 +1365,21 @@ describe('listas e correção de parcelas e cartão (etapa 5 · Fase 3b)', () =>
     await s.run('/gastos');
     ok(/crédito nubank 3x/.test(plain(s)) && (plain(s).match(/tênis/g) || []).length === 1, plain(s));
   });
+});
+
+describe('próxima fatura no overview e no contexto (etapa 6 · Fase 3b)', () => {
+  const nubank = { id: 'c1', nome: 'nubank', fechamento: 3, vencimento: 10, padrao: true, arquivado: false };
+  const inter = { id: 'c2', nome: 'inter', fechamento: 28, vencimento: 5, padrao: false, arquivado: false };
+  const G = (id, valor, data, extra) => ({ id, kind: 'gasto', text: id, ts: 1, day: data, data: { valor, data, forma: 'credito', ...extra } });
+  const E = [G('luz', 12000, '2026-09-20', { categoria: 'moradia' }), G('bar', 9000, '2026-10-02', { categoria: 'lazer' }), G('tv', 60000, '2026-10-06', { cartao: 'c2', parcelas: 2 })];
+  const now = new Date(2026, 9, 8, 12);
+  test('proximasFaturas: a próxima de cada cartão, com o total', () => eq(proximasFaturas(E, [nubank, inter], now), [
+    { cartao: 'c1', nome: 'nubank', mes: '2026-10', vence: '2026-10-10', total: 21000 },
+    { cartao: 'c2', nome: 'inter', mes: '2026-11', vence: '2026-11-05', total: 30000 },
+  ]));
+  test('linhaContexto cita as próximas faturas', () => ok(
+    linhaContexto(E, now, { cartoes: [nubank, inter] }).endsWith('· fatura nubank R$ 210,00 vence 10.10, fatura inter R$ 300,00 vence 05.11'),
+    linhaContexto(E, now, { cartoes: [nubank, inter] })));
 });
 
 describe('palavras-chave por projeto (Fase 2)', () => {

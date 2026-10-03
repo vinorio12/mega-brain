@@ -387,8 +387,10 @@ export function linhaContexto(entries = [], now = new Date(), opts = {}) {
   if (h.vazio) return null;
   const n = resumoMes(entries, h.mes, opts).n.gastos;
   const top = h.top.map(([c, v]) => `${c} ${fmtValor(v)}`).join(', ');
+  // a próxima fatura de cada cartão (Fase 3b): "fatura nubank R$ 420,00 vence 10.11"
+  const fat = proximasFaturas(entries, opts.cartoes || [], now).map(f => `fatura ${f.nome} ${fmtValor(f.total)} vence ${f.vence.slice(8, 10)}.${f.vence.slice(5, 7)}`).join(', ');
   return `finanças ${fmtMes(h.mes, now)}: entradas ${fmtValor(h.entradas)} · gastos ${fmtValor(h.gastos)} (${n})` +
-    `${h.vs === null ? '' : ` · vs ${fmtMes(h.mesAnterior, now)} ${h.vs > 0 ? '+' : ''}${h.vs}%`} · saldo ${fmtValor(h.saldo)}${top ? ` · top: ${top}` : ''}`;
+    `${h.vs === null ? '' : ` · vs ${fmtMes(h.mesAnterior, now)} ${h.vs > 0 ? '+' : ''}${h.vs}%`} · saldo ${fmtValor(h.saldo)}${top ? ` · top: ${top}` : ''}${fat ? ` · ${fat}` : ''}`;
 }
 
 /* ---------- cartões, fatura e parcelas (Fase 3b) ---------- */
@@ -458,6 +460,15 @@ export const mesDaFatura = (dataCompra, cartao, k = 0) => faturaDaCompra(dataCom
 export function vencimentoDa(cartao, mes) {
   const [y, m] = mes.split('-').map(Number);
   return datasFatura(cartao, ...(cartao.vencimento > cartao.fechamento ? [y, m] : somaMes(y, m, -1)));
+}
+
+// A próxima fatura de cada cartão ativo, com o total: [{ cartao, nome, mes, vence, total }] (sem os de total zero)
+export function proximasFaturas(entries = [], cartoesTodos = [], now = new Date()) {
+  return cartoesTodos.filter(c => !c.arquivado).map(c => {
+    const mes = proximaFatura(c, now);
+    const total = parcelasNoMes(entries, mes, cartoesTodos).filter(p => p.cartao.id === c.id).reduce((s, p) => s + p.valor, 0);
+    return { cartao: c.id, nome: c.nome, mes, vence: vencimentoDa(c, mes).vence, total };
+  }).filter(f => f.total > 0).sort((a, b) => a.vence.localeCompare(b.vence));
 }
 
 // A próxima fatura a pagar: a que vence este mês, se ainda não venceu; senão a do mês que vem → 'AAAA-MM'

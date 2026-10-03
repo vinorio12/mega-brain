@@ -5,7 +5,7 @@ Tudo entra escrevendo, do seu jeito: notas, tarefas, gastos, treinos, links e te
 Instalável no celular e no PC (PWA), com dados na nuvem e acesso só do dono.
 
 ```
-MB CORE v0.10.0                                 ■ READY  ⇅ ON  ◫ NUVEM  ⋮ 18° 94%
+MB CORE v0.11.0                                 ■ READY  ⇅ ON  ◫ NUVEM  ⋮ 18° 94%
 › ligar pro dentista amanhã
 18:03 OK  task   tarefa t4 · ligar pro dentista · T0007 · 84ms
           ↳ entendi · tarefa · #pessoal* · >amanhã · !média* · * auto · regra 80% · /desfazer ou /editar t4
@@ -17,7 +17,8 @@ MB CORE v0.10.0                                 ■ READY  ⇅ ON  ◫ NUVEM  �
 |---|---|
 | `qualquer texto #tag` | guarda uma nota |
 | `ligar pro dentista amanhã` · `preciso entregar o relatório dia 15` | vira tarefa, com o prazo lido da frase |
-| `gastei 30 no almoço` · `recebi 1.500 de salário` · `treinei peito 1h` | guarda o gasto, a entrada ou o treino (dado bruto; telas nas próximas fases) |
+| `gastei 45 no ifood` · `caiu o salário 3.200` · `fiz um pix de 50 pro João` | lança gasto ou entrada com categoria, forma e pessoa (veja Finanças) |
+| `treinei peito 1h` | guarda o treino (dado bruto; telas na Fase 4) |
 | `- revisar cap 2 #tcc @fazendo >sex !alta` | sempre tarefa (projeto, status, prazo, prioridade). O que faltar, o app decide |
 | `https://… contexto #tag` · `"texto curto` | guarda o link ou o texto no acervo |
 | `nota: …` | guarda como nota, sem tentar entender |
@@ -25,7 +26,8 @@ MB CORE v0.10.0                                 ■ READY  ⇅ ON  ◫ NUVEM  �
 | `esperando o João mandar o orçamento` · `falar com a Ana amanhã` | reconhece quem já está cadastrado (sem @); "esperando/aguardando" vira @esperando |
 | `/sim` · `/nao` | responde a última pergunta do app ("Carla é uma pessoa?", "era tarefa?") |
 | `/pessoas` · `/pessoa João` · `/pessoa juntar Jão com João` | quem está cadastrado, tudo de uma pessoa, editar e juntar cadastros |
-| `/memoria` · `/memoria planilha = weg` | o que o app aprendeu (pessoa/palavra → projeto) e como corrigir |
+| `/memoria` · `/memoria planilha = weg` · `/memoria ifood = alimentação` | o que o app aprendeu (pessoa/palavra → projeto, categoria, forma) e como corrigir |
+| `/mes` · `/gastos alimentação` · `/cat f3 lazer` · `/forma pix` | o mês em dinheiro, a lista numerada e as correções |
 | `/palavras tcc +orientador` | palavras que puxam a tarefa pro projeto (atalho do `/memoria`) |
 | `/inicio` · `/ver lista \| status \| kanban \| calendario` | o essencial e as visões das tarefas |
 | `/editar t2 #weg !alta` · `/mover t3 fazendo` · `/feito t1-t3` | mexe nas tarefas |
@@ -55,6 +57,23 @@ Nome novo → "↳ Carla é uma pessoa? /sim". O app aprende em que projeto cada
 (você escreveu vale 2, você corrigiu vale 3) e usa isso como pista: João quase sempre na WEG → tarefa nova com João vai pra WEG,
 com o motivo na linha "↳ entendi". Pista dividida entre projetos não chuta: a tarefa fica sem projeto e o app pergunta.
 `/memoria` mostra e corrige tudo isso.
+
+## Finanças
+
+Escreva como fala: `gastei 45 no ifood`, `mercado 87`, `uber 18,50`, `fiz um pix de 50 pro João`, `caiu o salário 3.200`,
+`transferi 200 pra poupança`, `estorno de 45 do ifood`. O app tira valor (em centavos), data, categoria, forma de pagamento,
+lugar e pessoa, e mostra na linha "↳ entendi" com um número (f1, f2...).
+
+- **Direção do dinheiro:** pix *pro* alguém é gasto, pix *do* alguém ou "me pagou" é entrada; transferência pra poupança ou investimento
+  não mexe no saldo; estorno volta como entrada ligada ao gasto; frase no futuro ("pagar o boleto de 120 amanhã") continua tarefa.
+- **Categoria e forma aprendem pelo uso**, na mesma memória dos projetos: ifood → alimentação, posto → transporte, ifood → crédito.
+  Quando o app não sabe, salva e pergunta (`/cat alimentação`, `/forma pix`); a resposta vira pista pro próximo.
+  Verbo novo ("abasteci") só entra no vocabulário depois do seu `/sim`.
+- **Saldo do mês** = entradas − gastos do mês (não é o saldo do banco). Até existirem cartões, o crédito conta no mês da compra.
+- Comandos: `/mes [-1]` · `/gastos [categoria] [mês]` · `/entradas` · `/editar f3 45,90 débito ontem` · `/categorias` ·
+  `/categoria nova|renomear|arquivar` · `/categorizar` (dá categoria aos lançamentos antigos) · `/memoria ifood = alimentação`.
+
+Próximas partes: cartões, fatura e parcelas (3b) e contas recorrentes (3c).
 
 ## Como funciona
 
@@ -86,10 +105,11 @@ Abra http://localhost:5173. Os testes ficam em http://localhost:5173/tests/.
 | `js/core.js`, `js/boot.js`, `js/state.js` | o núcleo, a sequência de boot, os estados e a prévia do que o Enter vai fazer |
 | `js/terminal.js`, `js/commands.js` | o terminal e a linguagem de comandos |
 | `js/interpretar.js`, `js/provedor-regras.js`, `js/provedor-ia.js` | o intérprete: regras, IA (desligada) e a ordem entre eles |
-| `js/tipos.js`, `js/tipos-base.js`, `js/tipos-financas.js`, `js/tipos-corpo.js` | contrato + registro de tipos (nota, tarefa, link, trecho, gasto, entrada, treino) |
+| `js/tipos.js`, `js/tipos-base.js`, `js/tipos-financas.js`, `js/tipos-corpo.js` | contrato + registro de tipos (nota, tarefa, link, trecho, gasto, entrada, transferência, treino) |
+| `js/financas.js`, `js/comandos-financas.js` | finanças: leitura da frase, categorias, o mês e o saldo · os comandos e telas de dinheiro |
 | `js/dates.js`, `js/valores.js` | datas faladas e valores em reais (centavos) |
 | `js/historico.js`, `js/aprendizado.js`, `js/contexto.js` | histórico de mudanças, frases não entendidas e o resumo pra IA |
-| `js/pessoas.js`, `js/memoria.js` | pessoas reconhecidas na frase e a memória que aprende o projeto pelo uso |
+| `js/pessoas.js`, `js/memoria.js` | pessoas reconhecidas na frase e a memória que aprende projeto, categoria e forma pelo uso |
 | `js/tasks.js`, `js/views.js` | tarefas (modelo, regras automáticas) e visões |
 | `js/acervo.js` | links e textos guardados, busca em tudo |
 | `js/cloud.js`, `js/store.js` | memória na nuvem (com cache e fila offline) e local |

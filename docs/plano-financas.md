@@ -1,6 +1,6 @@
 # Fase 3a · Finanças: lançamento, categorias, aprendizado, visão do mês e HUD
 
-> Status: **aprovado pelo Vini em 02/10/2026** · etapa 0 feita. A 3b (cartões, fatura, parcelas) e a 3c (recorrentes) ganham planos próprios.
+> Status: **aprovado pelo Vini em 02/10/2026** · **etapas 1 a 8 feitas (v0.11.0)**, esperando o Vini testar no celular e aprovar. A 3b (cartões, fatura, parcelas) e a 3c (recorrentes) ganham planos próprios.
 > Ritual de cada etapa: explico antes, função pura + teste, `/tests/` verde, teste no navegador (PC e 375px), `sw.js` (SHELL + CACHE), commit em português, `CLAUDE.md` + roadmap atualizados.
 
 ## Decisões do Vini (02/10)

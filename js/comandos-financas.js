@@ -12,7 +12,8 @@ import { fmtDia, findDate } from './dates.js';
 import { parseMonth } from './views.js';
 import { seedId } from './tasks.js';
 import { decidirCategoria } from './tipos-financas.js';
-import { recorrentesDe, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, dataNoMes, cartoesDe, cartaoPadrao, cartaoDoGasto, vencimentoDa, proximaFatura, parcelasDe, parcelasNoMes, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
+import { previa } from './interpretar.js';
+import { recorrentesDe, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, dataNoMes, eDaRecorrente, mesDe, cartoesDe, cartaoPadrao, cartaoDoGasto, vencimentoDa, proximaFatura, parcelasDe, parcelasNoMes, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
 
 export const KINDS_FINANCAS = ['gasto', 'entrada', 'transferencia'];
 export const isFinanca = e => KINDS_FINANCAS.includes(e?.kind);
@@ -386,8 +387,10 @@ export function criarFinancas(h) {
       for (const p of pend) por.set(p.rec.id, [...(por.get(p.rec.id) || []), p]);
       const partes = [...por.values()].map(ps => {
         const r = ps[0].rec;
+        // número f… de cada lançamento: dá pra corrigir ou apagar direto (/editar f3, /apagar f3)
+        const ns = ps.map(p => numero({ id: p.id }));
         const quando = ps.length > 1 ? `${ps.length}× (${fmtMes(ps[0].mes, now)}–${fmtMes(ps.at(-1).mes, now)})` : `(${ddmmDe(ps[0].data)})`;
-        return `<span class="c-act">${esc(r.nome)}</span> ${esc(fmtValor(r.valor))} <span class="dim">${esc(quando)}</span>`;
+        return `<span class="c-meta">${esc(ns.length > 1 ? `${ns[0]}–${ns.at(-1)}` : ns[0])}</span> <span class="c-act">${esc(r.nome)}</span> ${esc(fmtValor(r.valor))} <span class="dim">${esc(quando)}</span>`;
       });
       term.print(`<span class="c-int">↳ lancei</span> ${partes.join(' · ')} <span class="dim">· recorrentes · /recorrentes · /gastos</span>`, 'auto');
       ctx.ui.pulse('act');
@@ -400,6 +403,137 @@ export function criarFinancas(h) {
       term.print(`<span class="c-warn">↳ lembrete</span> ${lem.map(l => `${esc(l.rec.nome)} <span class="dim">(variável, vence ${esc(fmtDia(l.vence, now))})</span>`).join(' · ')} <span class="dim">· escreva "paguei 120 de ${esc(lem[0].rec.nome)}"</span>`, 'auto');
     }
     return ids;
+  }
+
+  // o próximo lançamento de uma recorrente ('AAAA-MM-DD'), ou null (pausada/cancelada)
+  function proximoDe(r, now = new Date()) {
+    if (r.status !== 'ativa') return null;
+    const hoje = dayKey(now), mes = hoje.slice(0, 7);
+    let m = r.desde > mes ? r.desde : mes;
+    const lancado = mm => S.entries.some(e => mesDe(e) === mm && eDaRecorrente(e, r));
+    for (let i = 0; i < 14; i++, m = mesSeguinte(m)) {
+      if (r.pulados.includes(m) || lancado(m)) continue;
+      return dataNoMes(m, r.dia);
+    }
+    return null;
+  }
+  const mesSeguinte = mes => { const d = new Date(+mes.slice(0, 4), +mes.slice(5, 7), 1); return dayKey(d).slice(0, 7); };
+  // acha a recorrente pelo nome (as canceladas não)
+  function regRecorrente(nome) {
+    const k = String(nome || '').trim().toLowerCase();
+    const recs = recorrentesDe(S.records || []);
+    const r = recs.find(x => x.nome.toLowerCase() === k) || recs.find(x => acharCategoria(k, [x.nome]));
+    if (!r) throw new CmdError('E_404', 'fin', `não conheço a recorrente "${nome}"`, 'veja as suas com <span class="c-int">/recorrentes</span> · cadastre escrevendo <span class="c-int">netflix 55,90 todo mês dia 15</span>');
+    return S.records.find(e => e.id === r.id);
+  }
+
+  function listarRecorrentes() {
+    const now = new Date();
+    const recs = recorrentesDe(S.records || []);
+    if (!recs.length) return term.say('nenhuma recorrente ainda · escreva <span class="c-int">netflix 55,90 todo mês dia 15</span> · <span class="c-int">aluguel 1.200 todo dia 5 no pix</span> · <span class="c-int">luz todo mês dia 10</span> (variável: eu só lembro)');
+    const cartoes = cartoesDe(S.records || [], { todos: true });
+    term.print(`── recorrentes · ${recs.length} ${'─'.repeat(10)}`, 'sep');
+    for (const r of recs) {
+      const prox = proximoDe(r, now);
+      const forma = r.forma ? formaTxt(r.forma) + (r.cartao ? ' ' + (cartoes.find(c => c.id === r.cartao)?.nome || '') : '') : '';
+      const st = r.status === 'pausada' ? '<span class="c-warn">pausada</span>' : prox ? `próximo ${esc(fmtDia(prox, now))}` : '';
+      term.print(`<span class="k ${r.status === 'ativa' ? 'c-act' : 'dim'}">${esc(r.nome)}</span><span>${r.valor ? esc(fmtValor(r.valor)) : '<span class="c-warn">variável</span>'}${r.tipo === 'entrada' ? ' <span class="c-act">entrada</span>' : ''} <span class="dim">· dia ${r.dia}${r.categoria ? ' · ' + esc(r.categoria) : ''}${forma ? ' · ' + esc(forma.trim()) : ''} ·</span> ${st}</span>`, 'tbl');
+    }
+    const fixo = t => recs.filter(r => r.status === 'ativa' && r.tipo === t && r.valor).reduce((s, r) => s + r.valor, 0);
+    term.print(`<span class="dim">fixo por mês: ${esc(fmtValor(fixo('gasto')))} de gastos${fixo('entrada') ? ` · ${esc(fmtValor(fixo('entrada')))} de entradas` : ''} · /recorrente pausar netflix · retomar · cancelar · /recorrente netflix 59,90 · dia 20</span>`);
+  }
+
+  async function recorrente(raw, t) {
+    const txt = String(raw).trim();
+    const [sub0, ...rest] = txt.split(/\s+/);
+    const sub = (sub0 || '').toLowerCase();
+    const done = (msg, tone = 'act') => { S.lastLatency = t.elapsed(); term.ok('fin', `${msg} <span class="c-meta">· /desfazer volta · ${t.id}</span>`); ctx.ui.pulse(tone); };
+    const muda = async (r, data, label, text) => { S.undo.push({ label, items: [r] }); await ctx.store.restore({ ...r, ...(text ? { text } : {}), data: { ...r.data, ...data } }); };
+    if (!sub || sub === 'lista') return listarRecorrentes();
+    if (sub === 'nova' || sub === 'novo' || sub === 'criar') {
+      const frase = `${rest.join(' ')} todo mês`;
+      if (previa(frase, h.ictx())?.tipo !== 'recorrente') throw usage('recorrente', 'nova netflix 55,90 dia 15 [crédito] · nova luz dia 10 (variável)');
+      return ctx.commands.capturar(frase, t);
+    }
+    if (sub === 'pausar') {
+      const r = regRecorrente(rest.join(' '));
+      if (r.data?.status === 'pausada') return term.say(`${esc(r.text)} já está pausada.`);
+      await muda(r, { status: 'pausada' }, 'recorrente pausada');
+      return done(`${esc(r.text)} pausada · não lanço até você <span class="c-int">/recorrente retomar ${esc(r.text)}</span>`, 'warn');
+    }
+    if (sub === 'retomar') {
+      const r = regRecorrente(rest.join(' '));
+      if (r.data?.status !== 'pausada') return term.say(`${esc(r.text)} não está pausada.`);
+      // volta a partir deste mês: os meses pausados não são lançados
+      const mes = dayKey(new Date()).slice(0, 7);
+      await muda(r, { status: 'ativa', desde: (r.data?.desde || mes) > mes ? r.data.desde : mes }, 'recorrente retomada');
+      done(`${esc(r.text)} de volta · a partir deste mês (os meses pausados não entram)`);
+      const ids = await lancarRecorrentes({ lembretes: false });
+      if (ids.length) S.undo.at(-1).created = ids;
+      return;
+    }
+    if (sub === 'cancelar') {
+      const r = regRecorrente(rest.join(' '));
+      await muda(r, { status: 'cancelada' }, 'recorrente cancelada');
+      return done(`${esc(r.text)} cancelada · não lanço mais · os que já lancei continuam`, 'warn');
+    }
+    if (sub === 'renomear') {
+      const i = rest.join(' ').search(/\s*(?:=|\bpara\b|\bpra\b)\s*/);
+      if (i < 0) throw usage('recorrente', 'renomear netflix = netflix premium');
+      const de = rest.join(' ').slice(0, i), para = rest.join(' ').slice(i).replace(/^\s*(?:=|para|pra)\s*/, '').trim();
+      const r = regRecorrente(de);
+      if (!para) throw usage('recorrente', 'renomear netflix = netflix premium');
+      await muda(r, {}, 'recorrente renomeada', para);
+      return done(`${esc(r.text)} → <span class="c-act">${esc(para)}</span>`);
+    }
+    // "/recorrente netflix 59,90 dia 20 nubank": edita (vale do próximo lançamento em diante)
+    const ws = txt.split(/\s+/);
+    let r = null, k = ws.length;
+    for (; k > 0 && !r; k--) { try { r = regRecorrente(ws.slice(0, k).join(' ')); } catch { r = null; } }
+    if (!r) return regRecorrente(txt); // erro com a dica
+    const tokens = ws.slice(k + 1), novo = {};
+    const tipo = r.data?.tipo === 'entrada' ? 'entrada' : 'gasto';
+    for (let i = 0; i < tokens.length; i++) {
+      const w = tokens[i];
+      if (/^dia$/i.test(w) && /^\d{1,2}$/.test(tokens[i + 1] || '')) { novo.dia = Math.min(31, Math.max(1, +tokens[++i])); continue; }
+      if (/^vari[aá]vel$/i.test(w)) { novo.valor = null; continue; }
+      const card = cartoesDe(S.records || []).find(c => c.nome === w.toLowerCase());
+      if (card) { novo.cartao = card.id; novo.forma = 'credito'; continue; }
+      const v = parseValor(w), f = acharForma(w), c = acharCategoria(w, cats()[tipo] || []);
+      if (v !== null) novo.valor = v;
+      else if (f) novo.forma = f;
+      else if (c) novo.categoria = c;
+      else throw new CmdError('E_ARG', 'fin', `não entendi "${w}"`, 'valor (59,90), dia 20, forma (pix, crédito…), cartão, categoria ou variável');
+    }
+    if (!Object.keys(novo).length) { const x = recorrentesDe([r])[0]; return term.print(`<span class="k c-act">${esc(x.nome)}</span><span>${x.valor ? esc(fmtValor(x.valor)) : 'variável'} · dia ${x.dia} · ${esc(x.status)}</span>`, 'tbl'); }
+    await muda(r, novo, 'recorrente editada');
+    const mostra = { valor: v => (v ? fmtValor(v) : 'variável'), dia: v => 'dia ' + v, forma: formaTxt, categoria: v => v, cartao: v => cartoesDe(S.records || []).find(c => c.id === v)?.nome || '' };
+    return done(`${esc(r.text)} · ${Object.entries(novo).map(([kk, v]) => `<span class="c-act">${esc(mostra[kk](v))}</span>`).join(' · ')} <span class="dim">· vale do próximo lançamento em diante</span>`);
+  }
+
+  // /apagar f3 (e "f1 f3"): apaga lançamentos de dinheiro · se é de uma recorrente, anota o mês em "pulados" (senão o lançador recriaria)
+  async function apagar(raw, t) {
+    const nums = String(raw).trim().split(/[\s,]+/).filter(Boolean);
+    if (!nums.length || !nums.every(w => /^f\d+$/i.test(w))) throw usage('apagar', 'f3 · f1 f4');
+    const alvos = [...new Set(nums.map(w => alvo(w.toLowerCase())))];
+    const items = [];
+    const recsMudados = new Map();
+    for (const e of alvos) {
+      items.push(e);
+      const rid = e.data?.recorrente;
+      const rec = rid && (recsMudados.get(rid) || S.records.find(x => x.id === rid));
+      if (rec) {
+        if (!recsMudados.has(rid)) items.push(rec);
+        const mes = mesDe(e);
+        recsMudados.set(rid, { ...rec, data: { ...rec.data, pulados: [...new Set([...(rec.data?.pulados || []), mes])] } });
+      }
+    }
+    S.undo.push({ label: 'lançamento apagado', items });
+    for (const e of alvos) await ctx.store.remove(e.id);
+    for (const r of recsMudados.values()) await ctx.store.restore(r);
+    S.lastLatency = t.elapsed();
+    term.ok('fin', `apagado${alvos.length > 1 ? 's ' + alvos.length : ''} · ${alvos.map(e => hl(e.text)).join(' · ')}${recsMudados.size ? ' <span class="dim">· a recorrente pula esse mês</span>' : ''} <span class="c-meta">· /desfazer volta · ${t.id}</span>`);
+    ctx.ui.pulse('warn');
   }
 
   // "↳ entendi · recorrente · netflix · R$ 55,90 · todo dia 15 · assinaturas* · crédito · começa em out"
@@ -600,6 +734,16 @@ export function criarFinancas(h) {
       run(arg) { mostrarFatura(arg); },
     },
     {
+      name: 'recorrentes', data: true, desc: 'contas fixas e assinaturas: valor (ou variável), dia, próximo lançamento e o fixo por mês',
+      run() { listarRecorrentes(); },
+    },
+    {
+      name: 'recorrente', data: true, async: true, exec: true,
+      args: 'nova netflix 55,90 dia 15 | pausar netflix | retomar netflix | cancelar netflix | netflix 59,90 [dia 20] | renomear a = b',
+      desc: 'cadastra, pausa, retoma, cancela ou edita uma recorrente · ou escreva normal: "netflix 55,90 todo mês dia 15"',
+      async run(arg, signal, t) { await recorrente(arg, t); },
+    },
+    {
       name: 'cartoes', alias: ['cartões'], data: true, desc: 'os seus cartões: fechamento, vencimento, o padrão e a próxima fatura',
       run() { listarCartoes(); },
     },
@@ -632,5 +776,5 @@ export function criarFinancas(h) {
     },
   ];
 
-  return { defs, entendi, perguntar, numero, pool, alvo, editar, mostrarMes, lancarRecorrentes, entendiRecorrente };
+  return { defs, entendi, perguntar, numero, pool, alvo, editar, apagar, mostrarMes, lancarRecorrentes, entendiRecorrente };
 }

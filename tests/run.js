@@ -1442,7 +1442,7 @@ describe('lançador de recorrentes no app (etapa 3 · Fase 3c)', () => {
     const rec = s.S.records.find(e => e.kind === 'recorrente');
     const g = s.S.entries.find(e => e.kind === 'gasto');
     eq([rec?.text, g?.text, g?.data.valor, g?.data.recorrente, g?.id], ['spotify', 'spotify (recorrente)', 2190, rec?.id, seedId(`local:recorrente:${rec?.id}:${dayKey(hoje).slice(0, 7)}`)]);
-    ok(/↳ entendi · recorrente · spotify/.test(plain(s)) && /lança hoje/.test(plain(s)) && /↳ lancei spotify R\$ 21,90/.test(plain(s)), plain(s));
+    ok(/↳ entendi · recorrente · spotify/.test(plain(s)) && /lança hoje/.test(plain(s)) && /↳ lancei f1 spotify R\$ 21,90/.test(plain(s)), plain(s));
     await s.ctx.commands.lancarRecorrentes();
     eq(s.S.entries.filter(e => e.kind === 'gasto').length, 1, 'rodar de novo não duplica');
     await s.run('/desfazer');
@@ -1481,6 +1481,45 @@ describe('lançador de recorrentes no app (etapa 3 · Fase 3c)', () => {
     eq([...sb.rows.values()].filter(r => r.kind === 'gasto').length, 1);
     celular.forget();
     clean();
+  });
+});
+
+describe('/recorrentes, /recorrente e /apagar f3 (etapa 4 · Fase 3c)', () => {
+  const plain = s => s.term.text().replace(/<[^>]+>/g, '');
+  const hoje = new Date(), mesHoje = dayKey(hoje).slice(0, 7);
+  const rec = s => s.S.records.find(e => e.kind === 'recorrente');
+  const gastos = s => s.S.entries.filter(e => e.kind === 'gasto');
+  test('nova, lista, pausar, retomar, editar, cancelar · /desfazer', async () => {
+    const s = setup([]);
+    await s.run(`/recorrente nova netflix 55,90 dia ${hoje.getDate()}`);
+    eq([rec(s).text, rec(s).data.valor, gastos(s).length], ['netflix', 5590, 1]);
+    s.term.out.length = 0;
+    await s.run('/recorrentes');
+    ok(/netflix/.test(plain(s)) && /fixo por mês: R\$ 55,90/.test(plain(s)), plain(s));
+    await s.run('/recorrente pausar netflix');
+    eq(rec(s).data.status, 'pausada');
+    await s.run('/recorrente retomar netflix');
+    eq([rec(s).data.status, rec(s).data.desde], ['ativa', mesHoje]);
+    await s.run('/recorrente netflix 59,90 dia 20');
+    eq([rec(s).data.valor, rec(s).data.dia], [5990, 20]);
+    await s.run('/desfazer');
+    eq(rec(s).data.valor, 5590);
+    await s.run('/recorrente cancelar netflix');
+    eq(recorrentesDe(s.S.records), []);
+    eq(gastos(s).length, 1, 'cancelar não apaga o que já foi lançado');
+    await throws(() => s.run('/recorrente pausar zzz'), 'E_404');
+    await throws(() => s.run('/recorrente nova revisar orçamento'), 'E_ARG');
+  });
+  test('/apagar f1 de um lançamento recorrente: some e não volta (o mês fica pulado) · /desfazer traz', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar(`spotify 21,90 todo mês dia ${hoje.getDate()}`, { id: 'T', elapsed: () => 1 });
+    eq(gastos(s).length, 1);
+    await s.run('/apagar f1');
+    eq([gastos(s).length, rec(s).data.pulados], [0, [mesHoje]]);
+    await s.ctx.commands.lancarRecorrentes();
+    eq(gastos(s).length, 0, 'o lançador não recria');
+    await s.run('/desfazer');
+    eq([gastos(s).length, rec(s).data.pulados], [1, []]);
   });
 });
 

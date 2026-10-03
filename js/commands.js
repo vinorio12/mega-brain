@@ -1349,10 +1349,13 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'apagar', exec: true, data: true, alias: ['rm'], args: '<3 | a2 | t1 | 1-4 | texto>',
-      desc: 'apaga: 3 = nota · a2 = acervo · t1 = tarefa · ou pelo texto (dá pra desfazer)', async: true,
+      name: 'apagar', exec: true, data: true, alias: ['rm'], args: '<3 | a2 | t1 | f3 | 1-4 | texto>',
+      desc: 'apaga: 3 = nota · a2 = acervo · t1 = tarefa · f3 = lançamento · ou pelo texto (dá pra desfazer)', async: true,
       async run(arg, signal, t) {
         const raw = String(arg).trim();
+
+        // lançamentos de dinheiro (f3): js/comandos-financas.js (recorrente apagado pula o mês)
+        if (/^f\d/i.test(raw)) return fin.apagar(raw, t);
 
         // números de tarefa (t1, t2-t4) usam a lista do /tarefas
         if (/^t\d/i.test(raw)) {

@@ -1334,6 +1334,39 @@ describe('fatura e saldo: à vista + faturas que vencem no mês (etapa 4 · Fase
   });
 });
 
+describe('listas e correção de parcelas e cartão (etapa 5 · Fase 3b)', () => {
+  const T = { id: 'T0001', elapsed: () => 1 };
+  const plain = s => s.term.text().replace(/<[^>]+>/g, '');
+  test('/editar f1 3x, 1x, inter e 600: as parcelas acompanham · /desfazer', async () => {
+    const s = setup([]);
+    await s.run('/cartao novo nubank fecha 3 vence 10');
+    await s.run('/cartao novo inter fecha 28 vence 5');
+    const [nubank, inter] = cartoesDe(s.S.records);
+    await s.ctx.commands.capturar('comprei um tênis 300 no crédito', T);
+    const g = () => s.S.entries.find(e => e.kind === 'gasto');
+    await s.run('/editar f1 3x');
+    eq(g().data.parcelas, 3);
+    await s.run('/editar f1 600');
+    const m = mesDaFatura(g().data.data, nubank, 1);
+    eq(parcelasNoMes(s.S.entries, m, cartoesDe(s.S.records, { todos: true })).map(p => [p.k + 1, p.valor]), [[2, 20000]], 'a 2ª parcela já é 200');
+    await s.run('/editar f1 inter');
+    eq([g().data.cartao, g().data.forma], [inter.id, 'credito']);
+    await s.run('/editar f1 1x');
+    eq(g().data.parcelas, undefined);
+    await s.run('/desfazer');
+    eq(g().data.parcelas, 3);
+    await throws(() => s.run('/editar f1 99x'), 'E_ARG');
+  });
+  test('/gastos mostra o cartão e as parcelas numa linha só', async () => {
+    const s = setup([]);
+    await s.run('/cartao novo nubank fecha 3 vence 10');
+    await s.ctx.commands.capturar('comprei um tênis 300 em 3x', T);
+    s.term.out.length = 0;
+    await s.run('/gastos');
+    ok(/crédito nubank 3x/.test(plain(s)) && (plain(s).match(/tênis/g) || []).length === 1, plain(s));
+  });
+});
+
 describe('palavras-chave por projeto (Fase 2)', () => {
   const seeds = (palavras = {}) => seedEntries([], 'local', new Date(2026, 9, 1))
     .map(e => (e.kind === 'projeto' && palavras[e.text] ? { ...e, data: { ...e.data, palavras: palavras[e.text] } } : e));

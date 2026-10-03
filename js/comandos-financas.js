@@ -12,7 +12,7 @@ import { fmtDia, findDate } from './dates.js';
 import { parseMonth } from './views.js';
 import { seedId } from './tasks.js';
 import { decidirCategoria } from './tipos-financas.js';
-import { cartoesDe, cartaoPadrao, vencimentoDa, proximaFatura, parcelasDe, parcelasNoMes, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
+import { cartoesDe, cartaoPadrao, cartaoDoGasto, vencimentoDa, proximaFatura, parcelasDe, parcelasNoMes, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
 
 export const KINDS_FINANCAS = ['gasto', 'entrada', 'transferencia'];
 export const isFinanca = e => KINDS_FINANCAS.includes(e?.kind);
@@ -132,7 +132,11 @@ export function criarFinancas(h) {
   // uma linha de lançamento:  f3  28.09  R$ 45,00  alimentação · pix  gastei 45 no ifood
   function linha(e) {
     const d = e.data || {};
-    const meta = [d.categoria ? `<span class="c-act">${esc(d.categoria)}</span>` : '<span class="c-warn">sem categoria</span>', d.forma ? esc(formaTxt(d.forma)) : '<span class="dim">sem forma</span>'];
+    // forma · cartão (o escrito, ou o padrão) · parcelas: "crédito nubank 3x"
+    const lista = cartoesDe(S.records || [], { todos: true });
+    const k = d.forma === 'credito' ? cartaoDoGasto(e, lista) : null;
+    const forma = d.forma ? esc(formaTxt(d.forma)) + (k ? ' ' + esc(k.nome) : '') + (d.parcelas >= 2 ? ` <span class="c-int">${d.parcelas}x</span>` : '') : '<span class="dim">sem forma</span>';
+    const meta = [d.categoria ? `<span class="c-act">${esc(d.categoria)}</span>` : '<span class="c-warn">sem categoria</span>', forma];
     term.print(`<span class="n">${esc(numero(e))}</span><span class="d">${esc(ddmmDe(d.data || e.day))}</span><span class="v${e.kind === 'entrada' ? ' c-act' : ''}">${esc(fmtValor(d.valor))}</span>` +
       `<span><span class="tmeta">${meta.join(' · ')}</span> <span class="dim">${hl(e.text)}</span></span>`, 'fin');
   }
@@ -250,11 +254,14 @@ export function criarFinancas(h) {
     const desc = txt.match(/["“](.+?)["”]/);
     const ws = txt.replace(/["“].+?["”]/, ' ').split(/\s+/).filter(Boolean);
     const nums = ws.filter(w => /^f\d+$/i.test(w));
-    if (nums.length !== 1) throw usage('editar', 'f3 45,90 · f3 débito · f3 ontem · f3 alimentação · f3 "descrição"');
+    if (nums.length !== 1) throw usage('editar', 'f3 45,90 · f3 débito · f3 ontem · f3 alimentação · f3 3x · f3 nubank · f3 "descrição"');
     const e = alvo(nums[0].toLowerCase());
     const muda = {};
     const lista = cats()[e.kind] || [];
     for (const w of ws.filter(x => x !== nums[0])) {
+      const px = w.match(/^(\d{1,2})x$/i), k = cartoesDe(S.records || []).find(x => x.nome === w.toLowerCase());
+      if (px && e.kind === 'gasto') { const n = +px[1]; if (n < 1 || n > 48) throw new CmdError('E_ARG', 'fin', `parcelas inválidas: ${w}`, 'de 1x (à vista) a 48x'); muda.parcelas = n >= 2 ? n : null; continue; }
+      if (k && e.kind === 'gasto') { muda.cartao = k.id; muda.forma = 'credito'; continue; }
       const v = parseValor(w), f = acharForma(w), c = acharCategoria(w, lista), d = /^(?:hoje|ontem|anteontem|\d{1,2}[/.]\d{1,2}(?:[/.]\d{2,4})?)$/i.test(w) ? findDate(w, new Date()) : null;
       if (v !== null && !d) muda.valor = v;
       else if (f) muda.forma = f;
@@ -263,14 +270,14 @@ export function criarFinancas(h) {
       else throw new CmdError('E_ARG', 'fin', `não entendi "${w}"`, `valor (45,90), forma (${FORMAS.map(formaTxt).join(', ')}), data (ontem, 28/09), categoria (${lista.map(esc).join(', ')}) ou "descrição" entre aspas`);
     }
     if (desc) muda.descricao = desc[1].trim();
-    if (!Object.keys(muda).length) throw usage('editar', 'f3 45,90 · f3 débito · f3 ontem · f3 alimentação · f3 "descrição"');
+    if (!Object.keys(muda).length) throw usage('editar', 'f3 45,90 · f3 débito · f3 ontem · f3 alimentação · f3 3x · f3 nubank · f3 "descrição"');
     const campos = (e.data?.auto?.campos || []).filter(k => !(k in muda));
     const data = { ...(e.data || {}), ...muda, auto: campos.length ? { ...(e.data?.auto || {}), campos } : null };
-    if (!data.auto) delete data.auto;
+    for (const k of ['auto', 'parcelas', 'cartao']) if (data[k] === null) delete data[k]; // "1x" tira as parcelas
     S.undo.push({ label: 'lançamento editado', items: [e] });
     await ctx.store.restore({ ...e, data });
     S.lastLatency = t.elapsed();
-    const mostra = { valor: v => fmtValor(v), forma: formaTxt, data: v => fmtDia(v), categoria: v => v, descricao: v => `"${v}"` };
+    const mostra = { valor: v => fmtValor(v), forma: formaTxt, data: v => fmtDia(v), categoria: v => v, descricao: v => `"${v}"`, parcelas: v => (v ? v + 'x' : 'à vista'), cartao: v => cartoesDe(S.records || []).find(x => x.id === v)?.nome || '?' };
     term.ok('fin', `${esc(numero(e))} · ${Object.entries(muda).map(([k, v]) => `<span class="c-act">${esc(mostra[k](v))}</span>`).join(' · ')} · ${hl(e.text)} <span class="c-meta">· /desfazer volta · ${t.id}</span>`);
     ctx.ui.pulse('int');
   }

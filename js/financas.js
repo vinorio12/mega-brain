@@ -9,7 +9,7 @@
 //   direção do pix (pro João = gasto · do Pedro = entrada) · transferência entre contas suas · estorno
 // Quem decide o TIPO e a CATEGORIA é o reconhecedor (js/tipos-financas.js), com a memória (js/memoria.js).
 
-import { dayKey } from './util.js';
+import { dayKey, pad } from './util.js';
 import { findValor, fmtValor } from './valores.js';
 import { findDate } from './dates.js';
 import { findPessoas } from './pessoas.js';
@@ -342,4 +342,59 @@ export function linhaContexto(entries = [], now = new Date()) {
   const top = h.top.map(([c, v]) => `${c} ${fmtValor(v)}`).join(', ');
   return `finanças ${fmtMes(h.mes, now)}: entradas ${fmtValor(h.entradas)} · gastos ${fmtValor(h.gastos)} (${n})` +
     `${h.vs === null ? '' : ` · vs ${fmtMes(h.mesAnterior, now)} ${h.vs > 0 ? '+' : ''}${h.vs}%`} · saldo ${fmtValor(h.saldo)}${top ? ` · top: ${top}` : ''}`;
+}
+
+/* ---------- cartões, fatura e parcelas (Fase 3b) ---------- */
+
+// Cartões = registros escondidos: { kind: 'cartao', text: 'nubank', data: { fechamento: 3, vencimento: 10, padrao, arquivado } }
+// → [{ id, nome, fechamento, vencimento, padrao }] (os ativos, na ordem em que foram criados)
+export function cartoesDe(records = []) {
+  const dia = v => Math.min(31, Math.max(1, Math.round(Number(v)) || 1));
+  return records.filter(e => e.kind === 'cartao' && !e.data?.arquivado).sort((a, b) => a.ts - b.ts)
+    .map(e => ({ id: e.id, nome: String(e.text).toLowerCase(), fechamento: dia(e.data?.fechamento), vencimento: dia(e.data?.vencimento ?? 10), padrao: !!e.data?.padrao }));
+}
+// o padrão: o marcado (se dois aparelhos marcaram, o mais novo) · senão o primeiro · sem cartão: null
+export const cartaoPadrao = cartoes => cartoes.filter(c => c.padrao).pop() || cartoes[0] || null;
+
+// "tênis 300 em 3x" → [10000, 10000, 10000] · 10000 em 3x → [3334, 3333, 3333] (a sobra dos centavos vai na primeira)
+export function parcelasDe(total, n = 1) {
+  const q = Math.max(1, Math.floor(n) || 1), base = Math.floor(total / q);
+  return Array.from({ length: q }, (_, i) => (i === 0 ? total - base * (q - 1) : base));
+}
+
+const diasNoMes = (y, m) => new Date(y, m, 0).getDate(); // m de 1 a 12
+const diaDe = (y, m, d) => `${y}-${pad(m)}-${pad(Math.min(d, diasNoMes(y, m)))}`; // dia 31 em fevereiro → 28/29
+const somaMes = (y, m, k) => { const d = new Date(y, m - 1 + k, 1); return [d.getFullYear(), d.getMonth() + 1]; };
+
+// As datas da fatura que FECHA no mês (fy, fm) de um cartão
+function datasFatura(cartao, fy, fm) {
+  const fecha = diaDe(fy, fm, cartao.fechamento);
+  // vence depois do fechamento → no mesmo mês · vence antes (fecha 28, vence 5) → no mês seguinte
+  const [vy, vm] = cartao.vencimento > cartao.fechamento ? [fy, fm] : somaMes(fy, fm, 1);
+  const vence = diaDe(vy, vm, cartao.vencimento);
+  const [py, pm] = somaMes(fy, fm, -1);
+  return { fecha, vence, mes: vence.slice(0, 7), de: diaDe(py, pm, cartao.fechamento) };
+}
+
+// Em que fatura cai uma compra (ou a parcela k, contando do 0): { fecha, vence, mes (o do vencimento), de }
+// Compra ANTES do fechamento → a fatura que fecha neste mês · NO DIA do fechamento ou depois → a do mês seguinte
+export function faturaDaCompra(dataCompra, cartao, k = 0) {
+  const [y, m, d] = dataCompra.split('-').map(Number);
+  const [fy, fm] = d < Math.min(cartao.fechamento, diasNoMes(y, m)) ? [y, m] : somaMes(y, m, 1);
+  return datasFatura(cartao, ...somaMes(fy, fm, k));
+}
+export const mesDaFatura = (dataCompra, cartao, k = 0) => faturaDaCompra(dataCompra, cartao, k).mes;
+
+// As datas da fatura de um cartão que VENCE no mês 'AAAA-MM'
+export function vencimentoDa(cartao, mes) {
+  const [y, m] = mes.split('-').map(Number);
+  return datasFatura(cartao, ...(cartao.vencimento > cartao.fechamento ? [y, m] : somaMes(y, m, -1)));
+}
+
+// A próxima fatura a pagar: a que vence este mês, se ainda não venceu; senão a do mês que vem → 'AAAA-MM'
+export function proximaFatura(cartao, now = new Date()) {
+  const hoje = dayKey(now), mes = hoje.slice(0, 7);
+  if (vencimentoDa(cartao, mes).vence >= hoje) return mes;
+  const [y, m] = somaMes(...mes.split('-').map(Number), 1);
+  return `${y}-${pad(m)}`;
 }

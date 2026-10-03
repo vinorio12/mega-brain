@@ -17,7 +17,7 @@ import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
 import { lerMovimento } from '../js/tipos-financas.js';
-import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto } from '../js/financas.js';
+import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura } from '../js/financas.js';
 import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
@@ -1167,6 +1167,40 @@ describe('HUD e contexto de finanças (etapa 7 · Fase 3a)', () => {
     eq(linhaContexto(E, now), 'finanças out: entradas R$ 3.200,00 · gastos R$ 177,00 (5) · vs set +77% · saldo R$ 3.023,00 · top: mercado R$ 87,00, alimentação R$ 75,00, lazer R$ 10,00');
     eq(linhaContexto([], now), null);
     ok(montarContexto(E, [], { now }).includes('finanças out:'), 'entra no montarContexto');
+  });
+});
+
+describe('cartões, fatura e parcelas · funções puras (etapa 1 · Fase 3b)', () => {
+  const nubank = { id: 'c1', nome: 'nubank', fechamento: 3, vencimento: 10 };
+  const virada = { id: 'c2', nome: 'inter', fechamento: 28, vencimento: 5 };   // vence antes do fechamento
+  const fim = { id: 'c3', nome: 'c6', fechamento: 31, vencimento: 8 };        // fecha no último dia
+  test('parcelasDe: centavos, sobra na primeira (frase 21)', () => {
+    eq([parcelasDe(10000, 3), parcelasDe(30000, 3), parcelasDe(100, 1), parcelasDe(5, 3), parcelasDe(999, 0)],
+      [[3334, 3333, 3333], [10000, 10000, 10000], [100], [3, 1, 1], [999]]);
+    eq(parcelasDe(123457, 7).reduce((a, b) => a + b, 0), 123457, 'a soma bate sempre');
+  });
+  test('compra antes do fechamento → fatura deste mês; no dia ou depois → a seguinte (frase 22)', () => {
+    eq(faturaDaCompra('2026-10-02', nubank), { fecha: '2026-10-03', vence: '2026-10-10', mes: '2026-10', de: '2026-09-03' });
+    eq([mesDaFatura('2026-10-03', nubank), mesDaFatura('2026-10-15', nubank), mesDaFatura('2026-10-31', nubank)], ['2026-11', '2026-11', '2026-11']);
+  });
+  test('parcelas andam um mês por vez, virando o ano', () => eq([0, 1, 2].map(k => mesDaFatura('2026-11-15', nubank, k)), ['2026-12', '2027-01', '2027-02']));
+  test('vence antes do fechamento (fecha 28, vence 5) → o mês da fatura é o seguinte', () => {
+    eq(faturaDaCompra('2026-10-10', virada), { fecha: '2026-10-28', vence: '2026-11-05', mes: '2026-11', de: '2026-09-28' });
+    eq(mesDaFatura('2026-10-29', virada), '2026-12');
+  });
+  test('fecha dia 31 em fevereiro → fecha no último dia do mês', () => {
+    eq([faturaDaCompra('2026-02-27', fim).fecha, faturaDaCompra('2026-02-28', fim).fecha, faturaDaCompra('2026-02-28', fim).mes], ['2026-02-28', '2026-03-31', '2026-04']);
+  });
+  test('vencimentoDa e proximaFatura', () => {
+    eq(vencimentoDa(nubank, '2026-11'), { fecha: '2026-11-03', vence: '2026-11-10', mes: '2026-11', de: '2026-10-03' });
+    eq(vencimentoDa(virada, '2026-11'), { fecha: '2026-10-28', vence: '2026-11-05', mes: '2026-11', de: '2026-09-28' });
+    eq([proximaFatura(nubank, new Date(2026, 9, 8)), proximaFatura(nubank, new Date(2026, 9, 10)), proximaFatura(nubank, new Date(2026, 9, 11))], ['2026-10', '2026-10', '2026-11']);
+  });
+  test('cartoesDe e cartaoPadrao', () => {
+    const c = (id, text, ts, data) => ({ id, kind: 'cartao', text, ts, data });
+    const regs = [c('a', 'Nubank', 1, { fechamento: 3, vencimento: 10 }), c('b', 'inter', 2, { fechamento: 28, vencimento: 5, padrao: true }), c('x', 'velho', 0, { arquivado: true })];
+    eq(cartoesDe(regs).map(x => [x.nome, x.fechamento, x.vencimento, x.padrao]), [['nubank', 3, 10, false], ['inter', 28, 5, true]]);
+    eq([cartaoPadrao(cartoesDe(regs)).nome, cartaoPadrao(cartoesDe(regs.slice(0, 1))).nome, cartaoPadrao([])], ['inter', 'nubank', null]);
   });
 });
 

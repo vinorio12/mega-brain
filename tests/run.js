@@ -1523,6 +1523,36 @@ describe('/recorrentes, /recorrente e /apagar f3 (etapa 4 · Fase 3c)', () => {
   });
 });
 
+describe('recorrentes no /mes, ↻, variável ligada e contexto (etapa 5 · Fase 3c)', () => {
+  const T = { id: 'T', elapsed: () => 1 };
+  const plain = s => s.term.text().replace(/<[^>]+>/g, '');
+  const hoje = new Date();
+  test('"paguei 120 de luz" fica ligado à conta variável; /mes mostra recorrentes e o que falta', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar(`luz todo mês dia ${hoje.getDate()}`, T);
+    await s.ctx.commands.capturar(`agua todo mês dia ${hoje.getDate()}`, T);
+    await s.ctx.commands.capturar(`spotify 21,90 todo mês dia ${hoje.getDate()}`, T);
+    await s.ctx.commands.capturar('paguei 120 de luz', T);
+    const luz = s.S.records.find(e => e.kind === 'recorrente' && e.text === 'luz');
+    eq(s.S.entries.find(e => e.text === 'paguei 120 de luz').data.recorrente, luz.id);
+    s.term.out.length = 0;
+    await s.run('/mes');
+    ok(/↻ recorrentes R\$ 141,90 \(2\)/.test(plain(s)) /* spotify (lançado) + luz (variável, lançada por você) */ && /falta lançar: agua/.test(plain(s)) && !/falta lançar: luz/.test(plain(s)), plain(s));
+    s.term.out.length = 0;
+    await s.run('/gastos');
+    ok(/↻/.test(plain(s)), plain(s));
+  });
+  test('linhaContexto cita o fixo por mês e os lembretes', () => {
+    const now = new Date(2026, 9, 15, 12);
+    const recs = recorrentesDe([
+      { id: 'r1', kind: 'recorrente', text: 'netflix', ts: 1, data: { valor: 5590, dia: 15, desde: '2026-10', status: 'ativa' } },
+      { id: 'r2', kind: 'recorrente', text: 'luz', ts: 2, data: { valor: null, dia: 10, desde: '2026-10', status: 'ativa' } },
+    ]);
+    const E = [{ id: 'g', kind: 'gasto', text: 'netflix (recorrente)', ts: 1, day: '2026-10-15', data: { valor: 5590, data: '2026-10-15', recorrente: 'r1' } }];
+    ok(linhaContexto(E, now, { recorrentes: recs }).endsWith('· recorrentes R$ 55,90/mês (1) · lembrete: luz'), linhaContexto(E, now, { recorrentes: recs }));
+  });
+});
+
 describe('palavras-chave por projeto (Fase 2)', () => {
   const seeds = (palavras = {}) => seedEntries([], 'local', new Date(2026, 9, 1))
     .map(e => (e.kind === 'projeto' && palavras[e.text] ? { ...e, data: { ...e.data, palavras: palavras[e.text] } } : e));

@@ -389,8 +389,12 @@ export function linhaContexto(entries = [], now = new Date(), opts = {}) {
   const top = h.top.map(([c, v]) => `${c} ${fmtValor(v)}`).join(', ');
   // a próxima fatura de cada cartão (Fase 3b): "fatura nubank R$ 420,00 vence 10.11"
   const fat = proximasFaturas(entries, opts.cartoes || [], now).map(f => `fatura ${f.nome} ${fmtValor(f.total)} vence ${f.vence.slice(8, 10)}.${f.vence.slice(5, 7)}`).join(', ');
+  // recorrentes (Fase 3c): o fixo por mês e as contas variáveis que ainda faltam lançar
+  const recs = (opts.recorrentes || []).filter(r => r.status === 'ativa' && r.tipo === 'gasto' && r.valor);
+  const lem = lembretesVariaveis(opts.recorrentes || [], entries, now).map(l => l.rec.nome);
+  const rec = (recs.length ? ` · recorrentes ${fmtValor(recs.reduce((s, r) => s + r.valor, 0))}/mês (${recs.length})` : '') + (lem.length ? ` · lembrete: ${lem.join(', ')}` : '');
   return `finanças ${fmtMes(h.mes, now)}: entradas ${fmtValor(h.entradas)} · gastos ${fmtValor(h.gastos)} (${n})` +
-    `${h.vs === null ? '' : ` · vs ${fmtMes(h.mesAnterior, now)} ${h.vs > 0 ? '+' : ''}${h.vs}%`} · saldo ${fmtValor(h.saldo)}${top ? ` · top: ${top}` : ''}${fat ? ` · ${fat}` : ''}`;
+    `${h.vs === null ? '' : ` · vs ${fmtMes(h.mesAnterior, now)} ${h.vs > 0 ? '+' : ''}${h.vs}%`} · saldo ${fmtValor(h.saldo)}${top ? ` · top: ${top}` : ''}${fat ? ` · ${fat}` : ''}${rec}`;
 }
 
 /* ---------- cartões, fatura e parcelas (Fase 3b) ---------- */

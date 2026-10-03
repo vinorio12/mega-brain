@@ -20,7 +20,7 @@ import { tagsOf, dayKey } from './util.js';
 import { findValor } from './valores.js';
 import { findDate } from './dates.js';
 import { comecaComVerbo } from './tipos-base.js';
-import { lerFinanca, categoriaSemente, categoriasDe, cartoesDe, tipoDaPalavra, verbosAprendidos, acharEstornado, linhaContexto, lerRecorrencia, nomeConta, desdeInicial, FORMAS } from './financas.js';
+import { lerFinanca, categoriaSemente, categoriasDe, cartoesDe, tipoDaPalavra, verbosAprendidos, acharEstornado, linhaContexto, lerRecorrencia, nomeConta, desdeInicial, recorrentesDe, eDaRecorrente, FORMAS } from './financas.js';
 import { memoriaDe, decidirPorPistas, campoCategoria, palavrasDe } from './memoria.js';
 import { findPessoas } from './pessoas.js';
 import { FINANCAS } from './config.js';
@@ -156,11 +156,14 @@ function registrarMovimento(r, id, rotulo, exemplos) {
       // sem categoria = as pistas se dividiram e o app perguntou (fica "sem categoria" até você responder)
       const data = { valor: c.valor, descricao: c.descricao || '', data: c.data || dayKey(now) };
       for (const k of ['categoria', 'forma', 'lugar', 'ref', 'cartao', 'parcelas']) if (c[k]) data[k] = c[k];
+      // "paguei 120 de luz" com a conta variável da luz cadastrada: fica ligado a ela (Fase 3c, o lembrete some)
+      const rv = recorrentesDe(ctx?.records || []).find(r => r.valor === null && r.status === 'ativa' && eDaRecorrente({ kind: id, text: i.texto, data: {} }, r));
+      if (rv) data.recorrente = rv.id;
       if (i.auto?.length) data.auto = { campos: i.auto, fonte: i.origem };
       return { kind: id, text: i.texto, tags: c.tags || tagsOf(i.texto), ts: now.getTime(), day: dayKey(now), data };
     },
     // uma linha só pro montarContexto, do mês inteiro (entradas e gastos juntos): quem escreve é o gasto
-    ...(id === 'gasto' ? { resumo: (list, { now, todas, records }) => linhaContexto(todas || list, now, { cartoes: cartoesDe(records || [], { todos: true }) }) } : {}),
+    ...(id === 'gasto' ? { resumo: (list, { now, todas, records }) => linhaContexto(todas || list, now, { cartoes: cartoesDe(records || [], { todos: true }), recorrentes: recorrentesDe(records || []) }) } : {}),
   });
 }
 

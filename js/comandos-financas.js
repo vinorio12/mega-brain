@@ -137,7 +137,7 @@ export function criarFinancas(h) {
     const lista = cartoesDe(S.records || [], { todos: true });
     const k = d.forma === 'credito' ? cartaoDoGasto(e, lista) : null;
     const forma = d.forma ? esc(formaTxt(d.forma)) + (k ? ' ' + esc(k.nome) : '') + (d.parcelas >= 2 ? ` <span class="c-int">${d.parcelas}x</span>` : '') : '<span class="dim">sem forma</span>';
-    const meta = [d.categoria ? `<span class="c-act">${esc(d.categoria)}</span>` : '<span class="c-warn">sem categoria</span>', forma];
+    const meta = [d.categoria ? `<span class="c-act">${esc(d.categoria)}</span>` : '<span class="c-warn">sem categoria</span>', forma + (d.recorrente ? ' <span class="c-int" title="recorrente">↻</span>' : '')];
     term.print(`<span class="n">${esc(numero(e))}</span><span class="d">${esc(ddmmDe(d.data || e.day))}</span><span class="v${e.kind === 'entrada' ? ' c-act' : ''}">${esc(fmtValor(d.valor))}</span>` +
       `<span><span class="tmeta">${meta.join(' · ')}</span> <span class="dim">${hl(e.text)}</span></span>`, 'fin');
   }
@@ -184,7 +184,11 @@ export function criarFinancas(h) {
         term.print(`<span class="k">${esc(c)}</span><span>${esc(fmtValor(v))} <span class="c-int">${barra(f)}</span> <span class="dim">${Math.round(f * 100)}%</span></span>`, 'tbl');
       }
     }
+    // recorrentes do mês (Fase 3c): o que o app lançou sozinho e as variáveis que faltam (só no mês atual)
+    const recDoMes = S.entries.filter(e => e.kind === 'gasto' && e.data?.recorrente && mesDe(e) === mes);
+    const lem = mes === dayKey(now).slice(0, 7) ? lembretesVariaveis(recorrentesDe(S.records || []), S.entries, now) : [];
     const notas = [
+      recDoMes.length || lem.length ? `↻ recorrentes ${esc(fmtValor(recDoMes.reduce((s, e) => s + (e.data?.valor || 0), 0)))} (${recDoMes.length})${lem.length ? ` · <span class="c-warn">falta lançar: ${lem.map(l => esc(l.rec.nome)).join(', ')}</span>` : ''} · <span class="c-int">/recorrentes</span>` : '',
       r.provisorio ? `crédito ${esc(fmtValor(r.credito))} conta no mês da compra (provisório até cadastrar cartões · <span class="c-int">/cartao novo nubank fecha 3 vence 10</span>)` : '',
       r.semForma ? `${r.semForma} sem forma · <span class="c-int">/gastos</span> mostra · <span class="c-int">/forma f3 pix</span>` : '',
       r.semCategoria ? `${r.semCategoria} sem categoria · <span class="c-int">/cat f3 alimentação</span>` : '',
@@ -224,7 +228,7 @@ export function criarFinancas(h) {
     for (const p of itens) {
       const x = p.e.data || {};
       term.print(`<span class="n">${esc(numero(p.e))}</span><span class="d">${esc(ddmmDe(x.data || p.e.day))}</span><span class="v">${esc(fmtValor(p.valor))}</span>` +
-        `<span><span class="tmeta">${x.categoria ? `<span class="c-act">${esc(x.categoria)}</span>` : '<span class="c-warn">sem categoria</span>'}${p.n > 1 ? ` · <span class="c-int">${p.k + 1}/${p.n}</span>` : ''}</span> <span class="dim">${hl(p.e.text)}</span></span>`, 'fin');
+        `<span><span class="tmeta">${x.categoria ? `<span class="c-act">${esc(x.categoria)}</span>` : '<span class="c-warn">sem categoria</span>'}${p.n > 1 ? ` · <span class="c-int">${p.k + 1}/${p.n}</span>` : ''}${x.recorrente ? ' <span class="c-int">↻</span>' : ''}</span> <span class="dim">${hl(p.e.text)}</span></span>`, 'fin');
     }
     term.print(`<span class="c-act">total ${esc(fmtValor(total))}</span> <span class="dim">· ${itens.length} ${itens.length === 1 ? 'item' : 'itens'} · /fatura ${esc(c.nome)} +1 (a próxima)</span>`);
   }

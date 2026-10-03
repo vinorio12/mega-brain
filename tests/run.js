@@ -17,6 +17,7 @@ import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
 import { lerMovimento } from '../js/tipos-financas.js';
+import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO } from '../js/financas.js';
 import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
@@ -825,6 +826,75 @@ describe('gasto, entrada, treino (dado bruto · Fase 2)', () => {
     const res = searchAll([{ id: 'g', kind: 'gasto', text: 'gastei 30 no almoço', tags: [] }, { id: 'n', kind: 'nota', text: 'almoço bom', tags: [] }], 'almoço');
     eq(res.groups.map(g => g.key), ['nota', 'gasto']);
     eq(searchAll([{ id: 'g', kind: 'gasto', text: 'x', tags: [] }], 'tipo:gastos').total, 1);
+  });
+});
+
+describe('finanças · leitura da frase (financas.js · Fase 3a)', () => {
+  const now = new Date(2026, 9, 1, 12, 0);
+  const pes = [{ id: 'p0', nome: 'João Silva', apelidos: [], chaves: ['joao silva', 'joao'] }, { id: 'p1', nome: 'Pedro', apelidos: [], chaves: ['pedro'] }, { id: 'p2', nome: 'Ana', apelidos: [], chaves: ['ana'] }];
+  const L = (s, o = {}) => lerFinanca(s, { now, pessoas: pes, ...o });
+  const pick = (r, ks) => Object.fromEntries(ks.map(k => [k, r?.[k] ?? null]));
+  test('categorias: padrão sem registros; registros mandam, sem as arquivadas', () => {
+    eq(categoriasDe([]).entrada, ['salário', 'freela', 'reembolso', 'outros']);
+    eq(categoriasDe([]).gasto.length, 10);
+    const regs = [
+      { kind: 'categoria', text: 'pets', ts: 2, data: { tipo: 'gasto', ordem: 2 } },
+      { kind: 'categoria', text: 'mercado', ts: 1, data: { tipo: 'gasto', ordem: 1 } },
+      { kind: 'categoria', text: 'lazer', ts: 3, data: { tipo: 'gasto', ordem: 3, arquivada: true } },
+    ];
+    eq(categoriasDe(regs), { gasto: ['mercado', 'pets'], entrada: ['salário', 'freela', 'reembolso', 'outros'] });
+  });
+  test('acharCategoria e acharForma ignoram acento e maiúscula', () => {
+    eq(['alimentacao', 'Saúde', 'xpto'].map(n => acharCategoria(n, CATEGORIAS_PADRAO.gasto)), ['alimentação', 'saúde', null]);
+    eq(['crédito', 'cartao', 'cartão de débito', 'Débito', 'pix', 'dinheiro', 'boleto', 'cheque'].map(acharForma), ['credito', 'credito', 'debito', 'debito', 'pix', 'dinheiro', 'boleto', null]);
+  });
+  test('semente: palavra → categoria (o lugar primeiro)', () => {
+    eq(['gastei 45 no ifood', 'mercado 87', 'uber 18,50', 'paguei 120,50 de luz', 'netflix 55,90', 'xpto 40'].map(s => categoriaSemente(s, 'gasto')?.categoria ?? null),
+      ['alimentação', 'mercado', 'transporte', 'moradia', 'assinaturas', null]);
+    eq(categoriaSemente('caiu o salário 3.200', 'entrada').categoria, 'salário');
+    eq(categoriaSemente('almoço no posto', 'gasto', { lugar: 'posto' }).categoria, 'transporte');
+  });
+  test('sem valor não é finança', () => eq([L('deu ruim a prova'), L('saiu o resultado da prova'), L('comprei um livro')], [null, null, null]));
+  test('verbo, valor, lugar e descrição', () => {
+    eq(pick(L('gastei 45 no ifood'), ['valor', 'lugar', 'descricao', 'forma']), { valor: 4500, lugar: 'ifood', descricao: 'ifood', forma: null });
+    eq(L('gastei 45 no ifood').verbo, { tipo: 'gasto', palavra: 'gastei' });
+    eq(pick(L('torrei 150 no bar ontem'), ['valor', 'lugar', 'data', 'descricao']), { valor: 15000, lugar: 'bar', data: '2026-09-30', descricao: 'bar' });
+    eq(pick(L('saiu 1.234,56 o aluguel'), ['valor', 'descricao']), { valor: 123456, descricao: 'aluguel' });
+    eq(L('saiu 1.234,56 o aluguel').verbo.tipo, 'gasto');
+    eq(pick(L('deu 64 o rodízio com a Ana'), ['valor', 'descricao']), { valor: 6400, descricao: 'rodízio com a Ana' });
+    eq(L('caiu o salário 3.200').verbo.tipo, 'entrada');
+  });
+  test('saiu / deu / custou só valem com o valor logo depois', () => {
+    eq([L('deu 64 o rodízio').verbo?.tipo, L('o tênis custou 300').verbo?.tipo, L('deu ruim, perdi 50 reais').verbo, L('saiu cedo e pagou 30').verbo], ['gasto', 'gasto', null, null]);
+  });
+  test('verbo fraco (caiu) perde pro gasto na mesma frase', () => eq(L('o celular caiu e gastei 300 no conserto').verbo.tipo, 'gasto'));
+  test('forma de pagamento escrita sai da descrição', () => {
+    eq(pick(L('almoço 32 no débito'), ['forma', 'descricao', 'lugar']), { forma: 'debito', descricao: 'almoço', lugar: null });
+    eq(pick(L('comprei livro do tcc 89 no crédito'), ['forma', 'descricao']), { forma: 'credito', descricao: 'livro do tcc' });
+    eq(pick(L('paguei o boleto da faculdade 890'), ['forma', 'descricao']), { forma: 'boleto', descricao: 'faculdade' });
+    eq([L('100 no cartão').forma, L('50 no cartão de débito').forma, L('20 em dinheiro').forma, L('gastei 10').forma], ['credito', 'debito', 'dinheiro', null]);
+  });
+  test('pix: pro João = para · do Pedro = de · me pagou = entrada', () => {
+    eq(pick(L('fiz um pix de 50 pro João'), ['valor', 'forma', 'direcao', 'descricao']), { valor: 5000, forma: 'pix', direcao: 'para', descricao: 'João' });
+    eq(pick(L('pix de 80 do Pedro'), ['valor', 'forma', 'direcao']), { valor: 8000, forma: 'pix', direcao: 'de' });
+    eq(pick(L('o João me pagou 30'), ['valor', 'descricao']), { valor: 3000, descricao: 'João' });
+    eq(L('o João me pagou 30').verbo.tipo, 'entrada');
+    eq(L('recebi 1.500 do freela').direcao, null); // "do freela" não é pessoa
+  });
+  test('transferência entre contas suas · pra pessoa é pix', () => {
+    eq(L('transferi 200 pra poupança').transferencia, { sentido: 'para', conta: 'poupança' });
+    eq(L('resgatei 300 da poupança').transferencia, { sentido: 'de', conta: 'poupança' });
+    eq(L('guardei 100 na reserva').transferencia, { sentido: 'para', conta: 'reserva' });
+    const p = L('transferi 50 pro João');
+    eq([p.transferencia, p.verbo.tipo, p.forma], [null, 'gasto', 'pix']);
+  });
+  test('estorno, futuro e verbo aprendido', () => {
+    eq([L('estorno de 45 do ifood').estorno, L('gastei 45 no ifood').estorno], [true, false]);
+    eq([L('pagar o boleto de 120 amanhã').futuro, L('torrei 150 no bar ontem').futuro], [true, false]);
+    eq(L('abasteci 200 no posto').verbo, null);
+    eq(L('abasteci 200 no posto').lugar, 'posto');
+    eq(L('abasteci 200 no posto', { aprendidos: { gasto: ['abasteci'] } }).verbo, { tipo: 'gasto', palavra: 'abasteci', aprendido: true });
+    eq(L('mercado 87').primeira, 'mercado');
   });
 });
 

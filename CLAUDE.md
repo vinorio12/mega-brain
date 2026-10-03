@@ -69,6 +69,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - `js/historico.js` histórico de mudanças: `withHistory(store)` anota cada gravação de tarefa como `kind: evento` (origem: `store.restore(e, { origem })`); o que chega da nuvem não gera evento
 - `js/tipos.js` contrato do intérprete (`validarInterpretacao`) + registro de tipos (`registrarTipo`, `REGISTRO.schema()` pra IA)
 - `js/tipos-base.js` tipos nota, tarefa, link, trecho (`reconhecer` + `montar`) · `js/provedor-regras.js` motor de regras (síncrono, devolve o contrato)
+- `js/financas.js` finanças puras (Fase 3a): categorias (`categoriasDe`, registro `kind: categoria`), formas, vocabulário semente, `lerFinanca(frase)`
 - `js/tipos-financas.js` gasto e entrada (`lerMovimento`) · `js/tipos-corpo.js` treino (`lerDuracao`, `lerDistancia`): só dado bruto, Fases 3 e 4 expandem
 - `js/interpretar.js` a função única: `interpretar(texto, ctx)` (async, pode usar IA) e `previa` (instantânea, só regras) · `js/provedor-ia.js` IA desligada: pedido curto (`montarPedido`), timeout, resposta validada, `travaDiaria`, cache
 - `js/aprendizado.js` log das dúvidas e correções (`registroAprendizado`, `resumoAprendizado`, `exportarFrases`)
@@ -133,7 +134,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - [ ] 3. Finanças · dividida em três partes, cada uma com plano aprovado separado · pedido completo em `docs/prompt-fase-3.md`
   - [ ] 3a · lançamento, categorias, aprendizado, visão do mês e HUD · plano em `docs/plano-financas.md` (aprovado 02/10/2026: forma não informada = pergunta; crédito conta no mês da compra até a 3b; sem pista = outros + pergunta)
     - [x] 0 · plano aprovado, roadmap atualizado
-    - [ ] 1 `js/financas.js` puro · [ ] 2 intérprete + régua · [ ] 3 memória generalizada · [ ] 4 tela da captura · [ ] 5 `js/comandos-financas.js` · [ ] 6 categorias + `/categorizar` · [ ] 7 HUD + contexto · [ ] 8 fechamento
+    - [x] 1 `js/financas.js` puro (categorias padrão + `categoriasDe`, `acharCategoria`, `acharForma`, vocabulário semente, `categoriaSemente`, `lerFinanca`: valor, data, forma, lugar, verbo forte/fraco, direção do pix, transferência, estorno, futuro; 378 testes) · [ ] 2 intérprete + régua · [ ] 3 memória generalizada · [ ] 4 tela da captura · [ ] 5 `js/comandos-financas.js` · [ ] 6 categorias + `/categorizar` · [ ] 7 HUD + contexto · [ ] 8 fechamento
   - [ ] 3b · cartões, fatura e parcelas (plano próprio depois da 3a)
   - [ ] 3c · recorrentes (plano próprio depois da 3b)
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)

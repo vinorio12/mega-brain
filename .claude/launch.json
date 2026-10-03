@@ -6,6 +6,12 @@
       "runtimeExecutable": "powershell",
       "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/serve.ps1"],
       "port": 5173
+    },
+    {
+      "name": "mega-brain-5174",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/serve.ps1", "-Port", "5174"],
+      "port": 5174
     }
   ]
 }

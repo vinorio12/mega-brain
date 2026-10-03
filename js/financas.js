@@ -478,3 +478,78 @@ export function proximaFatura(cartao, now = new Date()) {
   const [y, m] = somaMes(...mes.split('-').map(Number), 1);
   return `${y}-${pad(m)}`;
 }
+
+/* ---------- recorrentes (Fase 3c) ---------- */
+
+// Registros escondidos: { kind: 'recorrente', text: 'netflix', data: { tipo, valor (null = variável), dia, categoria, forma, cartao,
+//   desde: 'AAAA-MM', status: 'ativa' | 'pausada' | 'cancelada', pulados: ['AAAA-MM'] } }
+// → [{ id, nome, tipo, valor, dia, categoria, forma, cartao, desde, status, pulados }] (sem as canceladas, a não ser com todas: true)
+export function recorrentesDe(records = [], { todas = false } = {}) {
+  return records.filter(e => e.kind === 'recorrente' && (todas || e.data?.status !== 'cancelada')).sort((a, b) => a.ts - b.ts).map(e => ({
+    id: e.id, nome: String(e.text), tipo: e.data?.tipo === 'entrada' ? 'entrada' : 'gasto',
+    valor: Number.isInteger(e.data?.valor) && e.data.valor > 0 ? e.data.valor : null,
+    dia: Math.min(31, Math.max(1, Math.round(Number(e.data?.dia)) || 1)),
+    categoria: e.data?.categoria || null, forma: e.data?.forma || null, cartao: e.data?.cartao || null,
+    desde: /^\d{4}-\d{2}$/.test(e.data?.desde || '') ? e.data.desde : dayKey(new Date(e.ts || 0)).slice(0, 7),
+    status: ['pausada', 'cancelada'].includes(e.data?.status) ? e.data.status : 'ativa',
+    pulados: Array.isArray(e.data?.pulados) ? e.data.pulados : [],
+  }));
+}
+
+const proximoMes = mes => { const [y, m] = somaMes(...mes.split('-').map(Number), 1); return `${y}-${pad(m)}`; };
+// a data do lançamento num mês: dia 31 em fevereiro → 28
+export const dataNoMes = (mes, dia) => diaDe(+mes.slice(0, 4), +mes.slice(5, 7), dia);
+// o primeiro mês de uma recorrente nova: se o dia ainda não passou (ou é hoje), este mês · senão o que vem
+export function desdeInicial(dia, now = new Date()) {
+  const hoje = dayKey(now), mes = hoje.slice(0, 7);
+  return dataNoMes(mes, dia) >= hoje ? mes : proximoMes(mes);
+}
+// a chave do lançamento: a MESMA em qualquer aparelho (o app transforma em id com seedId)
+export const chaveLancamento = (owner, recId, mes) => `${owner}:recorrente:${recId}:${mes}`;
+
+// O que falta lançar: [{ rec, mes, data, id }] · só ativas com valor, de `desde` (no máximo `maxMeses` pra trás) até hoje,
+// no mês atual só se o dia já chegou, sem os meses pulados e sem o que já existe (mesmo id)
+export function pendentesRecorrentes(recs = [], entries = [], now = new Date(), { owner = 'local', seedId = s => s, maxMeses = 12 } = {}) {
+  const hoje = dayKey(now), mesHoje = hoje.slice(0, 7);
+  const [y, m] = somaMes(+mesHoje.slice(0, 4), +mesHoje.slice(5, 7), -(maxMeses - 1));
+  const limite = `${y}-${pad(m)}`;
+  const existe = new Set(entries.map(e => e.id));
+  const out = [];
+  for (const r of recs) {
+    if (r.status !== 'ativa' || r.valor === null) continue;
+    for (let mes = r.desde > limite ? r.desde : limite; mes <= mesHoje; mes = proximoMes(mes)) {
+      const data = dataNoMes(mes, r.dia);
+      if (data > hoje) break;
+      if (r.pulados.includes(mes)) continue;
+      const id = seedId(chaveLancamento(owner, r.id, mes));
+      if (!existe.has(id)) out.push({ rec: r, mes, data, id });
+    }
+  }
+  return out.sort((a, b) => a.data.localeCompare(b.data));
+}
+
+// O gasto/entrada de um pendente (é um lançamento normal: entra no saldo, nas faturas e nas listas)
+export function lancamentoRecorrente({ rec, data, id }, now = new Date()) {
+  const d = { valor: rec.valor, descricao: rec.nome, data, recorrente: rec.id, auto: { campos: [], fonte: 'recorrente' } };
+  if (rec.categoria) d.categoria = rec.categoria;
+  if (rec.forma) d.forma = rec.forma;
+  if (rec.cartao) d.cartao = rec.cartao;
+  return { id, kind: rec.tipo, text: `${rec.nome} (recorrente)`, tags: [], ts: now.getTime(), day: dayKey(now), data: d };
+}
+
+// um lançamento do mês é desta recorrente? (ligado pelo id, ou pelo nome: "paguei 120 de luz" é a luz)
+export function eDaRecorrente(e, rec) {
+  if (e.kind !== rec.tipo) return false;
+  if (e.data?.recorrente) return e.data.recorrente === rec.id;
+  const nome = palavras(rec.nome).filter(w => w.length >= 3);
+  const ws = palavras(e.text);
+  return nome.length > 0 && nome.every(w => ws.includes(w));
+}
+
+// Contas variáveis (sem valor) ativas que ainda não foram lançadas este mês: [{ rec, vence }]
+export function lembretesVariaveis(recs = [], entries = [], now = new Date()) {
+  const mes = dayKey(now).slice(0, 7);
+  const doMes = entries.filter(e => mesDe(e) === mes);
+  return recs.filter(r => r.status === 'ativa' && r.valor === null && r.desde <= mes && !doMes.some(e => eDaRecorrente(e, r)))
+    .map(rec => ({ rec, vence: dataNoMes(mes, rec.dia) })).sort((a, b) => a.vence.localeCompare(b.vence));
+}

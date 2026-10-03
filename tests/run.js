@@ -17,7 +17,7 @@ import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
 import { lerMovimento } from '../js/tipos-financas.js';
-import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura, parcelasNoMes, proximasFaturas } from '../js/financas.js';
+import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura, parcelasNoMes, proximasFaturas, recorrentesDe, desdeInicial, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis } from '../js/financas.js';
 import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
@@ -1380,6 +1380,55 @@ describe('próxima fatura no overview e no contexto (etapa 6 · Fase 3b)', () =>
   test('linhaContexto cita as próximas faturas', () => ok(
     linhaContexto(E, now, { cartoes: [nubank, inter] }).endsWith('· fatura nubank R$ 210,00 vence 10.10, fatura inter R$ 300,00 vence 05.11'),
     linhaContexto(E, now, { cartoes: [nubank, inter] })));
+});
+
+describe('recorrentes · funções puras (etapa 1 · Fase 3c)', () => {
+  const now = new Date(2026, 9, 15, 12); // 15/10/2026
+  const R = (id, text, data, ts = 1) => ({ id, kind: 'recorrente', text, ts, data: { status: 'ativa', ...data } });
+  const recs = recorrentesDe([
+    R('r1', 'netflix', { valor: 5590, dia: 15, desde: '2026-10', categoria: 'assinaturas', forma: 'credito' }),
+    R('r2', 'aluguel', { valor: 120000, dia: 5, desde: '2026-08', forma: 'pix' }),
+    R('r3', 'academia', { valor: 12000, dia: 20, desde: '2026-10' }),
+    R('r4', 'spotify', { valor: 2190, dia: 1, desde: '2026-09', status: 'pausada' }),
+    R('r5', 'luz', { valor: null, dia: 10, desde: '2026-10', categoria: 'moradia' }),
+    R('r6', 'velho', { valor: 100, dia: 1, desde: '2026-01', status: 'cancelada' }),
+  ]);
+  const seed = s => 'id:' + s;
+  test('recorrentesDe: sem as canceladas; variável = valor null', () => {
+    eq(recs.map(r => [r.nome, r.valor, r.status]), [['netflix', 5590, 'ativa'], ['aluguel', 120000, 'ativa'], ['academia', 12000, 'ativa'], ['spotify', 2190, 'pausada'], ['luz', null, 'ativa']]);
+  });
+  test('desdeInicial: dia que ainda vem (ou hoje) = este mês; já passou = o que vem', () => {
+    eq([desdeInicial(20, now), desdeInicial(15, now), desdeInicial(5, now), desdeInicial(5, new Date(2026, 11, 20))], ['2026-10', '2026-10', '2026-11', '2027-01']);
+  });
+  test('pendentes: meses que faltam até hoje, só ativas com valor, dia já chegou', () => {
+    eq(pendentesRecorrentes(recs, [], now, { seedId: seed }).map(p => [p.rec.nome, p.mes, p.data]),
+      [['aluguel', '2026-08', '2026-08-05'], ['aluguel', '2026-09', '2026-09-05'], ['aluguel', '2026-10', '2026-10-05'], ['netflix', '2026-10', '2026-10-15']]);
+  });
+  test('id fixo: celular e PC chegam no mesmo id, e o que já existe não volta', () => {
+    const p = pendentesRecorrentes(recs, [], now, { owner: 'u1', seedId: seed });
+    eq(p.find(x => x.rec.nome === 'netflix').id, 'id:u1:recorrente:r1:2026-10');
+    const ja = p.map(x => ({ id: x.id }));
+    eq(pendentesRecorrentes(recs, ja, now, { owner: 'u1', seedId: seed }), []);
+  });
+  test('pulados não voltam; no máximo 12 meses pra trás; dia 31 em fevereiro', () => {
+    const r = recorrentesDe([R('a', 'x', { valor: 100, dia: 5, desde: '2026-08', pulados: ['2026-09'] })]);
+    eq(pendentesRecorrentes(r, [], now).map(p => p.mes), ['2026-08', '2026-10']);
+    const velho = recorrentesDe([R('b', 'y', { valor: 100, dia: 1, desde: '2020-01' })]);
+    eq(pendentesRecorrentes(velho, [], now).length, 12);
+    const fev = recorrentesDe([R('c', 'z', { valor: 100, dia: 31, desde: '2027-02' })]);
+    eq(pendentesRecorrentes(fev, [], new Date(2027, 1, 28, 12)).map(p => p.data), ['2027-02-28']);
+  });
+  test('lancamentoRecorrente: um gasto normal, ligado à recorrente', () => {
+    const [p] = pendentesRecorrentes([recs[0]], [], now, { seedId: seed });
+    eq(lancamentoRecorrente(p, now), { id: p.id, kind: 'gasto', text: 'netflix (recorrente)', tags: [], ts: now.getTime(), day: '2026-10-15',
+      data: { valor: 5590, descricao: 'netflix', data: '2026-10-15', recorrente: 'r1', auto: { campos: [], fonte: 'recorrente' }, categoria: 'assinaturas', forma: 'credito' } });
+  });
+  test('lembretes de variável: somem quando o gasto do mês aparece (pelo nome ou ligado)', () => {
+    eq(lembretesVariaveis(recs, [], now).map(l => [l.rec.nome, l.vence]), [['luz', '2026-10-10']]);
+    const g = { id: 'g', kind: 'gasto', text: 'paguei 120 de luz', day: '2026-10-12', data: { valor: 12000, data: '2026-10-12' } };
+    eq(lembretesVariaveis(recs, [g], now), []);
+    eq(lembretesVariaveis(recs, [{ ...g, data: { ...g.data, data: '2026-09-12' } }], now).length, 1, 'a luz do mês passado não conta');
+  });
 });
 
 describe('palavras-chave por projeto (Fase 2)', () => {

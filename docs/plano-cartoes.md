@@ -1,6 +1,6 @@
 # Fase 3b · Finanças: cartões, fatura e parcelas
 
-> Status: **aprovado pelo Vini em 03/10/2026** · **etapas 1 a 7 feitas (v0.12.0)**, esperando o Vini testar no celular e aprovar. A 3c (recorrentes) vem depois, com plano próprio.
+> Status: **aprovado pelo Vini em 03/10/2026** · **etapas 1 a 7 feitas (v0.12.0)**, **testada e aprovada pelo Vini em 03/10/2026**. A 3c (recorrentes) vem depois, com plano próprio.
 > Ritual de cada etapa: explico antes, função pura + teste, `/tests/` verde, teste no navegador (`/?local`, PC e 375px), `sw.js` (SHELL + CACHE), commit em português, `CLAUDE.md` + roadmap atualizados.
 
 ## Contexto

@@ -35,7 +35,7 @@ export const PHASES = [
   ['1', 'tarefas e projetos · hoje, tcc, weg, pessoal', 'ok'],
   ['2', 'intérprete · escreva do seu jeito (regras; ia encaixável, desligada) · histórico · contexto', 'ok'],
   ['2.5', 'pessoas e memória · nomes na frase, projeto aprendido pelo uso', 'ok'],
-  ['3', 'finanças · 3a lançamento, categorias, mês · 3b cartões e parcelas · 3c recorrentes', 'wip'],
+  ['3', 'finanças · lançamento, categorias, mês, cartões, parcelas, recorrentes · 3d saldos em andamento', 'ok'],
   ['4', 'corpo e hábitos · treino, saúde, padrão semanal', ''],
   ['5', 'dashboards · gráficos e tendências', ''],
   ['6', 'coach · ia lê tudo e sugere próximos passos, resumo do dia, revisão da semana', ''],

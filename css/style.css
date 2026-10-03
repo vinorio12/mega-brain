@@ -384,6 +384,12 @@ a.acard:hover { border-color: color-mix(in srgb, var(--int) 50%, transparent); }
 .cal-narrow { display: none !important; }
 
 .task .tmeta { font-size: .92em; }
+/* lançamento de dinheiro (Fase 3a):  f3  03.10  R$ 87,00  mercado · débito  mercado 87 no débito */
+.fin { display: grid; grid-template-columns: 4ch 5ch 12ch minmax(0, 1fr); gap: 0 1.4ch; }
+.fin .n, .fin .d { color: var(--meta); }
+.fin .n { text-align: right; }
+.fin .v { text-align: right; white-space: nowrap; }
+.fin .tmeta { font-size: .92em; }
 .auto { color: var(--meta); padding-left: 6.4ch; }
 .auto-tag { font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--int); border: 1px solid color-mix(in srgb, var(--int) 40%, transparent); padding: 0 4px; border-radius: var(--r); margin-left: 4px; }
 .tgrp { margin-top: 8px; color: var(--int); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; }
@@ -562,6 +568,7 @@ a.acard:hover { border-color: color-mix(in srgb, var(--int) 50%, transparent); }
   .cal-narrow { display: grid !important; }
   .tgrp.cal-narrow { display: block !important; }
   .task { grid-template-columns: 3.5ch 3ch minmax(0, 1fr) auto; gap: 0 1ch; }
+  .fin { grid-template-columns: 3.5ch 5ch 11ch minmax(0, 1fr); gap: 0 1ch; }
   .intent-line { padding: 0 12px 4px; }
   .intent-line.has-intent { display: block; }
   .prompt { padding: 10px 12px; }

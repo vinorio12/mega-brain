@@ -6,10 +6,11 @@
 // Números dos lançamentos: f1, f2... (da última lista; um lançamento novo entra no fim), como t1 nas tarefas.
 // Perguntas de dinheiro não travam e não usam /sim: cada uma tem o seu comando (/cat, /forma), então aparecem na hora.
 
-import { esc, hl, CmdError } from './util.js';
-import { fmtValor } from './valores.js';
-import { fmtDia } from './dates.js';
-import { categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO } from './financas.js';
+import { esc, hl, dayKey, CmdError } from './util.js';
+import { fmtValor, parseValor } from './valores.js';
+import { fmtDia, findDate } from './dates.js';
+import { parseMonth } from './views.js';
+import { categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
 
 export const KINDS_FINANCAS = ['gasto', 'entrada', 'transferencia'];
 export const isFinanca = e => KINDS_FINANCAS.includes(e?.kind);
@@ -112,7 +113,127 @@ export function criarFinancas(h) {
     return { num: num?.toLowerCase(), resto: ws.filter(w => w !== num).join(' ') };
   };
 
+  /* ---------- ver: o mês e as listas ---------- */
+
+  // uma linha de lançamento:  f3  28.09  R$ 45,00  alimentação · pix  gastei 45 no ifood
+  function linha(e) {
+    const d = e.data || {};
+    const meta = [d.categoria ? `<span class="c-act">${esc(d.categoria)}</span>` : '<span class="c-warn">sem categoria</span>', d.forma ? esc(formaTxt(d.forma)) : '<span class="dim">sem forma</span>'];
+    term.print(`<span class="n">${esc(numero(e))}</span><span class="d">${esc(ddmmDe(d.data || e.day))}</span><span class="v${e.kind === 'entrada' ? ' c-act' : ''}">${esc(fmtValor(d.valor))}</span>` +
+      `<span><span class="tmeta">${meta.join(' · ')}</span> <span class="dim">${hl(e.text)}</span></span>`, 'fin');
+  }
+  const ddmmDe = k => (k ? `${k.slice(8, 10)}.${k.slice(5, 7)}` : '');
+  // "/gastos alimentação -1" → { mes, categoria } · mês: -1, 9, 09/2026, 2026-09 · categoria: qualquer cadastrada
+  function filtros(raw, kind) {
+    const now = new Date();
+    let mes = dayKey(now).slice(0, 7), categoria = null;
+    const lista = cats()[kind] || [];
+    const ws = String(raw).trim().split(/\s+/).filter(Boolean);
+    for (let i = 0; i < ws.length; i++) {
+      const m = parseMonth(ws[i], now);
+      if (m) { mes = m; continue; }
+      const c = acharCategoria(ws.slice(i).join(' '), lista) || acharCategoria(ws[i], lista) || (/^sem$/i.test(ws[i]) && /^categoria$/i.test(ws[i + 1] || '') ? 'sem categoria' : null);
+      if (!c) throw new CmdError('E_ARG', 'fin', `não entendi "${ws[i]}"`, `mês (-1, 9, 2026-09) ou categoria: ${lista.map(esc).join(', ')}`);
+      categoria = c;
+      if (c === 'sem categoria' || ws.slice(i).join(' ').toLowerCase() === c) break;
+    }
+    return { mes, categoria };
+  }
+
+  function mostrarMes(mes) {
+    const now = new Date();
+    const r = resumoMes(S.entries, mes), ant = resumoMes(S.entries, mesAnterior(mes));
+    const vs = variacao(r.gastos, ant.gastos);
+    term.print(`── ${esc(fmtMes(mes, now))} · finanças ${'─'.repeat(10)}`, 'sep');
+    if (!r.n.gastos && !r.n.entradas && !r.n.transferencias) {
+      return term.say(`nada lançado em ${esc(fmtMes(mes, now))} · escreva normal: <span class="c-int">gastei 45 no ifood</span> · <span class="c-int">caiu o salário 3.200</span>`);
+    }
+    h.table([
+      ['saldo', `<span class="${r.saldo < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(r.saldo))}</span> <span class="dim">entradas − gastos · não é o saldo do banco</span>`],
+      ['entradas', `${esc(fmtValor(r.entradas))} <span class="dim">· ${r.n.entradas}</span>`],
+      ['gastos', `${esc(fmtValor(r.gastos))} <span class="dim">· ${r.n.gastos}${vs === null ? '' : ` · vs ${esc(fmtMes(mesAnterior(mes), now))} ${vs > 0 ? '+' : ''}${vs}%`}</span>`],
+    ]);
+    if (r.porCategoria.length) {
+      term.print('por categoria', 'tgrp');
+      for (const [c, v] of r.porCategoria) {
+        const f = r.gastos ? v / r.gastos : 0;
+        term.print(`<span class="k">${esc(c)}</span><span>${esc(fmtValor(v))} <span class="c-int">${barra(f)}</span> <span class="dim">${Math.round(f * 100)}%</span></span>`, 'tbl');
+      }
+    }
+    const notas = [
+      r.credito ? `crédito ${esc(fmtValor(r.credito))} conta no mês da compra (provisório até cadastrar cartões)` : '',
+      r.semForma ? `${r.semForma} sem forma · <span class="c-int">/gastos</span> mostra · <span class="c-int">/forma f3 pix</span>` : '',
+      r.semCategoria ? `${r.semCategoria} sem categoria · <span class="c-int">/cat f3 alimentação</span>` : '',
+      r.transferencias.para || r.transferencias.de ? `transferências: ${r.transferencias.para ? esc(fmtValor(r.transferencias.para)) + ' guardado' : ''}${r.transferencias.para && r.transferencias.de ? ' · ' : ''}${r.transferencias.de ? esc(fmtValor(r.transferencias.de)) + ' resgatado' : ''} (não mexem no saldo)` : '',
+    ].filter(Boolean);
+    notas.forEach(n => term.print(`<span class="dim">${n}</span>`));
+    term.print(`<span class="dim">/gastos [categoria] · /entradas · /mes -1 (mês passado)</span>`);
+  }
+
+  function mostrarLista(kind, raw) {
+    const now = new Date();
+    const { mes, categoria } = filtros(raw, kind);
+    const items = lancamentos(S.entries, { mes, kind, categoria });
+    const titulo = `${kind === 'gasto' ? 'gastos' : 'entradas'}${categoria ? ' · ' + categoria : ''} · ${fmtMes(mes, now)}`;
+    if (!items.length) return term.say(`nenhum lançamento em ${esc(titulo)}.`);
+    S.finList = []; // os números passam a ser os desta lista
+    term.print(`── ${esc(titulo)} · ${items.length} ${'─'.repeat(8)}`, 'sep');
+    items.forEach(linha);
+    term.print(`<span class="dim">total ${esc(fmtValor(items.reduce((s, e) => s + (e.data?.valor || 0), 0)))} · /cat f1 lazer · /forma f1 pix · /editar f1 45,90 ontem</span>`);
+  }
+
+  // "/editar f3 45,90 débito ontem alimentação "almoço com a equipe"": cada pedaço é lido pelo jeito
+  async function editar(raw, t) {
+    const txt = String(raw).trim();
+    const desc = txt.match(/["“](.+?)["”]/);
+    const ws = txt.replace(/["“].+?["”]/, ' ').split(/\s+/).filter(Boolean);
+    const nums = ws.filter(w => /^f\d+$/i.test(w));
+    if (nums.length !== 1) throw usage('editar', 'f3 45,90 · f3 débito · f3 ontem · f3 alimentação · f3 "descrição"');
+    const e = alvo(nums[0].toLowerCase());
+    const muda = {};
+    const lista = cats()[e.kind] || [];
+    for (const w of ws.filter(x => x !== nums[0])) {
+      const v = parseValor(w), f = acharForma(w), c = acharCategoria(w, lista), d = /^(?:hoje|ontem|anteontem|\d{1,2}[/.]\d{1,2}(?:[/.]\d{2,4})?)$/i.test(w) ? findDate(w, new Date()) : null;
+      if (v !== null && !d) muda.valor = v;
+      else if (f) muda.forma = f;
+      else if (c && e.kind !== 'transferencia') muda.categoria = c;
+      else if (d) muda.data = d.data;
+      else throw new CmdError('E_ARG', 'fin', `não entendi "${w}"`, `valor (45,90), forma (${FORMAS.map(formaTxt).join(', ')}), data (ontem, 28/09), categoria (${lista.map(esc).join(', ')}) ou "descrição" entre aspas`);
+    }
+    if (desc) muda.descricao = desc[1].trim();
+    if (!Object.keys(muda).length) throw usage('editar', 'f3 45,90 · f3 débito · f3 ontem · f3 alimentação · f3 "descrição"');
+    const campos = (e.data?.auto?.campos || []).filter(k => !(k in muda));
+    const data = { ...(e.data || {}), ...muda, auto: campos.length ? { ...(e.data?.auto || {}), campos } : null };
+    if (!data.auto) delete data.auto;
+    S.undo.push({ label: 'lançamento editado', items: [e] });
+    await ctx.store.restore({ ...e, data });
+    S.lastLatency = t.elapsed();
+    const mostra = { valor: v => fmtValor(v), forma: formaTxt, data: v => fmtDia(v), categoria: v => v, descricao: v => `"${v}"` };
+    term.ok('fin', `${esc(numero(e))} · ${Object.entries(muda).map(([k, v]) => `<span class="c-act">${esc(mostra[k](v))}</span>`).join(' · ')} · ${hl(e.text)} <span class="c-meta">· /desfazer volta · ${t.id}</span>`);
+    ctx.ui.pulse('int');
+  }
+
   const defs = [
+    {
+      name: 'mes', alias: ['mês', 'fin', 'financas', 'finanças', 'grana'], data: true, args: '[mês: -1 | 9 | 2026-09]',
+      desc: 'o mês em dinheiro: saldo, entradas, gastos por categoria e comparação com o mês passado · ex: /mes · /mes -1',
+      run(arg) {
+        const a = String(arg).trim();
+        const mes = a ? parseMonth(a, new Date()) : dayKey(new Date()).slice(0, 7);
+        if (!mes) throw usage('mes', '-1 | 9 | 2026-09');
+        mostrarMes(mes);
+      },
+    },
+    {
+      name: 'gastos', alias: ['gasto'], data: true, args: '[categoria] [mês]',
+      desc: 'os gastos do mês, numerados f1, f2... · filtra por categoria · ex: /gastos · /gastos alimentação · /gastos -1',
+      run(arg) { mostrarLista('gasto', arg); },
+    },
+    {
+      name: 'entradas', alias: ['entrada', 'receitas'], data: true, args: '[categoria] [mês]',
+      desc: 'as entradas do mês, numeradas f1, f2... · ex: /entradas · /entradas salário',
+      run(arg) { mostrarLista('entrada', arg); },
+    },
     {
       name: 'cat', data: true, async: true, exec: true, args: '<categoria> [f3]',
       desc: 'diz a categoria de um lançamento (o último, ou f3) · eu aprendo pro próximo · ex: /cat alimentação',
@@ -148,5 +269,5 @@ export function criarFinancas(h) {
     },
   ];
 
-  return { defs, entendi, perguntar, numero, pool, alvo };
+  return { defs, entendi, perguntar, numero, pool, alvo, editar, mostrarMes };
 }

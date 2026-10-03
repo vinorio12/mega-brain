@@ -17,7 +17,7 @@ import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
 import { lerMovimento } from '../js/tipos-financas.js';
-import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado } from '../js/financas.js';
+import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos } from '../js/financas.js';
 import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
@@ -1023,6 +1023,74 @@ describe('captura de dinheiro na tela: f1, perguntas, /cat, /forma, verbo (etapa
     const [g, en] = fins(s.S);
     eq([en.kind, en.data.categoria, en.data.ref], ['entrada', 'reembolso', g.id]);
     ok(/↳ devolve o gasto de hoje/.test(plain(s)), plain(s));
+  });
+});
+
+describe('o mês: saldo, categorias, /mes, /gastos, /editar f3, /memoria de categoria (etapa 5 · Fase 3a)', () => {
+  const T = { id: 'T0001', elapsed: () => 1 };
+  const L = (id, kind, valor, data, extra = {}) => ({ id, kind, text: id, ts: 1, day: data, data: { valor, data, ...extra } });
+  const E = [
+    L('a', 'gasto', 4500, '2026-10-01', { categoria: 'alimentação', forma: 'pix' }),
+    L('b', 'gasto', 12000, '2026-10-03', { categoria: 'moradia', forma: 'credito' }),
+    L('c', 'gasto', 1500, '2026-10-05', { categoria: 'alimentação' }),
+    L('d', 'entrada', 320000, '2026-10-05', { categoria: 'salário' }),
+    L('e', 'transferencia', 20000, '2026-10-06', { conta: 'poupança', sentido: 'para' }),
+    L('f', 'gasto', 10000, '2026-09-20', { categoria: 'lazer', forma: 'pix' }),
+    L('g', 'gasto', 999, '2026-10-07', {}),
+  ];
+  test('resumoMes: saldo = entradas − gastos (crédito no mês da compra), transferência fora', () => {
+    const r = resumoMes(E, '2026-10');
+    eq([r.entradas, r.gastos, r.saldo, r.credito, r.semForma, r.semCategoria], [320000, 18999, 301001, 12000, 2, 1]);
+    eq(r.porCategoria, [['moradia', 12000], ['alimentação', 6000], ['sem categoria', 999]]);
+    eq([r.transferencias, r.n], [{ para: 20000, de: 0 }, { gastos: 4, entradas: 1, transferencias: 1 }]);
+    eq(resumoMes(E, '2026-09').gastos, 10000);
+  });
+  test('mês anterior, variação, barra, nome do mês, lista ordenada', () => {
+    eq([mesAnterior('2026-10'), mesAnterior('2026-01')], ['2026-09', '2025-12']);
+    eq([variacao(18999, 10000), variacao(5000, 10000), variacao(100, 0)], [90, -50, null]);
+    eq([barra(0.4), barra(0), barra(1, 4)], ['████░░░░░░', '░░░░░░░░░░', '████']);
+    eq([fmtMes('2026-10', new Date(2026, 9, 1)), fmtMes('2025-12', new Date(2026, 9, 1))], ['out', 'dez/2025']);
+    eq(lancamentos(E, { mes: '2026-10', categoria: 'alimentação' }).map(e => e.id), ['a', 'c']);
+  });
+  test('/mes e /gastos na tela; filtro errado explica', async () => {
+    const s = setup([]);
+    for (const f of ['gastei 45 no ifood', 'mercado 87', 'almoço 30', 'caiu o salário 3.200']) await s.ctx.commands.capturar(f, T);
+    await s.run('/mes');
+    const txt = s.term.text().replace(/<[^>]+>/g, '');
+    ok(/saldo/.test(txt) && /R\$ 3\.038,00/.test(txt) && /por categoria/.test(txt) && /alimentação/.test(txt), txt);
+    s.term.out.length = 0;
+    await s.run('/gastos alimentação');
+    const lista = s.term.text().replace(/<[^>]+>/g, '');
+    ok(/gastos · alimentação/.test(lista) && /f1/.test(lista) && /f2/.test(lista) && !/mercado 87/.test(lista), lista);
+    await throws(() => s.run('/gastos xyz'), 'E_ARG');
+    await s.run('/mes -1');
+    ok(/nada lançado/.test(s.term.text()));
+  });
+  test('/editar f1: valor, forma, data, categoria e descrição · /desfazer volta', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('gastei 45 no ifood', T);
+    await s.run('/editar f1 45,90 débito ontem lazer "jantar"');
+    const g = s.S.entries.find(e => e.kind === 'gasto');
+    const ontem = dayKey(new Date(Date.now() - 864e5));
+    eq([g.data.valor, g.data.forma, g.data.data, g.data.categoria, g.data.descricao, g.data.auto], [4590, 'debito', ontem, 'lazer', 'jantar', undefined]);
+    await throws(() => s.run('/editar f1 bananas'), 'E_ARG');
+    await s.run('/desfazer');
+    eq(s.S.entries.find(e => e.kind === 'gasto').data.valor, 4500);
+  });
+  test('/memoria ifood = lazer e = crédito: fixa categoria e forma; mostra por campo', async () => {
+    const s = setup([]);
+    await s.run('/memoria ifood = lazer');
+    await s.run('/memoria ifood = crédito');
+    await s.ctx.commands.capturar('gastei 30 no ifood', T);
+    const g = s.S.entries.find(e => e.kind === 'gasto');
+    eq([g.data.categoria, g.data.forma], ['lazer', 'credito']);
+    s.term.out.length = 0;
+    await s.run('/memoria ifood');
+    const txt = s.term.text().replace(/<[^>]+>/g, '');
+    ok(/categoria/.test(txt) && /fixada em lazer/.test(txt) && /forma/.test(txt) && /fixada em crédito/.test(txt), txt);
+    await s.run('/memoria ifood limpar');
+    eq(s.S.records.filter(r => r.kind === 'memoria').length, 4, 'limpar grava um registro por campo');
+    await throws(() => s.run('/memoria ifood = xyz'), 'E_404');
   });
 });
 

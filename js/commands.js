@@ -20,14 +20,14 @@ import {
 } from './tasks.js';
 import { eventsOf } from './historico.js';
 import { fmtValor } from './valores.js';
-import { verboCandidato } from './financas.js';
+import { verboCandidato, categoriasDe, acharCategoria, acharForma, FORMA_ROTULO } from './financas.js';
 import { criarFinancas, isFinanca } from './comandos-financas.js';
 import { REGISTRO } from './tipos.js';
 import { previa, interpretar } from './interpretar.js';
 import { registroAprendizado, resumoAprendizado, exportarFrases } from './aprendizado.js';
 import { montarContexto, estimarTokens } from './contexto.js';
 import { pessoasDe, acharPessoa, editApelidos, juntarPessoas, fold, resumoPessoa } from './pessoas.js';
-import { memoriaDe, chavePalavra } from './memoria.js';
+import { memoriaDe, chavePalavra, campoCategoria } from './memoria.js';
 
 export const PHASES = [
   ['0', 'esqueleto · terminal, hud, inbox', 'ok'],
@@ -196,7 +196,7 @@ export function createCommands(ctx) {
     data: outro ? { chave, acao, campo: outro.campo, valor: outro.valor ?? null } : { chave, acao, projeto: projeto || null },
   });
   // finanças (js/comandos-financas.js): números f1…, linha "↳ entendi" de dinheiro, perguntas, /cat, /forma
-  const fin = criarFinancas({ S, term, ctx, usage, mem });
+  const fin = criarFinancas({ S, term, ctx, usage, mem, table: (...a) => table(...a) });
   // palavras que você disse que não são pessoa (/nao): ficam no aprendizado
   const ignorados = () => (S.records || []).filter(e => e.kind === 'interpretacao' && e.data?.naoPessoa).map(e => e.data.naoPessoa);
 
@@ -807,9 +807,11 @@ export function createCommands(ctx) {
     },
     {
       name: 'editar', alias: ['ed', 'e'], exec: true, data: true, async: true,
-      args: '<t1 ...> [#projeto] [@status] [>prazo] [!prioridade] [texto novo]',
-      desc: 'corrige tarefas · muda só o que você escrever · ex: /editar t2 #weg !alta',
+      args: '<t1 ...> [#projeto] [@status] [>prazo] [!prioridade] [texto novo] · <f3> [valor] [forma] [data] [categoria] ["descrição"]',
+      desc: 'corrige tarefas e lançamentos · muda só o que você escrever · ex: /editar t2 #weg !alta · /editar f3 45,90 ontem',
       async run(arg, signal, t) {
+        // f3 = lançamento de dinheiro (js/comandos-financas.js)
+        if (/^f\d+$/i.test(String(arg).trim().split(/\s+/)[0] || '')) return fin.editar(arg, t);
         const words = String(arg).trim().split(/\s+/).filter(Boolean);
         const nums = [];
         while (words.length && /^t?\d+(-t?\d+)?$/i.test(words[0])) nums.push(words.shift());
@@ -982,47 +984,83 @@ export function createCommands(ctx) {
     },
     {
       name: 'memoria', alias: ['memória', 'pistas', 'associar'], data: true, async: true, exec: true,
-      args: '[pista] [= projeto | -projeto | solta | limpar]',
-      desc: 'o que o app aprendeu (pessoa/palavra → projeto) · ex: /memoria · /memoria João · /memoria planilha = weg',
+      args: '[pista] [= projeto | categoria | forma] [-valor | solta | limpar]',
+      desc: 'o que o app aprendeu (pessoa/palavra → projeto, categoria, forma) · ex: /memoria · /memoria João · /memoria planilha = weg · /memoria ifood = alimentação',
       async run(arg, signal, t) {
         const raw = String(arg).trim();
         const reg = ctx.reg();
         const m = mem();
+        const cats = categoriasDe(S.records || []);
+        // campo e valor pelo que foi escrito depois do "=": projeto, categoria (gasto ou entrada) ou forma
+        const campoDe = v => {
+          if (reg.projects.includes(v.toLowerCase())) return { campo: 'projeto', valor: v.toLowerCase() };
+          for (const tipo of ['gasto', 'entrada']) { const c = acharCategoria(v, cats[tipo]); if (c) return { campo: campoCategoria(tipo), valor: c }; }
+          const f = acharForma(v);
+          return f ? { campo: 'forma', valor: f } : null;
+        };
+        const NOME = { projeto: 'projeto', 'categoria:gasto': 'categoria', 'categoria:entrada': 'categoria de entrada', forma: 'forma', tipo: 'verbo' };
+        const val = (campo, v) => (campo === 'projeto' ? '#' + v : campo === 'forma' ? FORMA_ROTULO[v] || v : v);
         const pct = i => (i.total ? Math.round(((i.peso || 0) / i.total) * 100) : 0);
-        const linha = i => {
-          const por = i.porProjeto.map(([p, w]) => `<span class="c-act">#${esc(p)}</span> ${w}`).join(' · ') || '<span class="dim">sem aparições</span>';
-          const est = { fixado: `<span class="c-int">fixada em #${esc(i.dominante)}</span>`, dominante: `<span class="c-act">→ #${esc(i.dominante)}</span> <span class="dim">${pct(i)}%</span>`,
+        const linha = (i, mostraCampo = false) => {
+          const V = v => esc(val(i.campo, v));
+          const por = i.porProjeto.map(([p, w]) => `<span class="c-act">${V(p)}</span> ${w}`).join(' · ') || '<span class="dim">sem aparições</span>';
+          const est = { fixado: `<span class="c-int">fixada em ${V(i.dominante)}</span>`, dominante: `<span class="c-act">→ ${V(i.dominante)}</span> <span class="dim">${pct(i)}%</span>`,
             dividida: '<span class="c-warn">dividida (não vota)</span>', pouca: '<span class="dim">pouca evidência</span>', nada: '<span class="dim">nada ainda</span>' }[i.estado];
-          return `<span class="k">${esc(i.rotulo)}</span><span>${est} · ${por}${i.bloqueados.length ? ` · <span class="dim">bloqueada em ${i.bloqueados.map(esc).join(', ')}</span>` : ''}</span>`;
+          const k = mostraCampo ? esc(NOME[i.campo] || i.campo) : esc(i.rotulo);
+          return `<span class="k">${k}</span><span>${est}${i.campo === 'tipo' ? '' : ' · ' + por}${i.bloqueados.length ? ` · <span class="dim">bloqueada em ${i.bloqueados.map(V).join(', ')}</span>` : ''}</span>`;
         };
         if (!raw) {
-          const todas = m.todas('projeto').filter(i => i.estado !== 'nada' && i.estado !== 'pouca');
-          if (!todas.length) return term.say('ainda não aprendi nada · conforme você cria e corrige tarefas, eu vou ligando pessoas e palavras aos projetos.');
+          const todas = m.todas().filter(i => i.estado !== 'nada' && i.estado !== 'pouca');
+          if (!todas.length) return term.say('ainda não aprendi nada · conforme você cria e corrige tarefas e lançamentos, eu vou ligando pessoas e palavras a projetos, categorias e formas.');
           term.print(`── memória · o que eu aprendi ${'─'.repeat(8)}`, 'sep');
+          const dom = (filtro, n = 12) => todas.filter(i => i.estado === 'dominante' && filtro(i)).sort((a, b) => b.peso - a.peso).slice(0, n);
           const grupos = [
-            ['fixadas por você', todas.filter(i => i.estado === 'fixado')],
-            ['pessoas', todas.filter(i => i.chave.startsWith('pessoa:') && i.estado !== 'fixado')],
-            ['palavras que puxam', todas.filter(i => i.chave.startsWith('palavra:') && i.estado === 'dominante').sort((a, b) => b.peso - a.peso).slice(0, 12)],
+            ['fixadas por você', todas.filter(i => i.estado === 'fixado' && i.campo !== 'tipo')],
+            ['pessoas', todas.filter(i => i.campo === 'projeto' && i.chave.startsWith('pessoa:') && i.estado !== 'fixado')],
+            ['palavras que puxam projeto', dom(i => i.campo === 'projeto' && i.chave.startsWith('palavra:'))],
+            ['categorias', dom(i => i.campo.startsWith('categoria:'))],
+            ['formas', dom(i => i.campo === 'forma', 8)],
+            ['verbos que você ensinou', todas.filter(i => i.campo === 'tipo' && i.estado === 'fixado')],
           ].filter(([, l]) => l.length);
           for (const [titulo, l] of grupos) { term.print(titulo, 'tgrp'); l.forEach(i => term.print(linha(i), 'tbl')); }
-          return term.print('<span class="dim">/memoria planilha = weg fixa · -tcc bloqueia · solta · limpar esquece · só vota quem tem ≥70% num projeto</span>');
+          return term.print('<span class="dim">/memoria planilha = weg · ifood = alimentação · ifood = crédito fixa · -valor bloqueia · solta · limpar esquece · só vota quem tem ≥70%</span>');
         }
-        // "<pista> = projeto" · "<pista> -projeto" · "<pista> solta" · "<pista> limpar"
-        let pista = raw, acao = null, proj = null;
+        // "<pista> = valor" · "<pista> -valor" · "<pista> solta" · "<pista> limpar"
+        let pista = raw, acao = null, alvo = null;
         let mm;
-        if ((mm = raw.match(/^(.+?)\s*=\s*#?(\S+)$/))) { pista = mm[1]; acao = 'fixar'; proj = mm[2].toLowerCase(); }
-        else if ((mm = raw.match(/^(.+?)\s+-#?(\S+)$/))) { pista = mm[1]; acao = 'bloquear'; proj = mm[2].toLowerCase(); }
+        if ((mm = raw.match(/^(.+?)\s*=\s*#?(\S+)$/))) { pista = mm[1]; acao = 'fixar'; alvo = mm[2]; }
+        else if ((mm = raw.match(/^(.+?)\s+-#?(\S+)$/))) { pista = mm[1]; acao = 'bloquear'; alvo = mm[2]; }
         else if ((mm = raw.match(/^(.+?)\s+(solta|soltar|desafixar)$/i))) { pista = mm[1]; acao = 'desafixar'; }
         else if ((mm = raw.match(/^(.+?)\s+(limpar|esquecer|zerar)$/i))) { pista = mm[1]; acao = 'limpar'; }
-        if (proj && !reg.projects.includes(proj)) throw new CmdError('E_404', 'task', `projeto #${proj} não existe`, `projetos: ${reg.projects.map(p => '#' + esc(p)).join(' ')}`);
+        const cv = alvo ? campoDe(alvo) : null;
+        if (alvo && !cv) throw new CmdError('E_404', 'memoria', `não conheço "${alvo}"`, `projeto (${reg.projects.map(p => '#' + esc(p)).join(' ')}), categoria (${cats.gasto.map(esc).join(', ')}) ou forma (pix, crédito, débito, dinheiro, boleto)`);
         const p = acharPessoa(pista, pessoasDe(S.records || []));
         if (p.ambiguo) throw new CmdError('E_AMBIGUO', 'pessoa', `"${pista}" bate com ${p.ambiguo.map(x => x.nome).join(', ')}`, 'use o nome completo');
         const chave = p.pessoa ? 'pessoa:' + p.pessoa.id : chavePalavra(pista);
-        if (!acao) { term.print(`── memória · ${esc(pista)} ${'─'.repeat(8)}`, 'sep'); return term.print(linha(m.info(chave)), 'tbl'); }
-        const e = await gravarMemoria(chave, acao, proj, p.pessoa ? p.pessoa.nome : pista);
-        S.undo.push({ label: 'memória', items: [], created: [e.id] });
+        const verbo = 'verbo:' + chavePalavra(pista).slice(8);
+        // o que a memória sabe dessa pista em cada campo (o verbo ensinado também)
+        const campos = ['projeto', campoCategoria('gasto'), campoCategoria('entrada'), 'forma'];
+        const sabe = mm2 => [...campos.map(c => mm2.info(chave, c)), mm2.info(verbo, 'tipo')].filter(i => i.estado !== 'nada' || i.bloqueados.length);
+        if (!acao) {
+          term.print(`── memória · ${esc(pista)} ${'─'.repeat(8)}`, 'sep');
+          const l = sabe(m);
+          if (!l.length) return term.print(`<span class="k">${esc(pista)}</span><span class="dim">nada ainda</span>`, 'tbl');
+          return l.forEach(i => term.print(linha(i, true), 'tbl'));
+        }
+        const rot = p.pessoa ? p.pessoa.nome : pista;
+        // fixar/bloquear valem pro campo do valor · soltar/limpar valem pra tudo que a pista tem
+        const alvos = cv ? [{ chave, campo: cv.campo }] : sabe(m).map(i => ({ chave: i.chave, campo: i.campo }));
+        if (!alvos.length) return term.say(`não sei nada de ${esc(pista)} ainda.`);
+        const criadas = [];
+        for (const a of alvos) {
+          criadas.push(await (a.campo === 'projeto'
+            ? gravarMemoria(a.chave, acao, cv?.valor, rot)
+            : gravarMemoria(a.chave, acao, null, rot, { campo: a.campo, valor: cv?.valor })));
+        }
+        S.undo.push({ label: 'memória', items: [], created: criadas.map(e => e.id) });
         S.lastLatency = t.elapsed();
-        term.ok('task', `${{ fixar: 'fixado', bloquear: 'bloqueado', desafixar: 'solto', limpar: 'esquecido' }[acao]} · ${linha(mem().info(chave))} <span class="c-meta">· /desfazer volta · ${t.id}</span>`);
+        const depois = mem();
+        term.ok('memoria', `${{ fixar: 'fixado', bloquear: 'bloqueado', desafixar: 'solto', limpar: 'esquecido' }[acao]} · ${alvos.map(a => linha(depois.info(a.chave, a.campo), true)).join(' · ')} <span class="c-meta">· ${esc(rot)} · /desfazer volta · ${t.id}</span>`);
         ctx.ui.pulse('act');
       },
     },

@@ -256,3 +256,52 @@ export function verboCandidato(texto) {
   if (PALAVRAS_DE_DINHEIRO.includes(w) || tipoDaPalavra(w)) return null;
   return w;
 }
+
+/* ---------- o mês ---------- */
+
+// 'AAAA-MM' do lançamento (a data do gasto, não a de quando você escreveu)
+export const mesDe = e => String(e?.data?.data || e?.day || '').slice(0, 7);
+// '2026-10' → '2026-09'
+export function mesAnterior(mes) {
+  const [y, m] = mes.split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+// '2026-10' → 'out/2026' (sem o ano se for o ano de `now`: 'out')
+export function fmtMes(mes, now = null) {
+  const [y, m] = mes.split('-').map(Number);
+  return MESES_CURTOS[m - 1] + (now && now.getFullYear() === y ? '' : '/' + y);
+}
+
+// Saldo do mês (decisão do Vini): entradas − gastos do mês, qualquer forma. Não é o saldo do banco.
+// Na 3a o crédito conta no mês da compra (provisório até existirem cartões, na 3b). Transferência fica fora.
+//   → { mes, entradas, gastos, saldo, porCategoria: [[cat, centavos]], entradasPorCategoria, credito, semForma, transferencias: { para, de }, n: { gastos, entradas, transferencias } }
+export function resumoMes(entries = [], mes) {
+  const doMes = entries.filter(e => mesDe(e) === mes);
+  const de = k => doMes.filter(e => e.kind === k);
+  const soma = l => l.reduce((s, e) => s + (Number.isInteger(e.data?.valor) ? e.data.valor : 0), 0);
+  const porCat = l => [...l.reduce((m, e) => { const c = e.data?.categoria || 'sem categoria'; return m.set(c, (m.get(c) || 0) + (e.data?.valor || 0)); }, new Map())]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const gastos = de('gasto'), entradas = de('entrada'), transf = de('transferencia');
+  return {
+    mes,
+    entradas: soma(entradas), gastos: soma(gastos), saldo: soma(entradas) - soma(gastos),
+    porCategoria: porCat(gastos), entradasPorCategoria: porCat(entradas),
+    credito: soma(gastos.filter(e => e.data?.forma === 'credito')),
+    semForma: gastos.filter(e => !e.data?.forma).length,
+    semCategoria: [...gastos, ...entradas].filter(e => !e.data?.categoria).length,
+    transferencias: { para: soma(transf.filter(e => e.data?.sentido !== 'de')), de: soma(transf.filter(e => e.data?.sentido === 'de')) },
+    n: { gastos: gastos.length, entradas: entradas.length, transferencias: transf.length },
+  };
+}
+// quanto mudou em %: (atual − anterior) / anterior · sem base (anterior 0) → null
+export const variacao = (atual, anterior) => (anterior ? Math.round(((atual - anterior) / anterior) * 100) : null);
+// barra de texto: 0.4 → '████░░░░░░'
+export const barra = (frac, largura = 10) => { const n = Math.max(0, Math.min(largura, Math.round(frac * largura))); return '█'.repeat(n) + '░'.repeat(largura - n); };
+
+// lançamentos de um mês (e de uma categoria), do mais antigo pro mais novo
+export function lancamentos(entries = [], { mes = null, kind = 'gasto', categoria = null } = {}) {
+  return entries.filter(e => e.kind === kind && (!mes || mesDe(e) === mes) && (!categoria || (e.data?.categoria || 'sem categoria') === categoria))
+    .sort((a, b) => String(a.data?.data || a.day).localeCompare(String(b.data?.data || b.day)) || a.ts - b.ts);
+}

@@ -676,3 +676,46 @@ export function devoNoCartao(entries = [], records = [], now = new Date(), carto
     cartao: c.id, nome: c.nome, devo: devo.get(c.id), limite: c.limite ?? null, livre: c.limite ? c.limite - devo.get(c.id) : null,
   }));
 }
+
+/* ---------- frases dos saldos (Fase 3d) ---------- */
+
+// lugares de investimento que o app reconhece sozinho (os que você já tem saldo também valem: `extras`)
+const INVEST = String.raw`poupanca|investimentos?|reserva(?:\s+de\s+emergencia)?|tesouro(?:\s+direto)?|cdb|lci|lca|corretora|caixinha|cofrinho|acoes|fundos?`;
+// "na poupança", "no tesouro direto", "no cdb" → 'poupança' (como foi escrito, minúsculo) · senão null
+export function lugarInvestimento(texto, extras = []) {
+  const t = String(texto ?? '').normalize('NFC'), low = strip(t);
+  const lista = [INVEST, ...extras.map(x => strip(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))].join('|');
+  const m = low.match(new RegExp(String.raw`(?<![a-z])(?:na|no|em|da|do|nas|nos)\s+(?:a\s+|o\s+|minha\s+|meu\s+)?(?<lugar>${lista})(?![a-z])`));
+  if (!m) return null;
+  const fim = m.index + m[0].length;
+  return t.slice(fim - m.groups.lugar.length, fim).toLowerCase();
+}
+
+// "tenho 2.500 na conta", "saldo 2.500", "saldo da conta 2.500", "tenho 5.000 na poupança" → { onde: 'conta' | lugar, valor } · senão null
+// ("tenho que pagar 200" é tarefa; "tenho 2 provas" não tem lugar nem cara de dinheiro)
+export function lerAjusteSaldo(texto, extras = []) {
+  const t = String(texto ?? '').normalize('NFC').trim(), low = strip(t);
+  const saldo = /^saldo(?![a-z])/.test(low), tenho = /^(?:eu\s+)?tenho\s+(?!que\b|de\b)/.test(low);
+  if (!saldo && !tenho) return null;
+  const v = findValor(t);
+  if (!v) return null;
+  const lugar = lugarInvestimento(t, extras);
+  const naConta = /(?<![a-z])(?:na|em)\s+(?:minha\s+)?conta(?!\s+(?:da|do|de)\s)(?![a-z])|(?<![a-z])no\s+banco(?![a-z])/.test(low) || /^saldo(?:\s+da\s+conta)?(?![a-z])/.test(low);
+  if (lugar) return { onde: lugar, valor: v.centavos };
+  if (naConta || (tenho && v.explicito && !/(?<![a-z])(?:na|no|em)\s+\w/.test(strip(v.resto)))) return { onde: 'conta', valor: v.centavos };
+  return null;
+}
+
+// "paguei a fatura", "paguei a fatura do nubank", "quitei o cartão", "fatura do inter paga" → true
+export const ehPagamentoFatura = texto => /(?<![a-z])(?:(?:paguei|pago|quitei|acertei)\s+(?:a\s+)?fatura|(?:paguei|quitei)\s+o\s+cartao|fatura\s+(?:do\s+\S+\s+)?(?:paga|quitada)(?![a-z]))/.test(strip(texto));
+
+// "rendeu 32 na poupança", "rendimento de 12 no cdb", "a poupança rendeu 32" → { valor, lugar } · senão null
+export function lerRendimento(texto, extras = []) {
+  const t = String(texto ?? '').normalize('NFC').trim(), low = strip(t);
+  if (!/(?<![a-z])(?:rendeu|renderam|rendimento|rendimentos|juros)(?![a-z])/.test(low)) return null;
+  const v = findValor(t);
+  if (!v) return null;
+  // "a poupança rendeu 32": o lugar no começo, sem preposição
+  const lugar = lugarInvestimento(t, extras) || (low.match(new RegExp(String.raw`^(?:a\s+|o\s+|minha\s+|meu\s+)?(${INVEST})(?![a-z])`)) ? lugarInvestimento('na ' + t.replace(/^(?:a|o|minha|meu)\s+/i, ''), extras) : null);
+  return lugar ? { valor: v.centavos, lugar } : null;
+}

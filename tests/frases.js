@@ -94,6 +94,17 @@ export const FRASES = [
   { frase: 'academia 120 por mês', esperado: { tipo: 'recorrente', campos: { nome: 'academia', valor: 12000, dia: 1 } } },
   { frase: 'revisar orçamento todo mês', esperado: { tipo: 'nota', pergunta: true, palpite: 'tarefa' } },
   { frase: 'paguei a mensalidade da faculdade 890', esperado: { tipo: 'gasto', campos: { valor: 89000, categoria: 'educação' } } },
+  // os três saldos (Fase 3d)
+  { frase: 'tenho 2.500 na conta', esperado: { tipo: 'saldo', campos: { onde: 'conta', valor: 250000 } } },
+  { frase: 'saldo 2.500', esperado: { tipo: 'saldo', campos: { onde: 'conta', valor: 250000 } } },
+  { frase: 'tenho 5.000 na poupança', esperado: { tipo: 'saldo', campos: { onde: 'poupança', valor: 500000 } } },
+  { frase: 'rendeu 32 na poupança', esperado: { tipo: 'rendimento', campos: { valor: 3200, lugar: 'poupança' } } },
+  { frase: 'a poupança rendeu 12,50', esperado: { tipo: 'rendimento', campos: { valor: 1250, lugar: 'poupança' } } },
+  { frase: 'paguei a fatura do nubank', records: [{ id: 'c1', kind: 'cartao', text: 'nubank', ts: 1, data: { fechamento: 3, vencimento: 10, padrao: true } }],
+    esperado: { tipo: 'faturapaga', campos: { cartao: 'c1', mes: '2026-10' } } },
+  { frase: 'paguei a fatura 1.200', esperado: { tipo: 'gasto', campos: { valor: 120000 } } }, // sem cartão cadastrado: gasto, como antes
+  { frase: 'tenho que pagar 200 de luz', esperado: { tipo: 'tarefa' } },
+  { frase: 'tenho 2 provas amanhã', esperado: { tipo: 'nota' } }, // não é saldo (pode até perguntar se era tarefa)
   // pegadinhas
   { frase: 'abasteci 200 no posto', esperado: { tipo: 'nota', pergunta: true, palpite: 'gasto' } },
   { frase: 'estorno de 45 do ifood', entries: [{ id: 'g-ifood', kind: 'gasto', text: 'gastei 45 no ifood', ts: 1, day: '2026-09-28', data: { valor: 4500, descricao: 'ifood', lugar: 'ifood', data: '2026-09-28', categoria: 'alimentação' } }],

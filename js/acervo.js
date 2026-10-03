@@ -50,9 +50,9 @@ export function shortUrl(url, max = 42) {
 const TIPOS = {
   link: 'link', links: 'link', trecho: 'trecho', trechos: 'trecho', texto: 'trecho', textos: 'trecho', tarefa: 'tarefa', tarefas: 'tarefa', nota: 'nota', notas: 'nota',
   gasto: 'gasto', gastos: 'gasto', entrada: 'entrada', entradas: 'entrada', treino: 'treino', treinos: 'treino',
-  transferencia: 'transferencia', 'transferência': 'transferencia', transferencias: 'transferencia', 'transferências': 'transferencia',
+  transferencia: 'transferencia', 'transferência': 'transferencia', transferencias: 'transferencia', 'transferências': 'transferencia', rendimento: 'rendimento', rendimentos: 'rendimento',
 };
-const OUTROS = ['gasto', 'entrada', 'transferencia', 'treino']; // reconhecidos desde a Fase 2 (transferência na 3a); telas nas Fases 3 e 4
+const OUTROS = ['gasto', 'entrada', 'transferencia', 'rendimento', 'treino']; // reconhecidos desde a Fase 2 (transferência na 3a); telas nas Fases 3 e 4
 export const tipoOf = e => (isLink(e) ? 'link' : isSnippet(e) ? 'trecho' : e?.kind === 'tarefa' ? 'tarefa' : OUTROS.includes(e?.kind) ? e.kind : 'nota');
 
 // Busca em tudo: "rag", "#tcc", "rag tipo:link". Devolve grupos por tipo (só os que têm resultado).
@@ -68,7 +68,7 @@ export function searchAll(entries, query) {
     return [e.text, e.data?.url, e.data?.contexto].some(s => String(s || '').toLowerCase().includes(q));
   });
   const order = ['tarefa', 'nota', 'link', 'trecho', ...OUTROS];
-  const titles = { tarefa: 'tarefas', nota: 'notas', link: 'links', trecho: 'textos', gasto: 'gastos', entrada: 'entradas', transferencia: 'transferências', treino: 'treinos' };
+  const titles = { tarefa: 'tarefas', nota: 'notas', link: 'links', trecho: 'textos', gasto: 'gastos', entrada: 'entradas', transferencia: 'transferências', rendimento: 'rendimentos', treino: 'treinos' };
   const groups = order.map(t => ({ key: t, title: titles[t], items: hits.filter(e => tipoOf(e) === t) })).filter(g => g.items.length);
   return { groups, total: hits.length, tipo, q };
 }

@@ -20,7 +20,7 @@ import { tagsOf, dayKey } from './util.js';
 import { findValor } from './valores.js';
 import { findDate } from './dates.js';
 import { comecaComVerbo } from './tipos-base.js';
-import { lerFinanca, categoriaSemente, categoriasDe, cartoesDe, tipoDaPalavra, verbosAprendidos, acharEstornado, linhaContexto, lerRecorrencia, nomeConta, desdeInicial, recorrentesDe, eDaRecorrente, FORMAS } from './financas.js';
+import { lerFinanca, categoriaSemente, categoriasDe, cartoesDe, tipoDaPalavra, verbosAprendidos, acharEstornado, linhaContexto, lerRecorrencia, nomeConta, desdeInicial, recorrentesDe, eDaRecorrente, ancorasDe, chaveLugar, lerAjusteSaldo, lerRendimento, ehPagamentoFatura, cartaoPadrao, proximaFatura, FORMAS } from './financas.js';
 import { memoriaDe, decidirPorPistas, campoCategoria, palavrasDe } from './memoria.js';
 import { findPessoas } from './pessoas.js';
 import { FINANCAS } from './config.js';
@@ -40,6 +40,9 @@ export function lerMovimento(texto, now = new Date()) {
 export function tipoFinanceiro(texto, ctx = {}) {
   const now = ctx.now || new Date();
   if (lerRecorrencia(texto, now)) return null; // "netflix 55,90 todo mês" é recorrente (Fase 3c), não um gasto só
+  // Fase 3d: "paguei a fatura" (com cartão cadastrado), "tenho 2.500 na conta", "rendeu 32 na poupança" têm tipo próprio
+  const extras = [...ancorasDe(ctx.records || []).values()].map(a => a.nome).filter(n => chaveLugar(n) !== 'conta');
+  if ((ehPagamentoFatura(texto) && cartoesDe(ctx.records || []).length) || lerAjusteSaldo(texto, extras) || lerRendimento(texto, extras)) return null;
   const f = lerFinanca(texto, { now, pessoas: ctx.pessoas || [], aprendidos: verbosAprendidos(ctx.records || []), cartoes: cartoesDe(ctx.records || []) });
   if (!f) return null;
   // palavra conhecida: pela semente ou pela memória (o que você já ensinou: "xpto" → lazer)
@@ -215,6 +218,61 @@ export function registrarTiposFinancas(r = REGISTRO) {
         data: { tipo: c.tipo || 'gasto', valor: c.valor || null, dia: c.dia || now.getDate(), categoria: c.categoria || null, forma: c.forma || null, cartao: c.cartao || null,
           desde: desdeInicial(c.dia || now.getDate(), now), status: 'ativa', pulados: [] },
       };
+    },
+  });
+
+  // Fase 3d · os três saldos ------------------------------------------------------------------------------
+  const lugaresDe = ctx => [...ancorasDe(ctx?.records || []).values()].map(a => a.nome).filter(n => chaveLugar(n) !== 'conta');
+
+  // "tenho 2.500 na conta", "saldo 2.500", "tenho 5.000 na poupança": a âncora do saldo (registro escondido kind 'saldo')
+  r.registrar({
+    id: 'saldo', rotulo: 'saldo', registro: true,
+    campos: { onde: { tipo: 'texto', obrigatorio: true }, valor: { tipo: 'centavos', obrigatorio: true } },
+    exemplos: ['tenho 2.500 na conta', 'tenho 5.000 na poupança'],
+    reconhecer(texto, ctx) {
+      const a = lerAjusteSaldo(texto, lugaresDe(ctx));
+      return a ? { confianca: ctx?.forcar === 'saldo' ? 1 : 0.9, campos: { onde: a.onde, valor: a.valor } } : null;
+    },
+    montar: (i, ctx) => {
+      const now = ctx?.now || new Date();
+      return { kind: 'saldo', text: i.campos.onde, tags: [], ts: now.getTime(), day: dayKey(now), data: { onde: chaveLugar(i.campos.onde), valor: i.campos.valor, data: dayKey(now) } };
+    },
+  });
+
+  // "paguei a fatura do nubank": a fatura sai da conta hoje (e não é um gasto: senão contaria duas vezes) · registro kind 'faturapaga'
+  r.registrar({
+    id: 'faturapaga', rotulo: 'fatura paga', registro: true,
+    campos: { cartao: { tipo: 'texto', obrigatorio: true }, mes: { tipo: 'texto', obrigatorio: true } },
+    exemplos: ['paguei a fatura do nubank'],
+    reconhecer(texto, ctx) {
+      const cartoes = cartoesDe(ctx?.records || []);
+      if (!ehPagamentoFatura(texto) || !cartoes.length) return null;
+      const low = texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+      const c = cartoes.find(k => new RegExp(`(?<![a-z0-9])${k.nome.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-z0-9])`).test(low)) || cartaoPadrao(cartoes);
+      return { confianca: 0.95, campos: { cartao: c.id, mes: proximaFatura(c, ctx?.now || new Date()) }, auto: [] };
+    },
+    montar: (i, ctx) => {
+      const now = ctx?.now || new Date();
+      const nome = cartoesDe(ctx?.records || []).find(c => c.id === i.campos.cartao)?.nome || 'cartão';
+      return { kind: 'faturapaga', text: `fatura ${nome}`, tags: [], ts: now.getTime(), day: dayKey(now), data: { cartao: i.campos.cartao, mes: i.campos.mes, data: dayKey(now) } };
+    },
+  });
+
+  // "rendeu 32 na poupança": aumenta o investimento; não é entrada do mês nem mexe na conta
+  r.registrar({
+    id: 'rendimento', rotulo: 'rendimento',
+    campos: { valor: { tipo: 'centavos', obrigatorio: true }, lugar: { tipo: 'texto', obrigatorio: true }, data: { tipo: 'data' }, tags: { tipo: 'lista' } },
+    rastrear: ['valor', 'lugar', 'data'],
+    exemplos: ['rendeu 32 na poupança', 'rendimento de 12 no cdb'],
+    reconhecer(texto, ctx) {
+      const rd = lerRendimento(texto, lugaresDe(ctx));
+      if (!rd) return null;
+      const now = ctx?.now || new Date(), d = findDate(texto, now);
+      return { confianca: 0.9, campos: { valor: rd.valor, lugar: rd.lugar, data: d && d.data <= dayKey(now) ? d.data : dayKey(now), tags: tagsOf(texto) }, auto: d ? [] : ['data'] };
+    },
+    montar: (i, ctx) => {
+      const now = ctx?.now || new Date();
+      return { kind: 'rendimento', text: i.texto, tags: i.campos.tags || [], ts: now.getTime(), day: dayKey(now), data: { valor: i.campos.valor, lugar: i.campos.lugar, data: i.campos.data || dayKey(now) } };
     },
   });
 

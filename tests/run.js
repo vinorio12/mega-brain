@@ -17,7 +17,7 @@ import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
 import { lerMovimento } from '../js/tipos-financas.js';
-import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura, parcelasNoMes, proximasFaturas, recorrentesDe, desdeInicial, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, saldoConta, devoNoCartao, investimentosPorLugar, ancorasDe, chaveLugar } from '../js/financas.js';
+import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura, parcelasNoMes, proximasFaturas, recorrentesDe, desdeInicial, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, saldoConta, devoNoCartao, investimentosPorLugar, ancorasDe, chaveLugar, lerAjusteSaldo, lerRendimento, ehPagamentoFatura } from '../js/financas.js';
 import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
@@ -1590,6 +1590,23 @@ describe('os três saldos · funções puras (etapa 1 · Fase 3d)', () => {
   });
 });
 
+describe('frases dos saldos (etapa 2 · Fase 3d)', () => {
+  test('lerAjusteSaldo: conta, lugar, e o que não é saldo', () => {
+    eq([lerAjusteSaldo('tenho 2.500 na conta'), lerAjusteSaldo('saldo da conta 1.234,56'), lerAjusteSaldo('tenho R$ 300'), lerAjusteSaldo('tenho 8 mil no tesouro direto')],
+      [{ onde: 'conta', valor: 250000 }, { onde: 'conta', valor: 123456 }, { onde: 'conta', valor: 30000 }, { onde: 'tesouro direto', valor: 800000 }]);
+    eq([lerAjusteSaldo('tenho que pagar 200'), lerAjusteSaldo('tenho 2 provas'), lerAjusteSaldo('gastei 30 no almoço')], [null, null, null]);
+    eq(lerAjusteSaldo('tenho 3.000 na xp', ['xp']), { onde: 'xp', valor: 300000 }, 'lugar que você já cadastrou');
+  });
+  test('rendimento e pagamento de fatura', () => {
+    eq([lerRendimento('rendeu 32 na poupança'), lerRendimento('rendimento de 12 no cdb'), lerRendimento('rendeu muito o treino')], [{ valor: 3200, lugar: 'poupança' }, { valor: 1200, lugar: 'cdb' }, null]);
+    eq(['paguei a fatura', 'paguei a fatura do nubank', 'quitei o cartão', 'fatura do inter paga', 'paguei o boleto'].map(ehPagamentoFatura), [true, true, true, true, false]);
+  });
+  test('rendimento aparece nas listas (é conteúdo) e "transferi pra poupança" continua transferência', () => {
+    eq(CONTENT_KINDS.includes('rendimento'), true);
+    eq(provedorRegras.interpretar('transferi 200 pra poupança', { now: new Date(2026, 9, 1, 12), reg: registry([]) }).tipo, 'transferencia');
+  });
+});
+
 describe('palavras-chave por projeto (Fase 2)', () => {
   const seeds = (palavras = {}) => seedEntries([], 'local', new Date(2026, 9, 1))
     .map(e => (e.kind === 'projeto' && palavras[e.text] ? { ...e, data: { ...e.data, palavras: palavras[e.text] } } : e));
@@ -2140,6 +2157,7 @@ describe('régua de frases (tests/frases.js · interpretar com regras)', () => {
   const ctxBase = f => ({
     reg: registry(seedEntries([], 'local', new Date(2026, 9, 1)).map(e => (e.kind === 'projeto' && f?.palavras?.[e.text] ? { ...e, data: { ...e.data, palavras: f.palavras[e.text] } } : e))),
     entries: f?.entries || [],
+    records: f?.records || [], // cadastros que a frase precisa (ex: um cartão, pra "paguei a fatura")
   });
   const { interpretar: viaRegras } = criarInterpretador();
   for (const f of FRASES) {

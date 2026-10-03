@@ -8,7 +8,7 @@ import { PHASES } from './commands.js';
 import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary, isNoteKind } from './tasks.js';
 import { fmtDue, fmtDia } from './dates.js';
 import { fmtValor } from './valores.js';
-import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes, cartoesDe, proximasFaturas } from './financas.js';
+import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes, cartoesDe, proximasFaturas, resumoSaldos } from './financas.js';
 import { shortUrl, isAcervo, isLink, safeUrl } from './acervo.js';
 import { deriveState, describeState, readIntent, LISTEN_MS, FAULT_MS } from './state.js';
 import { pessoasDe } from './pessoas.js';
@@ -372,15 +372,20 @@ export function createUI(ctx) {
       ['hoje', `${E.filter(e => e.day === dayKey(now)).length} capturas`],
     ].map(([k, v]) => `<li><span>${k}</span><b>${v}</b></li>`).join('');
 
-    // finanças do mês: poucas linhas, só dado real (sem lançamento → NA, mas o campo fica)
+    // finanças: os três saldos (Fase 3d) + os gastos do mês · só dado real (sem dado → NA, mas o campo fica)
+    // (o saldo do mês, entradas − gastos, continua no /mes)
     const fin = hudFinancas(E, now, { cartoes: cartoesDe(S.records || [], { todos: true }) });
+    const sd = resumoSaldos(E, S.records || [], now);
     $('x-fin-sub').textContent = fmtMes(fin.mes, now);
     const na = '<span class="dim">NA</span>';
+    const tom = v => (v < 0 ? 'c-warn' : 'c-act');
     $('x-fin').innerHTML = [
-      ['saldo', fin.vazio ? na : `<span class="${fin.saldo < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(fin.saldo))}</span>`],
-      ['gastos', fin.vazio ? na : esc(fmtValor(fin.gastos))],
-      [`vs ${fmtMes(fin.mesAnterior, now)}`, fin.vs === null ? na : `<span class="${fin.vs > 0 ? 'c-warn' : 'c-act'}">${fin.vs > 0 ? '+' : ''}${fin.vs}%</span>`],
-      ['pesou', fin.top.length ? fin.top.map(([c]) => esc(c)).join(' · ') : na],
+      ['conta', sd.conta == null ? na : `<span class="${tom(sd.conta)}">${esc(fmtValor(sd.conta))}</span>`],
+      ['investido', sd.investido == null ? na : esc(fmtValor(sd.investido))],
+      ['cartões', sd.devo == null ? na : `deve ${esc(fmtValor(sd.devo))}`],
+      // o limite livre só aparece quando algum cartão tem limite (linha curta: o painel é estreito)
+      ...(sd.livre != null ? [['livre', `<span class="${tom(sd.livre)}">${esc(fmtValor(sd.livre))}</span>`]] : []),
+      ['gastos', fin.vazio ? na : `${esc(fmtValor(fin.gastos))}${fin.vs === null ? '' : ` <span class="${fin.vs > 0 ? 'c-warn' : 'c-act'}">${fin.vs > 0 ? '+' : ''}${fin.vs}%</span>`}`],
     ].map(([k, v]) => `<li><span>${k}</span><b>${v}</b></li>`).join('');
 
     // módulos
@@ -474,14 +479,18 @@ export function createUI(ctx) {
     const fin = hudFinancas(E, now, { cartoes: cartoesDe(S.records || [], { todos: true }) });
     const rm = resumoMes(E, fin.mes, { cartoes: cartoesDe(S.records || [], { todos: true }) });
     const maxCat = Math.max(1, ...rm.porCategoria.map(([, v]) => v));
-    const finHtml = fin.vazio ? '<div class="ov-empty">nada lançado este mês</div>' :
-      `<div class="ov-row"><span class="n">saldo</span><span class="${fin.saldo < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(fin.saldo))}</span><span class="r dim"></span></div>` +
+    // os três saldos (Fase 3d) no topo, mesmo num mês sem lançamento
+    const sdo = resumoSaldos(E, S.records || [], now);
+    const saldosHtml = [['conta', sdo.conta], ['investido', sdo.investido], ['cartões', sdo.devo]].filter(([, v]) => v != null).map(([k, v]) =>
+      `<div class="ov-row"><span class="n">${k}</span><span class="${k === 'cartões' ? 'c-warn' : v < 0 ? 'c-warn' : 'c-act'}">${k === 'cartões' ? 'deve ' : ''}${esc(fmtValor(v))}</span><span class="r dim"></span></div>`).join('');
+    const finHtml = saldosHtml + (fin.vazio ? '<div class="ov-empty">nada lançado este mês</div>' :
+      `<div class="ov-row"><span class="n">mês</span><span class="${fin.saldo < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(fin.saldo))}</span><span class="r dim">entradas − gastos</span></div>` +
       `<div class="ov-row"><span class="n">gastos</span><span>${esc(fmtValor(fin.gastos))}</span><span class="r dim">${fin.vs === null ? '' : `${fin.vs > 0 ? '+' : ''}${fin.vs}%`}</span></div>` +
       // a próxima fatura de cada cartão (Fase 3b)
       proximasFaturas(E, cartoesDe(S.records || [], { todos: true }), now).map(f =>
         `<div class="ov-row"><span class="n">${esc(f.nome)}</span><span>${esc(fmtValor(f.total))}</span><span class="r dim">vence ${esc(ddmm(new Date(f.vence + 'T12:00')))}</span></div>`).join('') +
       rm.porCategoria.slice(0, 5).map(([c, v]) =>
-        `<div class="ov-proj"><div class="top"><span>${esc(c)}</span><span>${esc(fmtValor(v))}</span></div><div class="ov-bar"><i style="width:${Math.round(v / maxCat * 100)}%"></i></div></div>`).join('');
+        `<div class="ov-proj"><div class="top"><span>${esc(c)}</span><span>${esc(fmtValor(v))}</span></div><div class="ov-bar"><i style="width:${Math.round(v / maxCat * 100)}%"></i></div></div>`).join(''));
 
     $('ov-grid').innerHTML =
       `<div class="ov-b"><h3>tarefas <span>${b.abertas} abertas${b.atrasadas ? ` · <span class="c-warn">${b.atrasadas} atrasadas</span>` : ''}</span></h3>${taskHtml}</div>` +

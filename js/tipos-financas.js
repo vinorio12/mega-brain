@@ -166,7 +166,7 @@ function registrarMovimento(r, id, rotulo, exemplos) {
       return { kind: id, text: i.texto, tags: c.tags || tagsOf(i.texto), ts: now.getTime(), day: dayKey(now), data };
     },
     // uma linha só pro montarContexto, do mês inteiro (entradas e gastos juntos): quem escreve é o gasto
-    ...(id === 'gasto' ? { resumo: (list, { now, todas, records }) => linhaContexto(todas || list, now, { cartoes: cartoesDe(records || [], { todos: true }), recorrentes: recorrentesDe(records || []) }) } : {}),
+    ...(id === 'gasto' ? { resumo: (list, { now, todas, records }) => linhaContexto(todas || list, now, { cartoes: cartoesDe(records || [], { todos: true }), recorrentes: recorrentesDe(records || []), records: records || [] }) } : {}),
   });
 }
 

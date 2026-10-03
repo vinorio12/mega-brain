@@ -384,7 +384,12 @@ export function hudFinancas(entries = [], now = new Date(), opts = {}) {
 //   "finanças out: entradas R$ 3.200,00 · gastos R$ 162,00 (3) · vs set +12% · saldo R$ 3.038,00 · top: alimentação R$ 75,00, mercado R$ 87,00"
 export function linhaContexto(entries = [], now = new Date(), opts = {}) {
   const h = hudFinancas(entries, now, opts);
-  if (h.vazio) return null;
+  if (h.vazio) {
+    // mês sem lançamento: ainda vale contar os saldos, se você já disse quanto tem
+    const sd = opts.records ? resumoSaldos(entries, opts.records, now) : {};
+    const s = [sd.conta != null ? `conta ${fmtValor(sd.conta)}` : '', sd.investido != null ? `investido ${fmtValor(sd.investido)}` : '', sd.devo ? `cartões deve ${fmtValor(sd.devo)}` : ''].filter(Boolean);
+    return s.length ? `finanças ${fmtMes(h.mes, now)}: saldos: ${s.join(' · ')}` : null;
+  }
   const n = resumoMes(entries, h.mes, opts).n.gastos;
   const top = h.top.map(([c, v]) => `${c} ${fmtValor(v)}`).join(', ');
   // a próxima fatura de cada cartão (Fase 3b): "fatura nubank R$ 420,00 vence 10.11"
@@ -393,8 +398,12 @@ export function linhaContexto(entries = [], now = new Date(), opts = {}) {
   const recs = (opts.recorrentes || []).filter(r => r.status === 'ativa' && r.tipo === 'gasto' && r.valor);
   const lem = lembretesVariaveis(opts.recorrentes || [], entries, now).map(l => l.rec.nome);
   const rec = (recs.length ? ` · recorrentes ${fmtValor(recs.reduce((s, r) => s + r.valor, 0))}/mês (${recs.length})` : '') + (lem.length ? ` · lembrete: ${lem.join(', ')}` : '');
+  // os três saldos (Fase 3d), só os que existem
+  const sd = opts.records ? resumoSaldos(entries, opts.records, now) : {};
+  const saldos = [sd.conta != null ? `conta ${fmtValor(sd.conta)}` : '', sd.investido != null ? `investido ${fmtValor(sd.investido)}` : '', sd.devo ? `cartões deve ${fmtValor(sd.devo)}` : ''].filter(Boolean);
+  const rec2 = rec + (saldos.length ? ` · saldos: ${saldos.join(' · ')}` : '');
   return `finanças ${fmtMes(h.mes, now)}: entradas ${fmtValor(h.entradas)} · gastos ${fmtValor(h.gastos)} (${n})` +
-    `${h.vs === null ? '' : ` · vs ${fmtMes(h.mesAnterior, now)} ${h.vs > 0 ? '+' : ''}${h.vs}%`} · saldo ${fmtValor(h.saldo)}${top ? ` · top: ${top}` : ''}${fat ? ` · ${fat}` : ''}${rec}`;
+    `${h.vs === null ? '' : ` · vs ${fmtMes(h.mesAnterior, now)} ${h.vs > 0 ? '+' : ''}${h.vs}%`} · saldo ${fmtValor(h.saldo)}${top ? ` · top: ${top}` : ''}${fat ? ` · ${fat}` : ''}${rec2}`;
 }
 
 /* ---------- cartões, fatura e parcelas (Fase 3b) ---------- */
@@ -718,4 +727,19 @@ export function lerRendimento(texto, extras = []) {
   // "a poupança rendeu 32": o lugar no começo, sem preposição
   const lugar = lugarInvestimento(t, extras) || (low.match(new RegExp(String.raw`^(?:a\s+|o\s+|minha\s+|meu\s+)?(${INVEST})(?![a-z])`)) ? lugarInvestimento('na ' + t.replace(/^(?:a|o|minha|meu)\s+/i, ''), extras) : null);
   return lugar ? { valor: v.centavos, lugar } : null;
+}
+
+// Os três saldos num objeto só (HUD, /overview, contexto): null = sem dado (a tela mostra NA)
+//   → { conta, investido, devo, livre }
+export function resumoSaldos(entries = [], records = [], now = new Date()) {
+  const conta = saldoConta(entries, records, now);
+  const inv = investimentosPorLugar(entries, records);
+  const cards = devoNoCartao(entries, records, now);
+  const livres = cards.filter(c => c.livre != null);
+  return {
+    conta: conta ? conta.valor : null,
+    investido: inv.length ? inv.reduce((s, i) => s + i.valor, 0) : null,
+    devo: cards.length ? cards.reduce((s, c) => s + c.devo, 0) : null,
+    livre: livres.length ? livres.reduce((s, c) => s + c.livre, 0) : null,
+  };
 }

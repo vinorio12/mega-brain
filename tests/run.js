@@ -17,7 +17,7 @@ import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
 import { lerMovimento } from '../js/tipos-financas.js';
-import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura, parcelasNoMes, proximasFaturas, recorrentesDe, desdeInicial, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, saldoConta, devoNoCartao, investimentosPorLugar, ancorasDe, chaveLugar, lerAjusteSaldo, lerRendimento, ehPagamentoFatura } from '../js/financas.js';
+import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura, parcelasNoMes, proximasFaturas, recorrentesDe, desdeInicial, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, saldoConta, devoNoCartao, investimentosPorLugar, ancorasDe, chaveLugar, lerAjusteSaldo, lerRendimento, ehPagamentoFatura, resumoSaldos } from '../js/financas.js';
 import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
@@ -1656,6 +1656,26 @@ describe('/saldo, /investimentos, limite e fatura paga na tela (etapa 3 · Fase 
     ok(/poupança/.test(plain(s)) && /R\$ 5\.232,00/.test(plain(s)) && /rendeu R\$ 32,00/.test(plain(s)), plain(s));
     await s.run('/saldo');
     ok(/investido/.test(plain(s)) && /cartões/.test(plain(s)), plain(s));
+  });
+});
+
+describe('os três saldos no HUD e no contexto (etapa 4 · Fase 3d)', () => {
+  const now = new Date(2026, 9, 15, 12);
+  const R = [
+    { id: 'c1', kind: 'cartao', text: 'nubank', ts: 1, data: { fechamento: 3, vencimento: 10, padrao: true, limite: 500000 } },
+    { id: 'a1', kind: 'saldo', text: 'conta', ts: 100, data: { onde: 'conta', valor: 250000, data: '2026-10-05' } },
+    { id: 'a2', kind: 'saldo', text: 'poupança', ts: 100, data: { onde: 'poupanca', valor: 500000, data: '2026-10-05' } },
+  ];
+  const E = [{ id: 't', kind: 'gasto', text: 'tênis', ts: 200, day: '2026-10-06', data: { valor: 30000, data: '2026-10-06', forma: 'credito', parcelas: 3 } }];
+  test('resumoSaldos: conta, investido, devo, livre · NA (null) sem dado', () => {
+    eq(resumoSaldos(E, R, now), { conta: 250000, investido: 500000, devo: 30000, livre: 470000 });
+    eq(resumoSaldos([], [], now), { conta: null, investido: null, devo: null, livre: null });
+  });
+  test('linhaContexto cita os saldos (até num mês sem lançamento)', () => {
+    const E2 = [...E, { id: 'pix', kind: 'gasto', text: 'pix', ts: 300, day: '2026-10-07', data: { valor: 4500, data: '2026-10-07', forma: 'pix' } }];
+    const l = linhaContexto(E2, now, { records: R, cartoes: cartoesDe(R, { todos: true }) });
+    ok(l.endsWith('· saldos: conta R$ 2.455,00 · investido R$ 5.000,00 · cartões deve R$ 300,00'), l);
+    eq(linhaContexto([], now, { records: R }), 'finanças out: saldos: conta R$ 2.500,00 · investido R$ 5.000,00');
   });
 });
 

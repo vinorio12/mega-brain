@@ -161,9 +161,29 @@ export function createCore(canvas, satEls = {}) {
       if (!s) { el.hidden = true; continue; }
       el.hidden = false;
       el.dataset.side = s[2];
-      el.style.left = s[0] + 'px';
-      el.style.top = s[1] + 'px';
+      const [x, y] = satPos(k);
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
     }
+  }
+
+  // Satélites flutuando em volta do núcleo: cada um balança alguns graus pra lá e pra cá
+  // em torno do centro e se aproxima/afasta um pouco, no seu próprio ritmo (sutil, pra dar pra ler).
+  const SAT_MOTION = Object.fromEntries(SATS.map((k, i) => [k, {
+    f1: 0.07 + i * 0.013, f2: 0.11 + i * 0.017,   // ritmos (ciclos por "tempo de satélite")
+    p1: i * 1.7, p2: i * 2.9,                      // fases diferentes: não andam juntos
+    swing: k === 'input' ? 0.09 : 0.045,           // giro máximo (rad); o INPUT fica mais perto, balança mais
+  }]));
+  let satT = 0;
+  function satPos(k) {
+    const s = G.sats?.[k];
+    if (!s) return null;
+    const m = SAT_MOTION[k];
+    const vx = s[0] - G.cx, vy = s[1] - G.cy;
+    const th = m.swing * Math.sin(satT * TAU * m.f1 + m.p1);
+    const sc = 1 + 0.035 * Math.sin(satT * TAU * m.f2 + m.p2);
+    const c = Math.cos(th), sn = Math.sin(th);
+    return [G.cx + (vx * c - vy * sn) * sc, G.cy + (vx * sn + vy * c) * sc];
   }
 
   /* ---------- desenho ---------- */
@@ -198,6 +218,7 @@ export function createCore(canvas, satEls = {}) {
     rot += dt * (0.05 + energy * 0.25) * stutter * lockedHold;
     rotIn += dt * (0.25 + energy * 2.2) * stutter * lockedHold;
     orb += dt * (0.12 + energy * 0.5) * stutter;
+    satT += dt * (0.6 + energy * 0.9) * stutter * lockedHold; // satélites flutuam mais rápido quando o núcleo trabalha
     t += dt;
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -378,7 +399,9 @@ export function createCore(canvas, satEls = {}) {
     if (G.sats && sCon > 0) {
       for (const k of SATS) {
         if (!shown[k]) continue;
-        const [sx, sy] = G.sats[k];
+        const [sx, sy] = satPos(k); // posição flutuando (o rótulo HTML vai junto)
+        const el = satEls[k];
+        if (el && !el.hidden) { el.style.left = sx + 'px'; el.style.top = sy + 'px'; }
         const ang = Math.atan2(sy - cy, sx - cx);
         const x0 = cx + Math.cos(ang) * R * 1.1, y0 = cy + Math.sin(ang) * R * 1.1;
         const len = sCon;

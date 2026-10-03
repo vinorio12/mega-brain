@@ -85,6 +85,15 @@ export const FRASES = [
   { frase: 'geladeira 2.400 em 12 vezes', esperado: { tipo: 'gasto', campos: { valor: 240000, forma: 'credito', parcelas: 12 } } },
   { frase: 'mercado 87 1x no crédito', esperado: { tipo: 'gasto', campos: { valor: 8700, forma: 'credito', parcelas: undefined } } },
   { frase: 'treinei 3x essa semana', esperado: { tipo: 'treino' } },
+  // recorrentes (Fase 3c): viram cadastro, não gasto avulso · sem valor = conta variável (só lembra)
+  { frase: 'netflix 55,90 todo mês dia 15', esperado: { tipo: 'recorrente', campos: { nome: 'netflix', tipo: 'gasto', valor: 5590, dia: 15, categoria: 'assinaturas' } } },
+  { frase: 'aluguel 1.200 todo dia 5 no pix', esperado: { tipo: 'recorrente', campos: { nome: 'aluguel', tipo: 'gasto', valor: 120000, dia: 5, categoria: 'moradia', forma: 'pix' } } },
+  { frase: 'salário 3.200 todo dia 5', esperado: { tipo: 'recorrente', campos: { nome: 'salário', tipo: 'entrada', valor: 320000, dia: 5, categoria: 'salário' } } },
+  { frase: 'luz todo mês dia 10', esperado: { tipo: 'recorrente', campos: { nome: 'luz', tipo: 'gasto', valor: undefined, dia: 10, categoria: 'moradia' } } },
+  { frase: 'pagar a conta de água todo mês dia 20', esperado: { tipo: 'recorrente', campos: { nome: 'água', valor: undefined, dia: 20 } } },
+  { frase: 'academia 120 por mês', esperado: { tipo: 'recorrente', campos: { nome: 'academia', valor: 12000, dia: 1 } } },
+  { frase: 'revisar orçamento todo mês', esperado: { tipo: 'nota', pergunta: true, palpite: 'tarefa' } },
+  { frase: 'paguei a mensalidade da faculdade 890', esperado: { tipo: 'gasto', campos: { valor: 89000, categoria: 'educação' } } },
   // pegadinhas
   { frase: 'abasteci 200 no posto', esperado: { tipo: 'nota', pergunta: true, palpite: 'gasto' } },
   { frase: 'estorno de 45 do ifood', entries: [{ id: 'g-ifood', kind: 'gasto', text: 'gastei 45 no ifood', ts: 1, day: '2026-09-28', data: { valor: 4500, descricao: 'ifood', lugar: 'ifood', data: '2026-09-28', categoria: 'alimentação' } }],

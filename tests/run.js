@@ -781,7 +781,8 @@ describe('provedor de regras (provedor-regras.js · Fase 2)', () => {
   const P = (t, extra) => provedorRegras.interpretar(t, ctx(extra));
   test('tipos base registrados e todo tipo de conteúdo aparece nas listas', () => {
     eq(REGISTRO.ids().slice(0, 4), ['nota', 'tarefa', 'link', 'trecho']);
-    ok(REGISTRO.ids().every(id => CONTENT_KINDS.includes(REGISTRO.get(id).kind)), 'kind fora do CONTENT_KINDS ficaria escondido');
+    // (tipo marcado registro: true grava um cadastro escondido de propósito, como o recorrente da Fase 3c)
+    ok(REGISTRO.ids().every(id => REGISTRO.get(id).registro || CONTENT_KINDS.includes(REGISTRO.get(id).kind)), 'kind fora do CONTENT_KINDS ficaria escondido');
   });
   test('resposta segue o contrato', () => {
     const r = P('ligar pro dentista amanhã');

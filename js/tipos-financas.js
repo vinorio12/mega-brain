@@ -20,8 +20,8 @@ import { tagsOf, dayKey } from './util.js';
 import { findValor } from './valores.js';
 import { findDate } from './dates.js';
 import { comecaComVerbo } from './tipos-base.js';
-import { lerFinanca, categoriaSemente, categoriasDe, cartoesDe, tipoDaPalavra, verbosAprendidos, acharEstornado, linhaContexto, FORMAS } from './financas.js';
-import { memoriaDe, decidirPorPistas, campoCategoria } from './memoria.js';
+import { lerFinanca, categoriaSemente, categoriasDe, cartoesDe, tipoDaPalavra, verbosAprendidos, acharEstornado, linhaContexto, lerRecorrencia, nomeConta, desdeInicial, FORMAS } from './financas.js';
+import { memoriaDe, decidirPorPistas, campoCategoria, palavrasDe } from './memoria.js';
 import { findPessoas } from './pessoas.js';
 import { FINANCAS } from './config.js';
 
@@ -39,6 +39,7 @@ export function lerMovimento(texto, now = new Date()) {
 // Decide se a frase é dinheiro e de que tipo. → { tipo, confianca, f (a leitura) } | null
 export function tipoFinanceiro(texto, ctx = {}) {
   const now = ctx.now || new Date();
+  if (lerRecorrencia(texto, now)) return null; // "netflix 55,90 todo mês" é recorrente (Fase 3c), não um gasto só
   const f = lerFinanca(texto, { now, pessoas: ctx.pessoas || [], aprendidos: verbosAprendidos(ctx.records || []), cartoes: cartoesDe(ctx.records || []) });
   if (!f) return null;
   // palavra conhecida: pela semente ou pela memória (o que você já ensinou: "xpto" → lazer)
@@ -166,6 +167,54 @@ function registrarMovimento(r, id, rotulo, exemplos) {
 export function registrarTiposFinancas(r = REGISTRO) {
   registrarMovimento(r, 'gasto', 'gasto', ['gastei 45 no ifood', 'mercado 87', 'fiz um pix de 50 pro João', 'almoço 32 no débito']);
   registrarMovimento(r, 'entrada', 'entrada', ['caiu o salário 3.200', 'o João me pagou 30', 'estorno de 45 do ifood']);
+  // Recorrente (Fase 3c): "netflix 55,90 todo mês dia 15", "salário 3.200 todo dia 5", "luz todo mês dia 10" (sem valor = variável).
+  // Grava o CADASTRO (registro escondido kind 'recorrente'); quem lança os gastos de cada mês é o lançador (pendentesRecorrentes).
+  r.registrar({
+    id: 'recorrente', rotulo: 'recorrente', registro: true, // cadastro escondido (kind fora do CONTENT_KINDS de propósito)
+    campos: {
+      nome: { tipo: 'texto', obrigatorio: true }, tipo: { tipo: 'enum', valores: ['gasto', 'entrada'] }, valor: { tipo: 'centavos' }, dia: { tipo: 'numero' },
+      categoria: { tipo: 'texto' }, forma: campoForma, cartao: { tipo: 'texto' }, tags: { tipo: 'lista' },
+    },
+    rastrear: ['valor', 'dia', 'categoria', 'forma', 'cartao', 'status'],
+    exemplos: ['netflix 55,90 todo mês dia 15', 'salário 3.200 todo dia 5', 'luz todo mês dia 10'],
+    reconhecer(texto, ctx) {
+      const now = ctx?.now || new Date();
+      const rc = lerRecorrencia(texto, now);
+      if (!rc || !rc.resto) return null;
+      const f = lerFinanca(rc.resto, { now, pessoas: ctx?.pessoas || [], cartoes: cartoesDe(ctx?.records || []) });
+      let tipo = 'gasto', nome;
+      if (f) {
+        const t = tipoFinanceiro(rc.resto, { ...ctx, now });
+        if (t?.tipo === 'entrada') tipo = 'entrada';
+        nome = f.descricao || nomeConta(rc.resto);
+      } else {
+        // sem valor = conta variável: só se o nome for de dinheiro (luz, água, aluguel…), senão "revisar orçamento todo mês" viraria conta
+        nome = nomeConta(rc.resto);
+        const w = palavrasDe(nome)[0];
+        const conhecido = w && (tipoDaPalavra(w) || ['conta', 'boleto', 'fatura'].includes(w));
+        if (!conhecido || comecaComVerbo(nome)) return null;
+        if (tipoDaPalavra(w) === 'entrada') tipo = 'entrada';
+      }
+      if (!nome) return null;
+      const cat = decidirCategoria(rc.resto, tipo, f || { lugar: null, estorno: false }, ctx || {});
+      return {
+        confianca: ctx?.forcar === 'recorrente' ? 1 : 0.9,
+        campos: { nome, tipo, valor: f?.valor || null, dia: rc.dia, categoria: cat.categoria, forma: f?.forma || null, cartao: f?.cartao || null, tags: tagsOf(texto) },
+        auto: [...(/dia\s+\d/i.test(texto) ? [] : ['dia']), ...(cat.categoria && cat.motivo.tipo !== 'estorno' ? ['categoria'] : [])],
+        motivos: { categoria: cat.motivo },
+      };
+    },
+    montar: (i, ctx) => {
+      const now = ctx?.now || new Date();
+      const c = i.campos;
+      return {
+        kind: 'recorrente', text: c.nome, tags: c.tags || [], ts: now.getTime(), day: dayKey(now),
+        data: { tipo: c.tipo || 'gasto', valor: c.valor || null, dia: c.dia || now.getDate(), categoria: c.categoria || null, forma: c.forma || null, cartao: c.cartao || null,
+          desde: desdeInicial(c.dia || now.getDate(), now), status: 'ativa', pulados: [] },
+      };
+    },
+  });
+
   r.registrar({
     id: 'transferencia', rotulo: 'transferência',
     campos: { valor: { tipo: 'centavos', obrigatorio: true }, conta: { tipo: 'texto' }, sentido: { tipo: 'enum', valores: ['para', 'de'] }, descricao: { tipo: 'texto' }, data: { tipo: 'data' }, tags: { tipo: 'lista' } },

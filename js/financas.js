@@ -481,6 +481,26 @@ export function proximaFatura(cartao, now = new Date()) {
 
 /* ---------- recorrentes (Fase 3c) ---------- */
 
+// "todo mês", "todos os meses", "todo dia 10", "por mês", "mensal", "mensalmente", "a cada mês"
+// ("mensalidade" e "assinatura" NÃO: "paguei a mensalidade 890" é um pagamento só)
+const RECORRENCIA = /(?<![a-z])(?:todos?\s+(?:os\s+)?mes(?:es)?|todo\s+dia\s+\d{1,2}|por\s+mes|mensal(?:mente)?|a\s+cada\s+mes)(?![a-z])/;
+// "netflix 55,90 todo mês dia 15" → { dia: 15, resto: 'netflix 55,90' } · sem recorrência → null
+// "pagar a luz todo mês dia 10" → { dia: 10, resto: 'luz' } (pagar/receber no começo saem: é a conta, não uma tarefa)
+export function lerRecorrencia(texto, now = new Date()) {
+  const t = String(texto ?? '').normalize('NFC').trim();
+  const low = strip(t);
+  if (!RECORRENCIA.test(low)) return null;
+  const dm = low.match(/(?<![a-z])(?:todo\s+)?dia\s+(\d{1,2})(?!\d)/);
+  const dia = dm ? Math.min(31, Math.max(1, +dm[1])) : now.getDate();
+  let resto = t;
+  for (const re of [/(?<![\p{L}])(?:todos?\s+(?:os\s+)?m[eê]s(?:es)?|todo\s+dia\s+\d{1,2}|por\s+m[eê]s|mensal(?:mente)?|a\s+cada\s+m[eê]s)(?![\p{L}])/iu,
+    /(?<![\p{L}])dia\s+\d{1,2}(?!\d)/iu]) resto = resto.replace(re, ' ');
+  resto = resto.replace(/^\s*(?:pagar|pago|paga|receber|recebo|recebe)\s+/iu, '').replace(/\s+/g, ' ').trim();
+  return { dia, resto };
+}
+// o nome de uma conta variável ("a conta de luz" → "luz"): sem artigos e sem "conta de"
+export const nomeConta = resto => String(resto).replace(/^(?:(?:a|o|as|os|uma?|minha|meu)\s+)+/i, '').replace(/^conta\s+(?:de|da|do)\s+/i, '').replace(/\s+(?:de|do|da|no|na)$/i, '').trim();
+
 // Registros escondidos: { kind: 'recorrente', text: 'netflix', data: { tipo, valor (null = variável), dia, categoria, forma, cartao,
 //   desde: 'AAAA-MM', status: 'ativa' | 'pausada' | 'cancelada', pulados: ['AAAA-MM'] } }
 // → [{ id, nome, tipo, valor, dia, categoria, forma, cartao, desde, status, pulados }] (sem as canceladas, a não ser com todas: true)

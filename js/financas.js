@@ -247,3 +247,12 @@ export function acharEstornado(texto, valor, entries = [], { now = new Date(), d
   const recente = (a, b) => (b.data?.data || b.day || '').localeCompare(a.data?.data || a.day || '') || (b.ts || 0) - (a.ts || 0);
   return cands.filter(e => e.data?.valor === valor).sort(recente)[0] || cands.sort(recente)[0];
 }
+
+// "abasteci 200 no posto" → 'abasteci': a primeira palavra parece verbo no passado (…ei, …i, …ou) e o app não conhece.
+// É o que o app oferece aprender depois do seu /sim. Nunca aprende sozinho.
+export function verboCandidato(texto) {
+  const w = palavras(texto)[0];
+  if (!w || w.length < 4 || !/(?:ei|i|ou)$/.test(w)) return null;
+  if (PALAVRAS_DE_DINHEIRO.includes(w) || tipoDaPalavra(w)) return null;
+  return w;
+}

@@ -975,6 +975,57 @@ describe('memória aprende categoria e forma (memoria.js · etapa 3 · Fase 3a)'
   test('palavras de dinheiro não viram pista (gastei, pix, reais)', () => eq(palavrasDe('gastei 30 reais no pix com o João no ifood'), ['joao', 'ifood']));
 });
 
+describe('captura de dinheiro na tela: f1, perguntas, /cat, /forma, verbo (etapa 4 · Fase 3a)', () => {
+  const T = { id: 'T0001', elapsed: () => 1 };
+  const fins = S => S.entries.filter(e => ['gasto', 'entrada', 'transferencia'].includes(e.kind));
+  const plain = s => s.term.text().replace(/<[^>]+>/g, '');
+  test('gasto sem pista: f1, pergunta categoria e forma; /cat e /forma respondem e o /desfazer volta', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('gastei 40 na xpto', T);
+    const txt = plain(s);
+    ok(/lançado f1/.test(txt) && /↳ entendi · gasto · R\$ 40,00 · outros\*/.test(txt), txt);
+    ok(/↳ categoria\? salvei em outros/.test(txt) && /↳ forma\? \/forma pix/.test(txt), txt);
+    await s.run('/cat lazer');
+    await s.run('/forma pix');
+    const [g] = fins(s.S);
+    eq([g.data.categoria, g.data.forma, g.data.auto?.campos], ['lazer', 'pix', ['data']]);
+    await s.run('/desfazer');
+    eq([fins(s.S)[0].data.forma, fins(s.S)[0].data.categoria], [undefined, 'lazer']);
+  });
+  test('/cat e /forma com número (f2), e erros com dica', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('gastei 45 no ifood', T);
+    await s.ctx.commands.capturar('transferi 200 pra poupança', T);
+    await s.run('/cat f1 mercado');
+    eq(fins(s.S).find(e => e.kind === 'gasto').data.categoria, 'mercado');
+    await throws(() => s.run('/cat f1 pets'), 'E_404');
+    await throws(() => s.run('/cat lazer'), 'E_TIPO'); // sem número = o último (a transferência)
+    await throws(() => s.run('/cat f2 lazer'), 'E_TIPO');
+    await throws(() => s.run('/forma cheque f1'), 'E_ARG');
+    await throws(() => s.run('/cat f9 lazer'), 'E_404');
+  });
+  test('"abasteci 200 no posto" → /sim vira gasto → /sim aprende o verbo → "abasteci 50" já é gasto', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('abasteci 200 no posto', T);
+    eq(s.S.entries.map(e => e.kind), ['nota']);
+    await s.run('/sim');
+    eq([fins(s.S).length, fins(s.S)[0].data.categoria], [1, 'transporte']);
+    ok(/aprender "abasteci" como gasto\?/.test(plain(s)), plain(s));
+    await s.run('/sim');
+    eq(s.S.records.filter(r => r.kind === 'memoria').map(r => r.data), [{ chave: 'verbo:abasteci', acao: 'fixar', campo: 'tipo', valor: 'gasto' }]);
+    await s.ctx.commands.capturar('abasteci 50', T);
+    eq(fins(s.S).map(e => e.data.valor), [20000, 5000]);
+  });
+  test('estorno mostra o gasto que devolve', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar('gastei 45 no ifood', T);
+    await s.ctx.commands.capturar('estorno de 45 do ifood', T);
+    const [g, en] = fins(s.S);
+    eq([en.kind, en.data.categoria, en.data.ref], ['entrada', 'reembolso', g.id]);
+    ok(/↳ devolve o gasto de hoje/.test(plain(s)), plain(s));
+  });
+});
+
 describe('palavras-chave por projeto (Fase 2)', () => {
   const seeds = (palavras = {}) => seedEntries([], 'local', new Date(2026, 9, 1))
     .map(e => (e.kind === 'projeto' && palavras[e.text] ? { ...e, data: { ...e.data, palavras: palavras[e.text] } } : e));

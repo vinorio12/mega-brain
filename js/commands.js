@@ -20,7 +20,8 @@ import {
 } from './tasks.js';
 import { eventsOf } from './historico.js';
 import { fmtValor } from './valores.js';
-import { FORMA_ROTULO } from './financas.js';
+import { verboCandidato } from './financas.js';
+import { criarFinancas, isFinanca } from './comandos-financas.js';
 import { REGISTRO } from './tipos.js';
 import { previa, interpretar } from './interpretar.js';
 import { registroAprendizado, resumoAprendizado, exportarFrases } from './aprendizado.js';
@@ -189,9 +190,13 @@ export function createCommands(ctx) {
   // a memória do momento (pessoas/palavras → projeto); recalcula só quando os dados mudam
   const mem = () => memoriaDe(S.entries, S.records || [], { reg: ctx.reg(), pessoas: pessoasDe(S.records || []) });
   // decisão sua sobre uma pista (/memoria, /palavras): registro que só cresce, o mais novo vale
-  const gravarMemoria = (chave, acao, projeto, rotulo) => ctx.store.add({
-    kind: 'memoria', text: String(rotulo || chave), tags: [], ts: Date.now(), day: dayKey(new Date()), data: { chave, acao, projeto: projeto || null },
+  // (campo projeto: o valor fica em data.projeto, como na 2.5 · outros campos: { campo: 'categoria:gasto', valor: 'alimentação' })
+  const gravarMemoria = (chave, acao, projeto, rotulo, outro = null) => ctx.store.add({
+    kind: 'memoria', text: String(rotulo || chave), tags: [], ts: Date.now(), day: dayKey(new Date()),
+    data: outro ? { chave, acao, campo: outro.campo, valor: outro.valor ?? null } : { chave, acao, projeto: projeto || null },
   });
+  // finanças (js/comandos-financas.js): números f1…, linha "↳ entendi" de dinheiro, perguntas, /cat, /forma
+  const fin = criarFinancas({ S, term, ctx, usage, mem });
   // palavras que você disse que não são pessoa (/nao): ficam no aprendizado
   const ignorados = () => (S.records || []).filter(e => e.kind === 'interpretacao' && e.data?.naoPessoa).map(e => e.data.naoPessoa);
 
@@ -226,8 +231,13 @@ export function createCommands(ctx) {
       n = nums().get(e.id) || '';
       const tagHtml = e.tags?.length ? ' · ' + e.tags.map(x => `<span class="c-act">#${esc(x)}</span>`).join(' ') : '';
       term[queued ? 'warn' : 'ok']('store', `${queued ? 'capturado · na fila, sobe quando a rede voltar' : 'capturado'} <span class="c-meta">${esc(n)}</span>${tagHtml} ${meta}`);
+    } else if (isFinanca(e)) {
+      // gasto, entrada, transferência: número f1, f2...
+      S.undo.push({ label: `${tipo.rotulo} lançado`, items: [], created: [e.id] });
+      n = fin.numero(e);
+      term[queued ? 'warn' : 'ok']('fin', `${esc(tipo.rotulo)} ${/a$/.test(tipo.rotulo) ? 'lançada' : 'lançado'}${queued ? ' na fila' : ''} <span class="c-meta">${n}</span> · ${hl(e.text)} ${meta}`);
     } else {
-      // gasto, entrada, treino...: só o dado bruto por enquanto
+      // treino...: só o dado bruto por enquanto
       S.undo.push({ label: `${tipo.rotulo} guardado`, items: [], created: [e.id] });
       term[queued ? 'warn' : 'ok']('store', `${esc(tipo.rotulo)} ${/a$/.test(tipo.rotulo) ? 'guardada' : 'guardado'}${queued ? ' na fila' : ''} · ${hl(e.text)} ${meta}`);
     }
@@ -243,6 +253,7 @@ export function createCommands(ctx) {
     const { e, n } = await salvar(r, t);
     S.ultima = { id: e.id, texto: text }; // o /tipo sem alvo corrige esta
     entendiLine(r, e, n);
+    if (isFinanca(e)) fin.perguntar(r, e, n);
     if (r.pergunta) aprender({ texto: text, palpite: r.palpite, confianca: r.confianca, origem: r.origem, era: 'nota' });
     // perguntas pendentes (/sim, /nao respondem a primeira) · escrever outra coisa troca a fila
     S.perguntas = [
@@ -258,9 +269,11 @@ export function createCommands(ctx) {
     const q = S.perguntas?.[0];
     if (!q || q.mostrada) return;
     q.mostrada = true;
+    const mais = S.perguntas.length > 1 ? ` <span class="dim">· depois tem mais ${S.perguntas.length - 1}</span>` : '';
     if (q.tipo === 'pessoa') {
-      const mais = S.perguntas.length > 1 ? ` <span class="dim">· depois tem mais ${S.perguntas.length - 1}</span>` : '';
       term.print(`<span class="c-int">↳ ${esc(q.nome)} é uma pessoa?</span> <span class="c-int">/sim</span> <span class="dim">cadastra e liga ·</span> <span class="c-int">/nao</span> <span class="dim">não pergunto mais</span>${mais}`, 'auto');
+    } else if (q.tipo === 'verbo') {
+      term.print(`<span class="c-int">↳ aprender "${esc(q.palavra)}" como ${esc(q.valor)}?</span> <span class="c-int">/sim</span> <span class="dim">da próxima vez já entendo ·</span> <span class="c-int">/nao</span>${mais}`, 'auto');
     }
   }
 
@@ -270,8 +283,20 @@ export function createCommands(ctx) {
     if (!q) return term.say('nada pra responder agora.');
     S.perguntas.shift();
     if (q.tipo === 'tipo') {
-      if (sim) { S.ultima = { id: q.id, texto: q.texto }; await get('tipo').run(q.palpite, null, t); }
-      else { aprender({ texto: q.texto, era: 'nota', corrigido: 'nota' }); term.ok('store', 'fica como nota · anotado no /aprendizado'); }
+      if (sim) {
+        S.ultima = { id: q.id, texto: q.texto };
+        await get('tipo').run(q.palpite, null, t);
+        // "abasteci 200 no posto" virou gasto: oferece aprender o verbo (só entra com outro /sim, nunca sozinho)
+        const w = ['gasto', 'entrada'].includes(q.palpite) && verboCandidato(q.texto);
+        if (w) S.perguntas.unshift({ tipo: 'verbo', palavra: w, valor: q.palpite });
+      } else { aprender({ texto: q.texto, era: 'nota', corrigido: 'nota' }); term.ok('store', 'fica como nota · anotado no /aprendizado'); }
+    } else if (q.tipo === 'verbo') {
+      if (sim) {
+        const e = await gravarMemoria('verbo:' + q.palavra, 'fixar', null, q.palavra, { campo: 'tipo', valor: q.valor });
+        S.undo.push({ label: 'verbo aprendido', items: [], created: [e.id] });
+        term.ok('fin', `aprendi · "<span class="c-act">${esc(q.palavra)}</span>" agora é ${esc(q.valor)} <span class="c-meta">· /memoria mostra · /desfazer volta</span>`);
+        ctx.ui.pulse('act');
+      } else term.ok('fin', `ok · "${esc(q.palavra)}" continua sem significado pra mim`);
     } else if (q.tipo === 'pessoa') {
       if (sim) {
         const p = await ctx.store.add({ kind: 'pessoa', text: q.nome, tags: [], ts: Date.now(), day: dayKey(new Date()), data: { apelidos: [], arquivada: false, juntada_em: null } });
@@ -329,17 +354,15 @@ export function createCommands(ctx) {
       return;
     }
     if (['nota', 'link', 'trecho'].includes(r.tipo)) return ambiguas(r);
+    if (isFinanca({ kind: r.tipo })) { fin.entendi(r, e, n); return ambiguas(r); }
     const c = r.campos, A = k => (r.auto.includes(k) ? '<span class="dim">*</span>' : '');
     // por que esse projeto: "(João: 8 de 9 na weg)" · "(planilha: fixado)"
     const mp = r.motivos?.projeto;
     const porque = mp?.tipo === 'pista' ? ` <span class="dim">(${esc(mp.pista)}: ${mp.estado === 'fixado' ? 'fixado' : `${mp.peso} de ${mp.total}`})</span>` : '';
     const partes = {
       tarefa: () => [c.projeto ? `<span class="c-act">#${esc(c.projeto)}</span>${A('projeto')}${porque}` : '<span class="c-warn">sem projeto</span>', `${c.prazo ? '>' + esc(fmtDue(c.prazo)) : '>sem prazo'}${A('prazo')}`, `!${esc(c.prioridade || 'média')}${A('prioridade')}`],
-      gasto: () => [esc(fmtValor(c.valor)), c.categoria ? `${esc(c.categoria)}${A('categoria')}` : '', c.forma ? esc(FORMA_ROTULO[c.forma] || c.forma) : '', c.descricao ? esc(c.descricao) : '', `${esc(fmtDia(c.data))}${A('data')}`],
-      transferencia: () => [esc(fmtValor(c.valor)), c.conta ? `${c.sentido === 'de' ? 'da' : 'pra'} ${esc(c.conta)}` : '', '<span class="dim">não mexe no saldo</span>', `${esc(fmtDia(c.data))}${A('data')}`],
       treino: () => [c.duracao_min ? c.duracao_min + 'min' : '', c.distancia_km ? c.distancia_km + 'km' : '', `${esc(fmtDia(c.data))}${A('data')}`],
     };
-    partes.entrada = partes.gasto;
     const campos = (partes[r.tipo]?.() || []).filter(Boolean);
     const corrigir = r.tipo === 'tarefa' ? `/editar ${n}` : '/tipo nota';
     term.print(`<span class="c-int">↳ entendi</span> · ${esc(REGISTRO.get(r.tipo)?.rotulo || r.tipo)} · ${campos.join(' · ')}` +
@@ -613,6 +636,7 @@ export function createCommands(ctx) {
         const groups = [
           ['tarefas e projetos', c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
           ['pessoas', c => ['pessoas', 'pessoa', 'sim', 'nao'].includes(c.name)],
+          ['finanças', c => fin.defs.includes(c)],
           ['intérprete', c => ['tipo', 'memoria', 'palavras', 'aprendizado', 'mudancas', 'contexto'].includes(c.name)],
           ['acervo', c => ['acervo', 'guardar', 'buscar'].includes(c.name)],
           ['memória', c => c.data],
@@ -1139,6 +1163,7 @@ export function createCommands(ctx) {
         S.perguntas = (S.perguntas || []).filter(q => !(q.tipo === 'tipo' && q.id === e.id)).map(q => (q.id === e.id ? { ...q, id: novo.id } : q));
         aprender({ texto, era: e.kind, corrigido: tipo });
         entendiLine({ ...r, pergunta: false }, novo, n);
+        if (isFinanca(novo)) fin.perguntar(r, novo, n);
       },
     },
     {
@@ -1522,6 +1547,8 @@ export function createCommands(ctx) {
       name: 'limpar', alias: ['clear', 'cls'], desc: 'limpa a tela sem apagar o log (ctrl+k)',
       run() { term.clear(); },
     },
+    // finanças: os comandos ficam em js/comandos-financas.js
+    ...fin.defs,
   ];
 
   const byName = new Map();

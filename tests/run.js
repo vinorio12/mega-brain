@@ -1432,6 +1432,58 @@ describe('recorrentes · funções puras (etapa 1 · Fase 3c)', () => {
   });
 });
 
+describe('lançador de recorrentes no app (etapa 3 · Fase 3c)', () => {
+  const T = { id: 'T0001', elapsed: () => 1 };
+  const plain = s => s.term.text().replace(/<[^>]+>/g, '');
+  const hoje = new Date();
+  test('recorrente com o dia de hoje: cadastra e já lança; /desfazer leva os dois', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar(`spotify 21,90 todo mês dia ${hoje.getDate()}`, T);
+    const rec = s.S.records.find(e => e.kind === 'recorrente');
+    const g = s.S.entries.find(e => e.kind === 'gasto');
+    eq([rec?.text, g?.text, g?.data.valor, g?.data.recorrente, g?.id], ['spotify', 'spotify (recorrente)', 2190, rec?.id, seedId(`local:recorrente:${rec?.id}:${dayKey(hoje).slice(0, 7)}`)]);
+    ok(/↳ entendi · recorrente · spotify/.test(plain(s)) && /lança hoje/.test(plain(s)) && /↳ lancei spotify R\$ 21,90/.test(plain(s)), plain(s));
+    await s.ctx.commands.lancarRecorrentes();
+    eq(s.S.entries.filter(e => e.kind === 'gasto').length, 1, 'rodar de novo não duplica');
+    await s.run('/desfazer');
+    eq([s.S.records.some(e => e.kind === 'recorrente'), s.S.entries.some(e => e.kind === 'gasto')], [false, false]);
+  });
+  test('recorrente criada depois do dia: começa no mês que vem, nada lançado agora', async () => {
+    if (hoje.getDate() === 1) return; // no dia 1 não existe "dia que já passou"
+    const s = setup([]);
+    await s.ctx.commands.capturar(`netflix 55,90 todo mês dia ${hoje.getDate() - 1}`, T);
+    eq(s.S.entries.filter(e => e.kind === 'gasto').length, 0);
+    ok(/começa em/.test(plain(s)), plain(s));
+  });
+  test('conta variável: só lembra, e o lembrete some quando você lança', async () => {
+    const s = setup([]);
+    await s.ctx.commands.capturar(`luz todo mês dia ${hoje.getDate()}`, T);
+    eq(s.S.entries.filter(e => e.kind === 'gasto').length, 0);
+    s.term.out.length = 0;
+    await s.ctx.commands.lancarRecorrentes();
+    ok(/↳ lembrete luz/.test(plain(s)), plain(s));
+    await s.ctx.commands.capturar('paguei 120 de luz', T);
+    eq(lembretesVariaveis(recorrentesDe(s.S.records), s.S.entries, new Date()), []);
+  });
+  test('dois aparelhos lançando o mesmo mês gravam UMA linha na nuvem', async () => {
+    const user = { id: 'test-rec-' + Date.now() };
+    const clean = () => Object.keys(localStorage).filter(k => k.includes(user.id)).forEach(k => localStorage.removeItem(k));
+    clean();
+    const sb = fakeSb();
+    const rec = { id: 'r1', kind: 'recorrente', text: 'netflix', ts: 1, day: 'x', data: { valor: 5590, dia: 1, desde: dayKey(hoje).slice(0, 7), status: 'ativa' } };
+    const lancar = async (st, vistos) => {
+      for (const p of pendentesRecorrentes(recorrentesDe([rec]), vistos, hoje, { owner: user.id, seedId })) await st.restore(lancamentoRecorrente(p, hoje));
+    };
+    const celular = createCloudStore(sb, user);
+    await celular.connect();
+    await lancar(celular, []);            // o celular lança
+    await lancar(celular, []);            // e o PC, ainda sem ter lido a nuvem, lança "de novo" o mesmo mês
+    eq([...sb.rows.values()].filter(r => r.kind === 'gasto').length, 1);
+    celular.forget();
+    clean();
+  });
+});
+
 describe('palavras-chave por projeto (Fase 2)', () => {
   const seeds = (palavras = {}) => seedEntries([], 'local', new Date(2026, 9, 1))
     .map(e => (e.kind === 'projeto' && palavras[e.text] ? { ...e, data: { ...e.data, palavras: palavras[e.text] } } : e));

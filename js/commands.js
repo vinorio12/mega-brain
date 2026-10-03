@@ -231,6 +231,10 @@ export function createCommands(ctx) {
       n = nums().get(e.id) || '';
       const tagHtml = e.tags?.length ? ' · ' + e.tags.map(x => `<span class="c-act">#${esc(x)}</span>`).join(' ') : '';
       term[queued ? 'warn' : 'ok']('store', `${queued ? 'capturado · na fila, sobe quando a rede voltar' : 'capturado'} <span class="c-meta">${esc(n)}</span>${tagHtml} ${meta}`);
+    } else if (e.kind === 'recorrente') {
+      // o cadastro (Fase 3c): os gastos de cada mês quem lança é o lançador
+      S.undo.push({ label: 'recorrente cadastrada', items: [], created: [e.id] });
+      term[queued ? 'warn' : 'ok']('fin', `recorrente cadastrada${queued ? ' na fila' : ''} · ${hl(e.text)} ${meta}`);
     } else if (isFinanca(e)) {
       // gasto, entrada, transferência: número f1, f2...
       S.undo.push({ label: `${tipo.rotulo} lançado`, items: [], created: [e.id] });
@@ -254,6 +258,11 @@ export function createCommands(ctx) {
     S.ultima = { id: e.id, texto: text }; // o /tipo sem alvo corrige esta
     entendiLine(r, e, n);
     if (isFinanca(e)) fin.perguntar(r, e, n);
+    // recorrente nova com o dia de hoje: já lança (e o /desfazer do cadastro leva o lançamento junto)
+    if (e.kind === 'recorrente') {
+      const ids = await fin.lancarRecorrentes({ lembretes: false });
+      if (ids.length && S.undo.at(-1)?.created?.includes(e.id)) S.undo.at(-1).created.push(...ids);
+    }
     if (r.pergunta) aprender({ texto: text, palpite: r.palpite, confianca: r.confianca, origem: r.origem, era: 'nota' });
     // perguntas pendentes (/sim, /nao respondem a primeira) · escrever outra coisa troca a fila
     S.perguntas = [
@@ -320,7 +329,7 @@ export function createCommands(ctx) {
   }
   // rótulo do processo que aparece enquanto grava
   const rotuloCaptura = text => (/^-\s+\S/.test(text) ? 'nova tarefa'
-    : { link: 'guardar link', trecho: 'guardar texto', tarefa: 'nova tarefa', gasto: 'novo gasto', entrada: 'nova entrada', transferencia: 'transferência', treino: 'novo treino' }[previa(text, ictx())?.tipo] || 'captura');
+    : { link: 'guardar link', trecho: 'guardar texto', tarefa: 'nova tarefa', gasto: 'novo gasto', entrada: 'nova entrada', transferencia: 'transferência', recorrente: 'nova recorrente', treino: 'novo treino' }[previa(text, ictx())?.tipo] || 'captura');
 
   // cartão de uma pessoa: nome, apelidos e o que está ligado a ela
   function mostrarPessoa(r) {
@@ -355,6 +364,7 @@ export function createCommands(ctx) {
     }
     if (['nota', 'link', 'trecho'].includes(r.tipo)) return ambiguas(r);
     if (isFinanca({ kind: r.tipo })) { fin.entendi(r, e, n); return ambiguas(r); }
+    if (r.tipo === 'recorrente') return fin.entendiRecorrente(r, e);
     const c = r.campos, A = k => (r.auto.includes(k) ? '<span class="dim">*</span>' : '');
     // por que esse projeto: "(João: 8 de 9 na weg)" · "(planilha: fixado)"
     const mp = r.motivos?.projeto;
@@ -1616,6 +1626,8 @@ export function createCommands(ctx) {
     capturar,
     rotuloCaptura,
     salvar,
+    // recorrentes (Fase 3c): o app.js chama depois da leitura completa e na virada do dia
+    lancarRecorrentes: o => fin.lancarRecorrentes(o),
     addLink,
     addSnippet,
     // lista leve dos comandos (nome, atalhos, uso, descrição) pro painel de contexto

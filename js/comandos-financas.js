@@ -12,7 +12,7 @@ import { fmtDia, findDate } from './dates.js';
 import { parseMonth } from './views.js';
 import { seedId } from './tasks.js';
 import { decidirCategoria } from './tipos-financas.js';
-import { cartoesDe, cartaoPadrao, cartaoDoGasto, vencimentoDa, proximaFatura, parcelasDe, parcelasNoMes, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
+import { recorrentesDe, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, dataNoMes, cartoesDe, cartaoPadrao, cartaoDoGasto, vencimentoDa, proximaFatura, parcelasDe, parcelasNoMes, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
 
 export const KINDS_FINANCAS = ['gasto', 'entrada', 'transferencia'];
 export const isFinanca = e => KINDS_FINANCAS.includes(e?.kind);
@@ -367,6 +367,56 @@ export function criarFinancas(h) {
     term.print('<span class="dim">/categoria nova pets [entrada] · renomear mercado = supermercado · arquivar pets</span>');
   }
 
+  /* ---------- recorrentes (Fase 3c) ---------- */
+
+  // Lança o que falta (id fixo por recorrente + mês: celular e PC gravam a MESMA linha) e mostra os lembretes das variáveis.
+  // Roda depois da leitura completa (boot, login, /sync), na virada do dia e logo depois de cadastrar uma.
+  // Devolve os ids lançados (o /desfazer do cadastro leva junto).
+  let lembreteDia = null;
+  async function lancarRecorrentes({ lembretes = true } = {}) {
+    const now = new Date();
+    const recs = recorrentesDe(S.records || []);
+    if (!recs.length) return [];
+    const pend = pendentesRecorrentes(recs, S.entries, now, { owner: S.user?.id || 'local', seedId });
+    const ids = [];
+    for (const p of pend) { await ctx.store.restore(lancamentoRecorrente(p, now), { origem: 'regra' }); ids.push(p.id); }
+    if (pend.length) {
+      // agrupa por recorrente: "aluguel 3× (ago–out)" quando o app ficou meses fechado
+      const por = new Map();
+      for (const p of pend) por.set(p.rec.id, [...(por.get(p.rec.id) || []), p]);
+      const partes = [...por.values()].map(ps => {
+        const r = ps[0].rec;
+        const quando = ps.length > 1 ? `${ps.length}× (${fmtMes(ps[0].mes, now)}–${fmtMes(ps.at(-1).mes, now)})` : `(${ddmmDe(ps[0].data)})`;
+        return `<span class="c-act">${esc(r.nome)}</span> ${esc(fmtValor(r.valor))} <span class="dim">${esc(quando)}</span>`;
+      });
+      term.print(`<span class="c-int">↳ lancei</span> ${partes.join(' · ')} <span class="dim">· recorrentes · /recorrentes · /gastos</span>`, 'auto');
+      ctx.ui.pulse('act');
+    }
+    // lembretes das contas variáveis: uma vez por dia
+    const hoje = dayKey(now);
+    const lem = lembretesVariaveis(recs, S.entries, now);
+    if (lembretes && lem.length && lembreteDia !== hoje) {
+      lembreteDia = hoje;
+      term.print(`<span class="c-warn">↳ lembrete</span> ${lem.map(l => `${esc(l.rec.nome)} <span class="dim">(variável, vence ${esc(fmtDia(l.vence, now))})</span>`).join(' · ')} <span class="dim">· escreva "paguei 120 de ${esc(lem[0].rec.nome)}"</span>`, 'auto');
+    }
+    return ids;
+  }
+
+  // "↳ entendi · recorrente · netflix · R$ 55,90 · todo dia 15 · assinaturas* · crédito · começa em out"
+  function entendiRecorrente(r, e) {
+    const c = r.campos, A = k => (r.auto.includes(k) ? '<span class="dim">*</span>' : '');
+    const now = new Date(), desde = e.data?.desde;
+    const comeca = desde === dayKey(now).slice(0, 7)
+      ? (dataNoMes(desde, c.dia) === dayKey(now) ? 'lança hoje' : `começa dia ${c.dia}`)
+      : `começa em ${fmtMes(desde, now)} <span class="dim">(dia ${c.dia} já passou este mês: se ainda não lançou, escreva normal)</span>`;
+    const partes = [
+      `<span class="c-act">${esc(c.nome)}</span>`, c.tipo === 'entrada' ? 'entrada' : '',
+      c.valor ? esc(fmtValor(c.valor)) : '<span class="c-warn">variável</span> <span class="dim">(eu lembro, você lança o valor)</span>',
+      `todo dia ${c.dia}${A('dia')}`, c.categoria ? `${esc(c.categoria)}${A('categoria')}` : '', c.forma ? esc(formaTxt(c.forma)) : '', comeca,
+    ];
+    term.print(`<span class="c-int">↳ entendi</span> · recorrente · ${partes.filter(Boolean).join(' · ')} <span class="dim">· /desfazer · /recorrentes</span>`, 'auto');
+  }
+
   /* ---------- cartões (Fase 3b) ---------- */
 
   const regsCartao = () => (S.records || []).filter(e => e.kind === 'cartao' && !e.data?.arquivado);
@@ -582,5 +632,5 @@ export function criarFinancas(h) {
     },
   ];
 
-  return { defs, entendi, perguntar, numero, pool, alvo, editar, mostrarMes };
+  return { defs, entendi, perguntar, numero, pool, alvo, editar, mostrarMes, lancarRecorrentes, entendiRecorrente };
 }

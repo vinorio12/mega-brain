@@ -1,6 +1,6 @@
 // Ponto de partida: liga as peças, faz o boot e cuida do login.
 
-import { esc, sleep, uid, CmdError, VERSION } from './util.js';
+import { esc, sleep, uid, dayKey, CmdError, VERSION } from './util.js';
 import { createLocalStore, LOCAL_KEY } from './store.js';
 import { createCloud, createCloudStore } from './cloud.js';
 import { SUPABASE_URL, SUPABASE_KEY, OPERATORS } from './config.js';
@@ -141,11 +141,23 @@ function attachStore(store) {
 async function ensureSeed() {
   const owner = S.user?.id || 'local';
   const missing = [...seedEntries(S.records, owner), ...seedCategorias(S.records, owner, new Date(), seedId)];
-  if (!missing.length) return;
-  for (const e of missing) await ctx.store.restore(e);
-  const cats = missing.filter(e => e.kind === 'categoria').length;
-  term.ok('store', `registros iniciais · ${missing.filter(e => e.kind === 'projeto').map(e => '#' + e.text).join(' ')} ${missing.filter(e => e.kind === 'status').map(e => '@' + esc(e.text)).join(' ')}${cats ? ` · ${cats} categorias de dinheiro` : ''}`.replace(/\s+/g, ' ').trim());
+  if (missing.length) {
+    for (const e of missing) await ctx.store.restore(e);
+    const cats = missing.filter(e => e.kind === 'categoria').length;
+    term.ok('store', `registros iniciais · ${missing.filter(e => e.kind === 'projeto').map(e => '#' + e.text).join(' ')} ${missing.filter(e => e.kind === 'status').map(e => '@' + esc(e.text)).join(' ')}${cats ? ` · ${cats} categorias de dinheiro` : ''}`.replace(/\s+/g, ' ').trim());
+  }
+  // recorrentes (Fase 3c): com a memória completa, lança o que falta (id fixo: nunca duplica entre aparelhos)
+  try { await ctx.commands.lancarRecorrentes(); } catch (e) { console.warn('recorrentes', e); }
 }
+
+// virou o dia com o app aberto: o lançador roda de novo (netflix do dia 15 aparece no dia 15)
+let diaAtual = dayKey(new Date());
+setInterval(() => {
+  const d = dayKey(new Date());
+  if (d === diaAtual || !ctx.store || S.locked) return;
+  diaAtual = d;
+  ctx.commands.lancarRecorrentes().catch(e => console.warn('recorrentes', e));
+}, 60000);
 
 async function openLocal() {
   const store = createLocalStore();

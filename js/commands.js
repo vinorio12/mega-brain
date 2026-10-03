@@ -30,7 +30,7 @@ import { memoriaDe, chavePalavra } from './memoria.js';
 export const PHASES = [
   ['0', 'esqueleto · terminal, hud, inbox', 'ok'],
   ['0.5', 'app próprio · pwa, nuvem, login', 'ok'],
-  ['1', 'tarefas e projetos · hoje, tcc, weg, pessoal', 'wip'],
+  ['1', 'tarefas e projetos · hoje, tcc, weg, pessoal', 'ok'],
   ['2', 'intérprete · escreva do seu jeito (regras; ia encaixável, desligada) · histórico · contexto', 'ok'],
   ['2.5', 'pessoas e memória · nomes na frase, projeto aprendido pelo uso', 'ok'],
   ['3', 'finanças · gastos, entradas, saldo do mês', ''],

@@ -98,7 +98,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - [x] tempo real confirmado (RT on) · prompt visível com teclado no celular confirmado
   - [x] publicado no GitHub Pages + Site URL no Supabase · instalado no celular
   - [x] PWA (manifest, ícones, service worker, /instalar)
-- [ ] 1. Tarefas e projetos: tabs Hoje, TCC, WEG, Pessoal, prazos, concluir
+- [x] 1. Tarefas e projetos: tabs Hoje, TCC, WEG, Pessoal, prazos, concluir · completada pela 1b (aprovada 01/10/2026)
   - Decisões do Vini: qualquer #tag é projeto · criar com `/t` e com `- ` · abas como pastas (`/ir tcc`, prompt `~/tcc`) · concluída fica riscada até o fim do dia + histórico em `/feitas`
   - [x] `js/tasks.js` (funções puras) · tarefa = entrada `kind: 'tarefa'` com `data: { prazo, feito }`
   - [x] comandos: /t, "- ", /tarefas [proj], /feito, /reabrir, /adiar, /feitas [proj] [dias], /projetos, /ir (alt+1..4), /apagar t1, /desfazer de qualquer mudança

@@ -17,7 +17,7 @@ import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
 import { lerMovimento } from '../js/tipos-financas.js';
-import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias } from '../js/financas.js';
+import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto } from '../js/financas.js';
 import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
@@ -1153,6 +1153,23 @@ describe('categorias por comando e /categorizar (etapa 6 · Fase 3a)', () => {
   });
 });
 
+describe('HUD e contexto de finanças (etapa 7 · Fase 3a)', () => {
+  const now = new Date(2026, 9, 15, 12);
+  const L = (kind, valor, data, categoria) => ({ id: kind + valor, kind, text: 'x', ts: 1, day: data, data: { valor, data, categoria } });
+  const E = [L('gasto', 4500, '2026-10-02', 'alimentação'), L('gasto', 8700, '2026-10-03', 'mercado'), L('gasto', 3000, '2026-10-04', 'alimentação'),
+    L('gasto', 1000, '2026-10-05', 'lazer'), L('gasto', 500, '2026-10-06', 'saúde'), L('entrada', 320000, '2026-10-05', 'salário'), L('gasto', 10000, '2026-09-10', 'lazer')];
+  test('hudFinancas: saldo, gastos, vs mês passado e top 3', () => {
+    const h = hudFinancas(E, now);
+    eq([h.mes, h.saldo, h.gastos, h.vs, h.top, h.vazio], ['2026-10', 302300, 17700, 77, [['mercado', 8700], ['alimentação', 7500], ['lazer', 1000]], false]);
+    eq([hudFinancas([], now).vazio, hudFinancas([], now).vs, hudFinancas([], now).top], [true, null, []]);
+  });
+  test('linhaContexto: uma linha do mês, sem lançamentos individuais', () => {
+    eq(linhaContexto(E, now), 'finanças out: entradas R$ 3.200,00 · gastos R$ 177,00 (5) · vs set +77% · saldo R$ 3.023,00 · top: mercado R$ 87,00, alimentação R$ 75,00, lazer R$ 10,00');
+    eq(linhaContexto([], now), null);
+    ok(montarContexto(E, [], { now }).includes('finanças out:'), 'entra no montarContexto');
+  });
+});
+
 describe('palavras-chave por projeto (Fase 2)', () => {
   const seeds = (palavras = {}) => seedEntries([], 'local', new Date(2026, 9, 1))
     .map(e => (e.kind === 'projeto' && palavras[e.text] ? { ...e, data: { ...e.data, palavras: palavras[e.text] } } : e));
@@ -1678,7 +1695,7 @@ describe('montarContexto (contexto.js · pra Fase 6)', () => {
     '#pessoal: 2 abertas',
     '  travou: arrumar quarto (parada 18d)',
     '  próximas: dentista >12.10',
-    'gastos 7d: R$ 30,00 (1)',
+    'finanças out: entradas R$ 0,00 · gastos R$ 30,00 (1) · saldo -R$ 30,00 · top: sem categoria R$ 30,00',
     'treinos 7d: 1 · 1h',
   ].join('\n')));
   test('passou do limite: corta o menos importante, nunca o cabeçalho', () => {

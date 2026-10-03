@@ -8,6 +8,7 @@ import { PHASES } from './commands.js';
 import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary, isNoteKind } from './tasks.js';
 import { fmtDue, fmtDia } from './dates.js';
 import { fmtValor } from './valores.js';
+import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes } from './financas.js';
 import { shortUrl, isAcervo, isLink, safeUrl } from './acervo.js';
 import { deriveState, describeState, readIntent, LISTEN_MS, FAULT_MS } from './state.js';
 import { pessoasDe } from './pessoas.js';
@@ -310,13 +311,18 @@ export function createUI(ctx) {
       html = `<dl class="ctx-intent"><dt>texto</dt><dd>${esc(intent.text)}</dd><dt>tags</dt><dd class="c-act">${intent.tags.length ? intent.tags.map(t => '#' + esc(t)).join(' ') : '<span class="dim">—</span>'}</dd></dl>`;
       short = '→ texto guardado no acervo';
     } else if (intent.type === 'registro') {
-      // gasto, entrada, treino: só o dado bruto por enquanto
+      // gasto, entrada, transferência (Fase 3a) · treino: só o dado bruto por enquanto
       const c = intent.campos, A = k => (intent.auto.includes(k) ? ' <span class="auto-tag">auto</span>' : '');
-      title = 'novo ' + intent.tipo;
+      const dinheiro = ['gasto', 'entrada'].includes(intent.tipo);
+      title = { transferencia: 'nova transferência', entrada: 'nova entrada' }[intent.tipo] || 'novo ' + intent.tipo;
       sub = 'enter guarda';
       const rows = [
         c.valor !== undefined ? ['valor', `<span class="c-act">${esc(fmtValor(c.valor))}</span>`] : null,
-        c.descricao ? ['descrição', esc(c.descricao)] : null,
+        dinheiro ? ['categoria', c.categoria ? esc(c.categoria) + A('categoria') : '<span class="c-warn">vou perguntar</span>'] : null,
+        dinheiro && intent.tipo === 'gasto' ? ['forma', c.forma ? esc(FORMA_ROTULO[c.forma] || c.forma) + A('forma') : '<span class="c-warn">vou perguntar</span>'] : null,
+        c.lugar ? ['lugar', esc(c.lugar)] : null,
+        intent.tipo === 'transferencia' ? ['conta', `${c.sentido === 'de' ? 'da' : 'pra'} ${esc(c.conta || '?')} <span class="dim">· não mexe no saldo</span>`] : null,
+        c.descricao && !dinheiro ? ['descrição', esc(c.descricao)] : null,
         c.duracao_min ? ['duração', c.duracao_min + ' min'] : null,
         c.distancia_km ? ['distância', c.distancia_km + ' km'] : null,
         c.data ? ['data', esc(fmtDia(c.data, now)) + A('data')] : null,
@@ -363,6 +369,17 @@ export function createUI(ctx) {
       ['rede', navigator.onLine ? `online${S.lastLatency != null ? ' · ' + S.lastLatency + 'ms' : ''}` : '<span class="c-warn">offline</span>'],
       ['memória', `${esc(mem()[0])} · ${E.length}${st?.lastSync ? ' · ' + hhmm(new Date(st.lastSync)) : ''}`],
       ['hoje', `${E.filter(e => e.day === dayKey(now)).length} capturas`],
+    ].map(([k, v]) => `<li><span>${k}</span><b>${v}</b></li>`).join('');
+
+    // finanças do mês: poucas linhas, só dado real (sem lançamento → NA, mas o campo fica)
+    const fin = hudFinancas(E, now);
+    $('x-fin-sub').textContent = fmtMes(fin.mes, now);
+    const na = '<span class="dim">NA</span>';
+    $('x-fin').innerHTML = [
+      ['saldo', fin.vazio ? na : `<span class="${fin.saldo < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(fin.saldo))}</span>`],
+      ['gastos', fin.vazio ? na : esc(fmtValor(fin.gastos))],
+      [`vs ${fmtMes(fin.mesAnterior, now)}`, fin.vs === null ? na : `<span class="${fin.vs > 0 ? 'c-warn' : 'c-act'}">${fin.vs > 0 ? '+' : ''}${fin.vs}%</span>`],
+      ['pesou', fin.top.length ? fin.top.map(([c]) => esc(c)).join(' · ') : na],
     ].map(([k, v]) => `<li><span>${k}</span><b>${v}</b></li>`).join('');
 
     // módulos
@@ -452,11 +469,22 @@ export function createUI(ctx) {
       `<div class="ov-proj"><div class="top"><span class="c-act">#${esc(p.proj)}</span><span>${p.abertas}${p.atrasadas ? ` <span class="c-warn">· ${p.atrasadas}!</span>` : ''}</span></div>` +
       `<div class="ov-bar"><i class="${p.atrasadas ? 'late' : ''}" style="width:${Math.round(p.abertas / max * 100)}%"></i></div></div>`).join('');
 
+    // finanças do mês: saldo e as categorias que mais pesaram, com barra
+    const fin = hudFinancas(E, now);
+    const rm = resumoMes(E, fin.mes);
+    const maxCat = Math.max(1, ...rm.porCategoria.map(([, v]) => v));
+    const finHtml = fin.vazio ? '<div class="ov-empty">nada lançado este mês</div>' :
+      `<div class="ov-row"><span class="n">saldo</span><span class="${fin.saldo < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(fin.saldo))}</span><span class="r dim"></span></div>` +
+      `<div class="ov-row"><span class="n">gastos</span><span>${esc(fmtValor(fin.gastos))}</span><span class="r dim">${fin.vs === null ? '' : `${fin.vs > 0 ? '+' : ''}${fin.vs}%`}</span></div>` +
+      rm.porCategoria.slice(0, 5).map(([c, v]) =>
+        `<div class="ov-proj"><div class="top"><span>${esc(c)}</span><span>${esc(fmtValor(v))}</span></div><div class="ov-bar"><i style="width:${Math.round(v / maxCat * 100)}%"></i></div></div>`).join('');
+
     $('ov-grid').innerHTML =
       `<div class="ov-b"><h3>tarefas <span>${b.abertas} abertas${b.atrasadas ? ` · <span class="c-warn">${b.atrasadas} atrasadas</span>` : ''}</span></h3>${taskHtml}</div>` +
       `<div class="ov-b"><h3>notas <span>${notes.length}</span></h3>${noteHtml}</div>` +
       `<div class="ov-b"><h3>acervo <span>${acv.length}</span></h3>${acvHtml}</div>` +
-      `<div class="ov-b"><h3>projetos <span>${projects.length}</span></h3>${projHtml}</div>`;
+      `<div class="ov-b"><h3>projetos <span>${projects.length}</span></h3>${projHtml}</div>` +
+      `<div class="ov-b"><h3>finanças <span>${esc(fmtMes(fin.mes, now))}</span></h3>${finHtml}</div>`;
   }
 
   const fmtMs = ms => ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(1) + 's';

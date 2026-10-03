@@ -241,7 +241,7 @@ ul, ol, dl, dd { margin: 0; padding: 0; list-style: none; }
 .ov-h b { color: var(--int); font-weight: 500; letter-spacing: .3em; margin-right: 1.5ch; }
 .ov-close { background: none; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--meta); font: inherit; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; padding: 1px 8px; cursor: pointer; }
 .ov-close:hover { color: var(--tx); border-color: var(--meta); }
-.ov-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.4fr 1fr 1fr .8fr; gap: 0 22px; padding-top: 10px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.ov-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.4fr 1fr 1fr .8fr .9fr; gap: 0 22px; padding-top: 10px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .ov-b { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .ov-b h3 { margin: 0 0 4px; display: flex; justify-content: space-between; font-size: 10px; font-weight: 400; letter-spacing: .2em; text-transform: uppercase; color: var(--meta); }
 .ov-b h3 span { letter-spacing: .04em; text-transform: none; }

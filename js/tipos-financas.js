@@ -17,10 +17,10 @@
 
 import { REGISTRO } from './tipos.js';
 import { tagsOf, dayKey } from './util.js';
-import { findValor, fmtValor } from './valores.js';
+import { findValor } from './valores.js';
 import { findDate } from './dates.js';
 import { comecaComVerbo } from './tipos-base.js';
-import { lerFinanca, categoriaSemente, categoriasDe, tipoDaPalavra, verbosAprendidos, acharEstornado, FORMAS } from './financas.js';
+import { lerFinanca, categoriaSemente, categoriasDe, tipoDaPalavra, verbosAprendidos, acharEstornado, linhaContexto, FORMAS } from './financas.js';
 import { memoriaDe, decidirPorPistas, campoCategoria } from './memoria.js';
 import { findPessoas } from './pessoas.js';
 import { FINANCAS } from './config.js';
@@ -139,13 +139,8 @@ function registrarMovimento(r, id, rotulo, exemplos) {
       if (i.auto?.length) data.auto = { campos: i.auto, fonte: i.origem };
       return { kind: id, text: i.texto, tags: c.tags || tagsOf(i.texto), ts: now.getTime(), day: dayKey(now), data };
     },
-    // uma linha pro montarContexto: "gastos 7d: R$ 230,00 (5)"
-    resumo(list, { desde, dias }) {
-      const de = dayKey(new Date(desde));
-      const no = list.filter(e => (e.data?.data || e.day) >= de);
-      if (!no.length) return null;
-      return `${rotulo}s ${dias}d: ${fmtValor(no.reduce((s, e) => s + (e.data?.valor || 0), 0))} (${no.length})`;
-    },
+    // uma linha só pro montarContexto, do mês inteiro (entradas e gastos juntos): quem escreve é o gasto
+    ...(id === 'gasto' ? { resumo: (list, { now, todas }) => linhaContexto(todas || list, now) } : {}),
   });
 }
 

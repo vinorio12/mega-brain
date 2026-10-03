@@ -10,7 +10,7 @@
 // Quem decide o TIPO e a CATEGORIA é o reconhecedor (js/tipos-financas.js), com a memória (js/memoria.js).
 
 import { dayKey } from './util.js';
-import { findValor } from './valores.js';
+import { findValor, fmtValor } from './valores.js';
 import { findDate } from './dates.js';
 import { findPessoas } from './pessoas.js';
 
@@ -321,4 +321,25 @@ export function seedCategorias(records = [], owner = 'local', now = new Date(), 
     }));
   }
   return out;
+}
+
+/* ---------- HUD e contexto ---------- */
+
+// O que o painel da direita mostra (poucas linhas): saldo, gastos, comparação com o mês passado e as 3 categorias que mais pesaram.
+// vazio = nada lançado no mês (o painel mostra NA, mas não some)
+export function hudFinancas(entries = [], now = new Date()) {
+  const mes = dayKey(now).slice(0, 7), ant = mesAnterior(mes);
+  const r = resumoMes(entries, mes), a = resumoMes(entries, ant);
+  return { mes, mesAnterior: ant, saldo: r.saldo, gastos: r.gastos, entradas: r.entradas, vs: variacao(r.gastos, a.gastos), top: r.porCategoria.slice(0, 3), vazio: !r.n.gastos && !r.n.entradas };
+}
+
+// Uma linha pro montarContexto (a IA lê na Fase 6): totais e categorias do mês, nunca cada lançamento.
+//   "finanças out: entradas R$ 3.200,00 · gastos R$ 162,00 (3) · vs set +12% · saldo R$ 3.038,00 · top: alimentação R$ 75,00, mercado R$ 87,00"
+export function linhaContexto(entries = [], now = new Date()) {
+  const h = hudFinancas(entries, now);
+  if (h.vazio) return null;
+  const n = resumoMes(entries, h.mes).n.gastos;
+  const top = h.top.map(([c, v]) => `${c} ${fmtValor(v)}`).join(', ');
+  return `finanças ${fmtMes(h.mes, now)}: entradas ${fmtValor(h.entradas)} · gastos ${fmtValor(h.gastos)} (${n})` +
+    `${h.vs === null ? '' : ` · vs ${fmtMes(h.mesAnterior, now)} ${h.vs > 0 ? '+' : ''}${h.vs}%`} · saldo ${fmtValor(h.saldo)}${top ? ` · top: ${top}` : ''}`;
 }

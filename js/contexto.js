@@ -87,7 +87,7 @@ export function montarContexto(entries = [], eventos = [], { reg = registry([]),
   // outros tipos (gastos, entradas, treinos...) se resumem sozinhos
   for (const tipo of registro.lista()) {
     if (typeof tipo.resumo !== 'function') continue;
-    const linha = tipo.resumo(entries.filter(e => e.kind === tipo.kind), { now, dias, desde });
+    const linha = tipo.resumo(entries.filter(e => e.kind === tipo.kind), { now, dias, desde, todas: entries });
     if (linha) add(2, linha);
   }
 

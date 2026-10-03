@@ -1,6 +1,6 @@
 # Fase 3d · Finanças: os três saldos (conta, investimentos, cartões)
 
-> Status: **aprovado pelo Vini em 03/10/2026** · etapa 0 feita.
+> Status: **aprovado pelo Vini em 03/10/2026** · **etapas 1 a 5 feitas (v0.14.0)**, esperando o Vini testar e aprovar.
 > Ritual de cada etapa: explico antes, função pura + teste, `/tests/` verde, navegador (`/?local`, PC e 375px), `sw.js`, commit em português, `CLAUDE.md`.
 
 ## Decisões do Vini (03/10)

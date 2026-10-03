@@ -5,7 +5,7 @@ Tudo entra escrevendo, do seu jeito: notas, tarefas, gastos, treinos, links e te
 Instalável no celular e no PC (PWA), com dados na nuvem e acesso só do dono.
 
 ```
-MB CORE v0.13.0                                 ■ READY  ⇅ ON  ◫ NUVEM  ⋮ 18° 94%
+MB CORE v0.14.0                                 ■ READY  ⇅ ON  ◫ NUVEM  ⋮ 18° 94%
 › ligar pro dentista amanhã
 18:03 OK  task   tarefa t4 · ligar pro dentista · T0007 · 84ms
           ↳ entendi · tarefa · #pessoal* · >amanhã · !média* · * auto · regra 80% · /desfazer ou /editar t4
@@ -27,7 +27,7 @@ MB CORE v0.13.0                                 ■ READY  ⇅ ON  ◫ NUVEM  �
 | `/sim` · `/nao` | responde a última pergunta do app ("Carla é uma pessoa?", "era tarefa?") |
 | `/pessoas` · `/pessoa João` · `/pessoa juntar Jão com João` | quem está cadastrado, tudo de uma pessoa, editar e juntar cadastros |
 | `/memoria` · `/memoria planilha = weg` · `/memoria ifood = alimentação` | o que o app aprendeu (pessoa/palavra → projeto, categoria, forma) e como corrigir |
-| `/mes` · `/gastos alimentação` · `/fatura nubank` · `/recorrentes` · `/cat f3 lazer` · `/forma pix` | o mês em dinheiro, a lista numerada, a fatura do cartão, as contas fixas e as correções |
+| `/saldo` · `/mes` · `/gastos alimentação` · `/fatura nubank` · `/recorrentes` · `/cat f3 lazer` · `/forma pix` | o mês em dinheiro, a lista numerada, a fatura do cartão, as contas fixas e as correções |
 | `/palavras tcc +orientador` | palavras que puxam a tarefa pro projeto (atalho do `/memoria`) |
 | `/inicio` · `/ver lista \| status \| kanban \| calendario` | o essencial e as visões das tarefas |
 | `/editar t2 #weg !alta` · `/mover t3 fazendo` · `/feito t1-t3` | mexe nas tarefas |
@@ -79,6 +79,12 @@ lugar e pessoa, e mostra na linha "↳ entendi" com um número (f1, f2...).
   `/editar f3 45,90 débito ontem` · `/editar f3 3x` · `/editar f3 inter` · `/categorias` · `/categoria nova|renomear|arquivar` ·
   `/categorizar` (dá categoria aos lançamentos antigos) · `/memoria ifood = alimentação` · `/memoria ifood = nubank`.
 
+- **Os três saldos** (o que você tem de verdade, no painel da direita e no `/saldo`): diga quanto tem uma vez
+  (`/saldo 2.500` ou `tenho 2.500 na conta`, `tenho 5.000 na poupança`) e o app segue somando o que você lança depois.
+  **Conta**: entradas − gastos à vista − o que guarda + o que resgata − faturas pagas (sozinhas no vencimento, ou
+  antes com `paguei a fatura do nubank`, que não vira gasto). **Investimentos por lugar**: guardei, resgatei e `rendeu 32 na poupança`
+  (`/investimentos`). **Cartões**: quanto ainda deve (com as parcelas futuras) e o limite livre (`/cartao nubank limite 5.000`).
+  Corrigir o saldo mostra a diferença do que o app calculava (pra achar o que não foi lançado).
 - **Recorrentes:** `netflix 55,90 todo mês dia 15`, `aluguel 1.200 todo dia 5 no pix`, `salário 3.200 todo dia 5` cadastram uma conta fixa
   que o app lança sozinho quando abre (↻), com um id fixo por mês: celular e PC nunca duplicam. Conta de valor variável
   (`luz todo mês dia 10`) não chuta valor: o app lembra até você escrever "paguei 120 de luz". `/recorrentes` lista;

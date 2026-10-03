@@ -395,7 +395,15 @@ function registerSW() {
     .then(() => navigator.serviceWorker.ready)
     .then(() => { term.ok('pwa', 'service worker ativo · abre mesmo sem internet'); ui.render(); })
     .catch(e => term.warn('pwa', `service worker não registrou · ${esc(e.message)}`));
-  navigator.serviceWorker.addEventListener('controllerchange', () => ui.render());
+  // versão nova assumiu com o app aberto: recarrega uma vez, senão a tela continua com o código velho na memória
+  const tinhaVersao = !!navigator.serviceWorker.controller;
+  let recarregou = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!tinhaVersao || recarregou) return ui.render();
+    recarregou = true;
+    term.ok('pwa', 'versão nova chegou · recarregando…');
+    setTimeout(() => location.reload(), 600);
+  });
 }
 
 /* ================= clima ================= */

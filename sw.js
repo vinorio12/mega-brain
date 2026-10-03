@@ -7,7 +7,7 @@
 //
 // Ao mudar a lista de arquivos, aumente CACHE pra forçar a atualização.
 
-const CACHE = 'mb-shell-v80';
+const CACHE = 'mb-shell-v81';
 const SHELL = [
   './',
   'index.html',
@@ -46,7 +46,7 @@ async function networkFirst(req) {
   try {
     // rede lenta demais? em 3s cai pra cópia guardada
     const res = await Promise.race([
-      fetch(req),
+      fetch(req, { cache: 'no-cache' }), // sempre confere com o site (304 rápido quando nada mudou): versão nova chega na hora
       new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
     ]);
     if (res.ok) cache.put(req, res.clone());

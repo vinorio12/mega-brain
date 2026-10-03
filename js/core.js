@@ -97,25 +97,44 @@ export function createCore(canvas, satEls = {}) {
   const signals = [];         // pacotes viajando por linhas
   const pulses = [];          // anéis saindo do centro
 
-  // rede neural: nós num anel irregular + conexões
+  // rede neural viva: cada nó tem a própria órbita em volta do núcleo
+  //   velocidade própria (os de dentro um pouco mais rápidos; uns poucos ao contrário),
+  //   flutuação no raio (se afasta e se aproxima devagar) e tamanho levemente diferente.
+  //   As conexões não são fixas: aparecem quando dois nós chegam perto e somem quando se afastam.
   const rand = rng(7);
-  const NODES = Array.from({ length: 14 }, (_, i) => {
-    const a = (i / 14) * TAU + (rand() - 0.5) * 0.25;
-    const r = 0.7 + (rand() - 0.5) * 0.1;
-    return [Math.cos(a) * r, Math.sin(a) * r];
+  const NODES = Array.from({ length: 16 }, (_, i) => {
+    const r0 = 0.56 + rand() * 0.32;                       // raio médio da órbita (0.56..0.88 R)
+    const dir = rand() < 0.2 ? -1 : 1;                     // ~1 em 5 orbita ao contrário
+    return {
+      a: (i / 16) * TAU + (rand() - 0.5) * 0.5,            // ângulo atual
+      r0,
+      w: (0.16 + rand() * 0.2) * (1.25 - r0 * 0.6) * dir,  // velocidade angular (rad/s na energia base)
+      amp: 0.025 + rand() * 0.05, f: 0.35 + rand() * 0.8, ph: rand() * TAU, // flutuação no raio
+      size: 1.3 + rand() * 1.3,
+      ring: i % 4 === 0,                                   // também se liga ao anel do reator
+    };
   });
-  const EDGES = [];
-  NODES.forEach((_, i) => {
-    EDGES.push([i, (i + 1) % 14]);
-    if (i % 2 === 0) EDGES.push([i, (i + 5) % 14]);
-    if (i % 3 === 0) EDGES.push([i, -1]); // -1 = ponto no anel do reator, na mesma direção
-  });
-  const edgePts = ([a, b]) => {
-    const p = NODES[a];
-    if (b >= 0) return [p, NODES[b]];
-    const ang = Math.atan2(p[1], p[0]);
-    return [p, [Math.cos(ang) * 0.48, Math.sin(ang) * 0.48]];
-  };
+  const pos = NODES.map(() => [0, 0]);                     // posição atual de cada nó (em unidades de R)
+  const LINK = 0.44;                                       // distância máxima pra dois nós se conectarem
+  let links = [];                                          // conexões deste quadro: [i, j, força 0..1]
+
+  function moveNodes(dt, speed) {
+    NODES.forEach((n, i) => {
+      n.a += dt * n.w * speed;
+      const r = n.r0 + n.amp * Math.sin(t * n.f + n.ph);
+      pos[i][0] = Math.cos(n.a) * r;
+      pos[i][1] = Math.sin(n.a) * r;
+    });
+    links = [];
+    for (let i = 0; i < pos.length; i++) {
+      for (let j = i + 1; j < pos.length; j++) {
+        const d = Math.hypot(pos[i][0] - pos[j][0], pos[i][1] - pos[j][1]);
+        if (d < LINK) links.push([i, j, 1 - d / LINK]);
+      }
+    }
+  }
+  // ponto do anel do reator na direção do nó
+  const ringPt = i => { const a = Math.atan2(pos[i][1], pos[i][0]); return [Math.cos(a) * 0.48, Math.sin(a) * 0.48]; };
 
   /* ---------- tamanho ---------- */
 
@@ -239,41 +258,52 @@ export function createCore(canvas, satEls = {}) {
       }
     }
 
-    // rede neural: conexões e nós (giram devagar junto com o anel)
+    // rede neural viva: os nós orbitam e flutuam; as conexões nascem e somem com a distância
+    // (a velocidade das órbitas segue a energia: READY calmo, PROCESSING rápido, LOCKED quase parado)
+    moveNodes(dt, (0.35 + energy * 1.4) * stutter * lockedHold);
     const sNodes = stage(0.32, 0.18), sEdges = stage(0.42, 0.2);
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.rotate(rot);
     if (sEdges > 0) {
       ctx.lineWidth = 1;
-      EDGES.forEach((e, i) => {
-        const vis = clamp(sEdges * EDGES.length - i);
-        if (vis <= 0) return;
-        const [p, q] = edgePts(e);
-        const flick = mode === 'degraded' && (i * 13 + Math.floor(t * 3)) % 7 === 0 ? 0.2 : 1;
+      for (const [i, j, f] of links) {
+        if (clamp(sNodes * NODES.length - Math.max(i, j)) <= 0) continue; // só liga nós que já nasceram
+        const flick = mode === 'degraded' && (i * 31 + j + Math.floor(t * 3)) % 7 === 0 ? 0.2 : 1;
         ctx.beginPath();
-        ctx.moveTo(p[0] * R, p[1] * R);
-        ctx.lineTo(lerp(p[0], q[0], vis) * R, lerp(p[1], q[1], vis) * R);
-        ctx.strokeStyle = rgba(A, (0.1 + energy * 0.12) * flick);
+        ctx.moveTo(pos[i][0] * R, pos[i][1] * R);
+        ctx.lineTo(pos[j][0] * R, pos[j][1] * R);
+        ctx.strokeStyle = rgba(A, (0.05 + energy * 0.14) * f * sEdges * flick);
+        ctx.stroke();
+      }
+      // alguns nós também se prendem ao anel do reator
+      NODES.forEach((n, i) => {
+        if (!n.ring || clamp(sNodes * NODES.length - i) <= 0) return;
+        const q = ringPt(i);
+        ctx.beginPath();
+        ctx.moveTo(pos[i][0] * R, pos[i][1] * R);
+        ctx.lineTo(q[0] * R, q[1] * R);
+        ctx.strokeStyle = rgba(A, (0.05 + energy * 0.08) * sEdges);
         ctx.stroke();
       });
     }
     if (sNodes > 0) {
-      NODES.forEach((p, i) => {
+      NODES.forEach((n, i) => {
         const vis = clamp(sNodes * NODES.length - i);
         if (vis <= 0) return;
+        // mais conectado = um pouco mais brilhante
+        const deg = links.reduce((s, [a, b, f]) => s + (a === i || b === i ? f : 0), 0);
         ctx.beginPath();
-        ctx.arc(p[0] * R, p[1] * R, (G.mode === 'strip' ? 1.2 : 2) * vis, 0, TAU);
-        ctx.fillStyle = rgba(A, 0.45 + 0.35 * energy);
+        ctx.arc(pos[i][0] * R, pos[i][1] * R, (G.mode === 'strip' ? n.size * 0.6 : n.size) * vis, 0, TAU);
+        ctx.fillStyle = rgba(A, Math.min(1, 0.35 + 0.3 * energy + deg * 0.15));
         ctx.fill();
       });
     }
-    // sinais viajando pela rede
+    // sinais viajando entre dois nós (acompanham os nós enquanto eles se movem)
     for (const s of signals) {
-      if (s.edge == null) continue;
-      const [p, q] = edgePts(EDGES[s.edge]);
-      const [a, b] = s.rev ? [q, p] : [p, q];
-      const x = lerp(a[0], b[0], s.p) * R, y = lerp(a[1], b[1], s.p) * R;
+      if (!s.pair) continue;
+      const [i, j] = s.rev ? [s.pair[1], s.pair[0]] : s.pair;
+      const a = j === -1 ? ringPt(i) : pos[j], b = pos[i];
+      const x = lerp(b[0], a[0], s.p) * R, y = lerp(b[1], a[1], s.p) * R;
       ctx.beginPath();
       ctx.arc(x, y, 1.8, 0, TAU);
       ctx.fillStyle = rgba(s.color || A, 0.95 * (1 - s.p * 0.3));
@@ -385,7 +415,15 @@ export function createCore(canvas, satEls = {}) {
     // sinais na rede: poucos parado, muitos processando
     const rate = { processing: 7, executing: 4, listening: 1.2, initializing: 3, fault: 2, degraded: 0.6, ready: 0.35, locked: 0, offline: 0.1 }[mode] ?? 0.3;
     if (birth >= 0.45 && Math.random() < rate * dt) {
-      signals.push({ edge: (Math.random() * EDGES.length) | 0, p: 0, v: 0.6 + Math.random() * 0.9 + energy, rev: Math.random() < 0.5 });
+      // sai de uma conexão que existe agora (entre dois nós) ou de um nó preso ao reator
+      const ringNodes = NODES.map((n, i) => (n.ring ? i : -1)).filter(i => i >= 0);
+      const v = 0.6 + Math.random() * 0.9 + energy;
+      if (links.length && Math.random() < 0.8) {
+        const [i, j] = links[(Math.random() * links.length) | 0];
+        signals.push({ pair: [i, j], p: 0, v, rev: Math.random() < 0.5 });
+      } else {
+        signals.push({ pair: [ringNodes[(Math.random() * ringNodes.length) | 0], -1], p: 0, v, rev: false });
+      }
     }
     // conectores ativos mandam pacotes (sentido: entrada → núcleo, saída → satélite)
     for (const k of SATS) {

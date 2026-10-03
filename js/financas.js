@@ -75,6 +75,9 @@ export const VERBOS = {
   gastoComValor: ['saiu', 'sairam', 'deu', 'deram', 'custou', 'custaram'],
   entrada: ['recebi', 'ganhei', 'caiu', 'cairam', 'entrou', 'entraram', 'vendi', 'faturei', 'pagaram'],
 };
+// palavras que aparecem em quase todo lançamento e não dizem nada da categoria (não viram pista na memória)
+export const PALAVRAS_DE_DINHEIRO = [...VERBOS.gasto, ...VERBOS.gastoComValor, ...VERBOS.entrada,
+  ...'pix credito cartao debito dinheiro boleto especie cash reais real conto contos pila pilas pau paus centavos fiz mandei enviei transferi pagou pagaram via gasto gastos'.split(' ')];
 // verbos de entrada que também têm outro sentido ("o celular caiu"): perdem pra um verbo de gasto na mesma frase
 const FRACOS = ['caiu', 'cairam', 'entrou', 'entraram'];
 // "o João me pagou 30", "a Ana me mandou 50": entrada, mesmo sem outro verbo

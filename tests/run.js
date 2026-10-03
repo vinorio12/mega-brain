@@ -27,7 +27,7 @@ import { INTERPRETADOR } from '../js/config.js';
 import { registroAprendizado, resumoAprendizado, exportarFrases } from '../js/aprendizado.js';
 import { montarContexto, estimarTokens } from '../js/contexto.js';
 import { pessoasDe, findPessoas, candidatosPessoa, acharPessoa, editApelidos, juntarPessoas, resumoPessoa } from '../js/pessoas.js';
-import { criarMemoria, decidirProjeto } from '../js/memoria.js';
+import { criarMemoria, decidirProjeto, palavrasDe } from '../js/memoria.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -912,6 +912,67 @@ describe('finanças · leitura da frase (financas.js · Fase 3a)', () => {
     eq(diffEvent(a, { ...a, data: { ...a.data, categoria: 'lazer' } }, { now }).data.mudancas, { categoria: ['outros', 'lazer'] });
     eq(diffEvent(null, { id: 't', kind: 'transferencia', text: 'x', data: { valor: 100, conta: 'poupança', sentido: 'para' } }, { now }).data.acao, 'criada');
   });
+});
+
+describe('memória aprende categoria e forma (memoria.js · etapa 3 · Fase 3a)', () => {
+  const now = new Date(2026, 9, 1, 12, 0);
+  const reg = registry(seedEntries([], 'local', now));
+  let n = 0;
+  // um gasto já gravado: auto = campos que o app decidiu sozinho
+  const g = (text, data, auto = []) => ({ id: 'g' + ++n, kind: 'gasto', text, ts: ++n, day: '2026-09-20', data: { valor: 1000, data: '2026-09-20', ...data, ...(auto.length ? { auto: { campos: auto, fonte: 'regra' } } : {}) } });
+  const corrigiu = (alvo, campo, de, para) => ({ id: 'ev' + ++n, kind: 'evento', ts: ++n, data: { alvo, alvo_kind: 'gasto', acao: 'alterada', mudancas: { [campo]: [de, para] }, origem: 'usuario' } });
+  const I = (frase, entries = [], records = []) => provedorRegras.interpretar(frase, { now, reg, entries, records, pessoas: [] });
+  test('sem pista: outros, e o padrão não vira evidência', () => {
+    const r = I('gastei 40 na xpto');
+    eq([r.campos.categoria, r.motivos.categoria.tipo, r.auto.includes('categoria')], ['outros', 'padrao', true]);
+    const E = [1, 2, 3, 4].map(() => g('gastei 40 na xpto', { categoria: 'outros' }, ['categoria']));
+    eq(criarMemoria(E, [], { reg }).info('palavra:xpto', 'categoria:gasto').estado, 'nada');
+  });
+  test('você confirmou "xpto" como lazer duas vezes → a próxima já vai pra lazer', () => {
+    const E = [g('xpto 40', { categoria: 'lazer' }), g('gastei 25 na xpto', { categoria: 'lazer' })];
+    const r = I('gastei 30 na xpto', E);
+    eq([r.campos.categoria, r.motivos.categoria.tipo, r.motivos.categoria.pista], ['lazer', 'pista', 'xpto']);
+    eq(I('xpto 18', E).tipo, 'gasto', '"xpto" no começo já é palavra conhecida');
+  });
+  test('corrigir "bar" pra alimentação duas vezes ganha da semente (bar = lazer)', () => {
+    eq(I('torrei 50 no bar').campos.categoria, 'lazer');
+    const a = g('torrei 50 no bar', { categoria: 'alimentação' }), b = g('bar 30', { categoria: 'alimentação' });
+    const R = [corrigiu(a.id, 'categoria', 'lazer', 'alimentação'), corrigiu(b.id, 'categoria', 'lazer', 'alimentação')];
+    eq(criarMemoria([a, b], R, { reg }).info('palavra:bar', 'categoria:gasto').porProjeto, [['alimentação', 6]]);
+    eq(I('gastei 80 no bar', [a, b], R).campos.categoria, 'alimentação');
+  });
+  test('preencher o que estava em "outros" vale 2 (confirmar), mudar um chute vale 3 (corrigir)', () => {
+    const a = g('gastei 40 na xpto', { categoria: 'lazer' }), b = g('ifood 30', { categoria: 'mercado' });
+    const R = [corrigiu(a.id, 'categoria', 'outros', 'lazer'), corrigiu(b.id, 'categoria', 'alimentação', 'mercado')];
+    const m = criarMemoria([a, b], R, { reg });
+    eq([m.info('palavra:xpto', 'categoria:gasto').total, m.info('palavra:ifood', 'categoria:gasto').total], [2, 3]);
+  });
+  test('pistas divididas: não chuta, fica sem categoria e explica', () => {
+    const E = [g('almoço 30', { categoria: 'alimentação' }), g('almoço 40', { categoria: 'alimentação' }), g('almoço 50', { categoria: 'lazer' }), g('almoço 60', { categoria: 'lazer' })];
+    const r = I('almoço 32', E);
+    eq([r.tipo, r.campos.categoria, r.motivos.categoria.tipo, r.auto.includes('categoria')], ['gasto', undefined, 'dividida', false]);
+    eq(r.motivos.categoria.porValor, [['alimentação', 4], ['lazer', 4]]);
+  });
+  test('forma: a memória aprende (ifood → crédito); sem pista fica vazia pra perguntar', () => {
+    eq([I('gastei 45 no ifood').campos.forma, I('gastei 45 no ifood').motivos.forma.tipo], [undefined, 'pergunta']);
+    const E = [g('ifood 30', { categoria: 'alimentação', forma: 'credito' }), g('gastei 50 no ifood', { categoria: 'alimentação', forma: 'credito' })];
+    const r = I('gastei 45 no ifood', E);
+    eq([r.campos.forma, r.auto.includes('forma'), r.motivos.forma.pista], ['credito', true, 'ifood']);
+    eq(I('gastei 45 no ifood no pix', E).campos.forma, 'pix', 'o que você escreve manda');
+  });
+  test('fixar por comando manda (registro memoria com campo)', () => {
+    const fix = { id: 'm1', kind: 'memoria', ts: 99, text: 'ifood', data: { chave: 'palavra:ifood', campo: 'categoria:gasto', acao: 'fixar', valor: 'lazer' } };
+    eq(I('gastei 45 no ifood', [], [fix]).campos.categoria, 'lazer');
+    eq(criarMemoria([], [fix], { reg }).info('palavra:ifood', 'categoria:gasto').estado, 'fixado');
+    eq(criarMemoria([], [fix], { reg }).info('palavra:ifood').estado, 'nada', 'o projeto não mistura com a categoria');
+  });
+  test('verbo ensinado (/sim) vira gasto com certeza', () => {
+    eq(I('abasteci 50 no posto').confianca, 0.6);
+    const v = { id: 'm2', kind: 'memoria', ts: 5, text: 'abasteci', data: { chave: 'verbo:abasteci', campo: 'tipo', acao: 'fixar', valor: 'gasto' } };
+    const r = I('abasteci 50 no posto', [], [v]);
+    eq([r.tipo, r.confianca, r.campos.categoria], ['gasto', 0.9, 'transporte']);
+  });
+  test('palavras de dinheiro não viram pista (gastei, pix, reais)', () => eq(palavrasDe('gastei 30 reais no pix com o João no ifood'), ['joao', 'ifood']));
 });
 
 describe('palavras-chave por projeto (Fase 2)', () => {

@@ -929,7 +929,7 @@ export function createCommands(ctx) {
       async run(arg, signal, t) {
         const [first, ...rest] = String(arg).trim().split(/\s+/).filter(Boolean);
         const reg = ctx.reg();
-        const fixadas = p => mem().todas().filter(i => i.chave.startsWith('palavra:') && i.estado === 'fixado' && i.dominante === p).map(i => i.rotulo);
+        const fixadas = p => mem().todas('projeto').filter(i => i.chave.startsWith('palavra:') && i.estado === 'fixado' && i.dominante === p).map(i => i.rotulo);
         const show = p => `<span class="k c-act">#${esc(p)}</span><span>${fixadas(p).map(esc).join(', ') || '<span class="dim">nenhuma</span>'}</span>`;
         if (!first) {
           term.print(`── palavras-chave ${'─'.repeat(10)}`, 'sep');
@@ -972,7 +972,7 @@ export function createCommands(ctx) {
           return `<span class="k">${esc(i.rotulo)}</span><span>${est} · ${por}${i.bloqueados.length ? ` · <span class="dim">bloqueada em ${i.bloqueados.map(esc).join(', ')}</span>` : ''}</span>`;
         };
         if (!raw) {
-          const todas = m.todas().filter(i => i.estado !== 'nada' && i.estado !== 'pouca');
+          const todas = m.todas('projeto').filter(i => i.estado !== 'nada' && i.estado !== 'pouca');
           if (!todas.length) return term.say('ainda não aprendi nada · conforme você cria e corrige tarefas, eu vou ligando pessoas e palavras aos projetos.');
           term.print(`── memória · o que eu aprendi ${'─'.repeat(8)}`, 'sep');
           const grupos = [

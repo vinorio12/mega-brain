@@ -20,7 +20,9 @@ import { tagsOf, dayKey } from './util.js';
 import { findValor, fmtValor } from './valores.js';
 import { findDate } from './dates.js';
 import { comecaComVerbo } from './tipos-base.js';
-import { lerFinanca, categoriaSemente, tipoDaPalavra, verbosAprendidos, acharEstornado, FORMAS } from './financas.js';
+import { lerFinanca, categoriaSemente, categoriasDe, tipoDaPalavra, verbosAprendidos, acharEstornado, FORMAS } from './financas.js';
+import { memoriaDe, decidirPorPistas, campoCategoria } from './memoria.js';
+import { findPessoas } from './pessoas.js';
 import { FINANCAS } from './config.js';
 
 // "gastei 45 reais ontem no mercado" → { valor: 4500, descricao: 'mercado', data: ontem } (leitura simples da Fase 2)
@@ -39,7 +41,13 @@ export function tipoFinanceiro(texto, ctx = {}) {
   const now = ctx.now || new Date();
   const f = lerFinanca(texto, { now, pessoas: ctx.pessoas || [], aprendidos: verbosAprendidos(ctx.records || []) });
   if (!f) return null;
-  const conhecida = f.primeira ? tipoDaPalavra(f.primeira) : null;
+  // palavra conhecida: pela semente ou pela memória (o que você já ensinou: "xpto" → lazer)
+  const naMemoria = w => {
+    if (!w || w.length < 3) return null;
+    const { mem } = pistasDe(texto, ctx);
+    return ['gasto', 'entrada'].find(t => ['fixado', 'dominante'].includes(mem.info('palavra:' + w, campoCategoria(t)).estado)) || null;
+  };
+  const conhecida = f.primeira ? tipoDaPalavra(f.primeira) || naMemoria(f.primeira) : null;
   // futuro ou "pagar…", "comprar…" no começo: é tarefa, não dinheiro (a não ser que a 1ª palavra seja conhecida: "jantar 80")
   if (f.futuro || (!f.verbo && !conhecida && comecaComVerbo(texto))) return null;
   if (f.transferencia) return { tipo: 'transferencia', confianca: 0.9, f };
@@ -47,17 +55,41 @@ export function tipoFinanceiro(texto, ctx = {}) {
   if (f.verbo) return { tipo: f.verbo.tipo, confianca: 0.9, f };
   if (f.forma === 'pix' && f.direcao) return { tipo: f.direcao === 'de' ? 'entrada' : 'gasto', confianca: 0.85, f };
   if (conhecida) return { tipo: conhecida, confianca: 0.85, f };
-  if (categoriaSemente(texto, 'gasto', { lugar: f.lugar })) return { tipo: 'gasto', confianca: 0.6, f };
+  if (categoriaSemente(texto, 'gasto', { lugar: f.lugar }) || f.palavras.some(w => naMemoria(w) === 'gasto')) return { tipo: 'gasto', confianca: 0.6, f };
   if (f.explicito) return { tipo: 'gasto', confianca: 0.65, f };
   return null;
 }
 
-// a categoria de um gasto/entrada novo (etapa 2: só a semente · a memória entra na etapa 3)
-function decidirCategoria(texto, tipo, f) {
+// a memória do momento e quem aparece na frase (ids)
+function pistasDe(texto, ctx = {}) {
+  const pessoas = ctx.pessoas || [];
+  const mem = ctx.memoria || memoriaDe(ctx.entries || [], ctx.records || [], { reg: ctx.reg, pessoas });
+  const ids = findPessoas(texto, pessoas).filter(a => a.ids.length === 1).map(a => a.ids[0]);
+  return { mem, ids };
+}
+
+// A categoria de um gasto/entrada novo:
+//   estorno → reembolso · o que você fixou / pista dominante (memória) · pistas divididas ou em conflito → null (pergunta)
+//   · semente ("ifood" → alimentação) · nada → outros (e pergunta qual é de verdade)
+export function decidirCategoria(texto, tipo, f, ctx = {}) {
   if (tipo === 'entrada' && f.estorno) return { categoria: 'reembolso', motivo: { tipo: 'estorno' } };
+  const validos = categoriasDe(ctx.records || [])[tipo];
+  const { mem, ids } = pistasDe(texto, ctx);
+  const d = decidirPorPistas(texto, campoCategoria(tipo), { mem, pessoas: ids, validos });
+  if (d.valor) return { categoria: d.valor, motivo: d.motivo };
+  if (d.motivo.tipo !== 'nada') return { categoria: null, motivo: d.motivo };
   const s = categoriaSemente(texto, tipo, { lugar: f.lugar });
-  if (s) return { categoria: s.categoria, motivo: { tipo: 'semente', pista: s.palavra } };
-  return { categoria: 'outros', motivo: { tipo: 'padrao' } };
+  if (s && validos.includes(s.categoria)) return { categoria: s.categoria, motivo: { tipo: 'semente', pista: s.palavra } };
+  return { categoria: validos.includes('outros') ? 'outros' : validos[validos.length - 1] || 'outros', motivo: { tipo: 'padrao' } };
+}
+
+// A forma de pagamento quando você não escreveu: memória (ifood → crédito) · senão FINANCAS.formaPadrao · senão null (pergunta)
+export function decidirForma(texto, ctx = {}) {
+  const { mem, ids } = pistasDe(texto, ctx);
+  const d = decidirPorPistas(texto, 'forma', { mem, pessoas: ids, validos: FORMAS });
+  if (d.valor) return { forma: d.valor, motivo: d.motivo };
+  if (FINANCAS.formaPadrao) return { forma: FINANCAS.formaPadrao, motivo: { tipo: 'padrao' } };
+  return { forma: null, motivo: d.motivo.tipo === 'nada' ? { tipo: 'pergunta' } : d.motivo };
 }
 
 const campoForma = { tipo: 'enum', valores: FORMAS };
@@ -80,23 +112,30 @@ function registrarMovimento(r, id, rotulo, exemplos) {
       if (!f || (!forcado && t.tipo !== id)) return null;
       const auto = [];
       if (!f.temData) auto.push('data');
-      const cat = decidirCategoria(texto, id, f);
-      if (cat.motivo.tipo !== 'estorno') auto.push('categoria');
+      const cat = decidirCategoria(texto, id, f, ctx || {});
+      if (cat.categoria && cat.motivo.tipo !== 'estorno') auto.push('categoria');
+      const motivos = { categoria: cat.motivo };
       let forma = f.forma;
-      if (!forma && FINANCAS.formaPadrao) { forma = FINANCAS.formaPadrao; auto.push('forma'); }
+      if (!forma) {
+        const fm = decidirForma(texto, ctx || {});
+        forma = fm.forma;
+        motivos.forma = fm.motivo;
+        if (forma) auto.push('forma');
+      }
       const ref = id === 'entrada' && f.estorno ? acharEstornado(texto, f.valor, ctx?.entries || [], { now })?.id : null;
       return {
         confianca: forcado ? 1 : t.confianca,
         campos: { valor: f.valor, descricao: f.descricao, data: f.data, categoria: cat.categoria, forma, lugar: f.lugar, ref, tags: tagsOf(texto) },
         auto,
-        motivos: { categoria: cat.motivo },
+        motivos,
       };
     },
     montar: (i, ctx) => {
       const now = ctx?.now || new Date();
       const c = i.campos;
-      const data = { valor: c.valor, descricao: c.descricao || '', data: c.data || dayKey(now), categoria: c.categoria || 'outros' };
-      for (const k of ['forma', 'lugar', 'ref']) if (c[k]) data[k] = c[k];
+      // sem categoria = as pistas se dividiram e o app perguntou (fica "sem categoria" até você responder)
+      const data = { valor: c.valor, descricao: c.descricao || '', data: c.data || dayKey(now) };
+      for (const k of ['categoria', 'forma', 'lugar', 'ref']) if (c[k]) data[k] = c[k];
       if (i.auto?.length) data.auto = { campos: i.auto, fonte: i.origem };
       return { kind: id, text: i.texto, tags: c.tags || tagsOf(i.texto), ts: now.getTime(), day: dayKey(now), data };
     },

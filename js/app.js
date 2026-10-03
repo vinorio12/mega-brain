@@ -12,7 +12,9 @@ import { savedPlace, fetchWeather } from './weather.js';
 import { isRecord, registry, seedEntries } from './tasks.js';
 import { withHistory } from './historico.js';
 
-const CLOUD = Boolean(SUPABASE_URL && SUPABASE_KEY);
+// só pra testar no PC: http://localhost:5173/?local abre em modo local (dados só neste navegador), sem tocar na nuvem
+const DEV_LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && new URLSearchParams(location.search).has('local');
+const CLOUD = Boolean(SUPABASE_URL && SUPABASE_KEY) && !DEV_LOCAL;
 
 // O link do e-mail volta pro app com o resultado no endereço (depois do "#").
 // Lemos antes da biblioteca do Supabase limpar, pra poder explicar se deu erro.

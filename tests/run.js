@@ -17,7 +17,7 @@ import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
 import { lerMovimento } from '../js/tipos-financas.js';
-import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO } from '../js/financas.js';
+import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado } from '../js/financas.js';
 import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
@@ -818,7 +818,8 @@ describe('gasto, entrada, treino (dado bruto · Fase 2)', () => {
     lerMovimento('me pagaram 200 pelo freela ontem', now), { valor: 20000, explicito: false, descricao: 'pelo freela', data: '2026-09-30', temData: true }));
   test('montar gasto e treino', () => {
     const g = provedorRegras.interpretar('gastei 30 no almoço', { now });
-    eq(REGISTRO.get('gasto').montar(g, { now }), { kind: 'gasto', text: 'gastei 30 no almoço', tags: [], ts: now.getTime(), day: '2026-10-01', data: { valor: 3000, descricao: 'almoço', data: '2026-10-01' } });
+    eq(REGISTRO.get('gasto').montar(g, { now }), { kind: 'gasto', text: 'gastei 30 no almoço', tags: [], ts: now.getTime(), day: '2026-10-01',
+      data: { valor: 3000, descricao: 'almoço', data: '2026-10-01', categoria: 'alimentação', auto: { campos: ['data', 'categoria'], fonte: 'regra' } } });
     const t = provedorRegras.interpretar('corri 5km', { now });
     eq(REGISTRO.get('treino').montar(t, { now }).data, { descricao: 'corri 5km', duracao_min: null, distancia_km: 5, data: '2026-10-01' });
   });
@@ -895,6 +896,21 @@ describe('finanças · leitura da frase (financas.js · Fase 3a)', () => {
     eq(L('abasteci 200 no posto').lugar, 'posto');
     eq(L('abasteci 200 no posto', { aprendidos: { gasto: ['abasteci'] } }).verbo, { tipo: 'gasto', palavra: 'abasteci', aprendido: true });
     eq(L('mercado 87').primeira, 'mercado');
+  });
+  test('verbosAprendidos: só o que você fixou, o mais novo vale', () => {
+    const m = (ts, w, acao, valor) => ({ kind: 'memoria', ts, text: w, data: { chave: 'verbo:' + w, campo: 'tipo', acao, valor } });
+    eq(verbosAprendidos([m(1, 'abasteci', 'fixar', 'gasto'), m(2, 'faturei', 'fixar', 'entrada'), m(3, 'pinguei', 'fixar', 'gasto'), m(4, 'pinguei', 'limpar')]),
+      { gasto: ['abasteci'], entrada: ['faturei'] });
+  });
+  test('acharEstornado: mesma palavra, valor igual primeiro, até 60 dias', () => {
+    const g = (id, valor, data, lugar) => ({ id, kind: 'gasto', text: `gastei ${valor / 100} no ${lugar}`, ts: 1, data: { valor, data, lugar, descricao: lugar } });
+    const es = [g('a', 4500, '2026-09-28', 'ifood'), g('b', 3000, '2026-09-30', 'ifood'), g('c', 4500, '2026-09-30', 'uber'), g('d', 4500, '2026-06-01', 'ifood')];
+    eq([acharEstornado('estorno de 45 do ifood', 4500, es, { now })?.id, acharEstornado('estorno de 20 do ifood', 2000, es, { now })?.id, acharEstornado('estorno de 45', 4500, es, { now })], ['a', 'b', null]);
+  });
+  test('gasto corrigido deixa histórico (campos do registro de tipos)', () => {
+    const a = { id: 'g1', kind: 'gasto', text: 'xpto 40', data: { valor: 4000, categoria: 'outros' } };
+    eq(diffEvent(a, { ...a, data: { ...a.data, categoria: 'lazer' } }, { now }).data.mudancas, { categoria: ['outros', 'lazer'] });
+    eq(diffEvent(null, { id: 't', kind: 'transferencia', text: 'x', data: { valor: 100, conta: 'poupança', sentido: 'para' } }, { now }).data.acao, 'criada');
   });
 });
 
@@ -1378,15 +1394,15 @@ describe('aprendizado (aprendizado.js · Fase 2)', () => {
     const s = setup([]);
     const T = { id: 'T0001', elapsed: () => 1 };
     await s.ctx.commands.capturar('comprar pão', T);
-    await s.ctx.commands.capturar('uber 18', T);
+    await s.ctx.commands.capturar('xpto 18', T);
     await s.run('/tipo gasto');
     await new Promise(r => setTimeout(r, 0));
     const res = resumoAprendizado(s.S.records);
-    eq([res.corrigidas.map(i => i.texto), res.semResposta.map(i => i.texto)], [['uber 18'], ['comprar pão']]);
+    eq([res.corrigidas.map(i => i.texto), res.semResposta.map(i => i.texto)], [['xpto 18'], ['comprar pão']]);
     await s.run('/aprendizado');
     ok(/corrigidas/.test(s.term.text()) && /sem resposta/.test(s.term.text()));
     await s.run('/aprendizado exportar');
-    ok(/frase: 'uber 18', esperado: \{ tipo: 'gasto' \}/.test(s.term.text()), s.term.text());
+    ok(/frase: 'xpto 18', esperado: \{ tipo: 'gasto' \}/.test(s.term.text()), s.term.text());
     eq(s.S.entries.filter(isNoteKind).map(e => e.text), ['comprar pão'], 'nada de aprendizado no /inbox');
   });
 });
@@ -1444,10 +1460,10 @@ describe('montarContexto (contexto.js · pra Fase 6)', () => {
 });
 
 describe('régua de frases (tests/frases.js · interpretar com regras)', () => {
-  // frase com `palavras` (ex: { tcc: ['orientador'] }) roda com essas palavras-chave nos projetos
+  // frase com `palavras` (ex: { tcc: ['orientador'] }) roda com essas palavras-chave nos projetos · `entries`: o que já existia (ex: o gasto que o estorno devolve)
   const ctxBase = f => ({
     reg: registry(seedEntries([], 'local', new Date(2026, 9, 1)).map(e => (e.kind === 'projeto' && f?.palavras?.[e.text] ? { ...e, data: { ...e.data, palavras: f.palavras[e.text] } } : e))),
-    entries: [],
+    entries: f?.entries || [],
   });
   const { interpretar: viaRegras } = criarInterpretador();
   for (const f of FRASES) {

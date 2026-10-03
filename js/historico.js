@@ -11,9 +11,10 @@
 // O que chega da nuvem, do tempo real ou de outra aba NÃO gera evento aqui (quem gravou já gerou).
 
 import { dayKey } from './util.js';
+import { REGISTRO } from './tipos.js';
 
 // campos acompanhados por tipo de entrada ('text' = o texto; o resto fica em data)
-// (o registro de tipos da etapa 4 passa a fornecer esta lista)
+// (os outros tipos dizem os seus campos no registro: rastrear em registrarTipo, ex.: gasto na Fase 3a)
 export const RASTREAR = {
   tarefa: ['text', 'projeto', 'status', 'prazo', 'prioridade', 'feito_em', 'pessoas'],
 };
@@ -28,7 +29,7 @@ const short = s => { const t = String(s ?? ''); return t.length > 80 ? t.slice(0
 // Compara duas versões (null = não existia / deixou de existir). Devolve o evento a gravar, ou null.
 export function diffEvent(before, after, { origem = 'usuario', now = new Date() } = {}) {
   const ref = after || before;
-  const campos = RASTREAR[ref?.kind];
+  const campos = RASTREAR[ref?.kind] || REGISTRO.rastrear()[ref?.kind];
   if (!campos) return null; // notas, registros e os próprios eventos não têm histórico
   const mudancas = {};
   let acao;

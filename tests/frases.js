@@ -51,9 +51,40 @@ export const FRASES = [
   { frase: 'comprei um tênis por 250 #pessoal', esperado: { tipo: 'gasto', campos: { valor: 25000, tags: ['pessoal'] } } },
   { frase: 'recebi 1.500 de salário', esperado: { tipo: 'entrada', campos: { valor: 150000, descricao: 'salário' } } },
   { frase: 'caiu o salário 3.200', esperado: { tipo: 'entrada', campos: { valor: 320000, descricao: 'salário' } } },
-  { frase: 'almoço R$ 32,90', esperado: { tipo: 'nota', pergunta: true } },
-  { frase: 'uber 18,50', esperado: { tipo: 'nota', pergunta: true } },
+  // (até a v0.10 "almoço R$ 32,90" e "uber 18,50" viravam nota com pergunta; na Fase 3a a palavra conhecida no começo decide)
+  { frase: 'almoço R$ 32,90', esperado: { tipo: 'gasto', campos: { valor: 3290, categoria: 'alimentação' } } },
   { frase: 'comprei um livro', esperado: { tipo: 'nota', pergunta: false } },
+  { frase: 'R$ 32,90', esperado: { tipo: 'nota', pergunta: true, palpite: 'gasto' } },
+  { frase: 'comprar ração 80 reais', esperado: { tipo: 'nota', pergunta: true, palpite: 'tarefa' } },
+
+  // Fase 3a · as frases do Vini (docs/prompt-fase-3.md), na ordem dele. 19–22 (parcelas, fatura) entram na 3b.
+  // gastos do dia a dia
+  { frase: 'gastei 45 no ifood', esperado: { tipo: 'gasto', campos: { valor: 4500, categoria: 'alimentação', lugar: 'ifood' } } },
+  { frase: 'mercado 87', esperado: { tipo: 'gasto', campos: { valor: 8700, categoria: 'mercado' } } },
+  { frase: 'uber 18,50', esperado: { tipo: 'gasto', campos: { valor: 1850, categoria: 'transporte' } } },
+  { frase: 'almoço 32 no débito', esperado: { tipo: 'gasto', campos: { valor: 3200, categoria: 'alimentação', forma: 'debito' } } },
+  { frase: 'farmácia R$ 42,30', esperado: { tipo: 'gasto', campos: { valor: 4230, categoria: 'saúde' } } },
+  { frase: 'paguei 120,50 de luz', esperado: { tipo: 'gasto', campos: { valor: 12050, categoria: 'moradia' } } },
+  { frase: 'saiu 1.234,56 o aluguel', esperado: { tipo: 'gasto', campos: { valor: 123456, categoria: 'moradia' } } },
+  { frase: 'torrei 150 no bar ontem', esperado: { tipo: 'gasto', campos: { valor: 15000, categoria: 'lazer', data: '2026-09-30' } } },
+  { frase: 'deu 64 o rodízio com a Ana', esperado: { tipo: 'gasto', campos: { valor: 6400, categoria: 'alimentação' }, pessoas: ['Ana'] } },
+  { frase: 'paguei o boleto da faculdade 890', esperado: { tipo: 'gasto', campos: { valor: 89000, categoria: 'educação', forma: 'boleto' } } },
+  { frase: 'comprei livro do tcc 89 no crédito', esperado: { tipo: 'gasto', campos: { valor: 8900, categoria: 'educação', forma: 'credito' } } },
+  { frase: 'netflix 55,90', esperado: { tipo: 'gasto', campos: { valor: 5590, categoria: 'assinaturas' } } },
+  // pix, pessoas e entradas
+  { frase: 'fiz um pix de 50 pro João', esperado: { tipo: 'gasto', campos: { valor: 5000, forma: 'pix' }, pessoas: ['João Silva'] } },
+  { frase: 'pix de 80 do Pedro', esperado: { tipo: 'entrada', campos: { valor: 8000, forma: 'pix' }, pessoas: ['Pedro'] } },
+  { frase: 'o João me pagou 30', esperado: { tipo: 'entrada', campos: { valor: 3000 }, pessoas: ['João Silva'] } },
+  { frase: 'caiu o salário 3.200', esperado: { tipo: 'entrada', campos: { valor: 320000, categoria: 'salário' } } },
+  { frase: 'recebi 1.500 do freela', esperado: { tipo: 'entrada', campos: { valor: 150000, categoria: 'freela' } } },
+  { frase: 'transferi 200 pra poupança', esperado: { tipo: 'transferencia', campos: { valor: 20000, conta: 'poupança', sentido: 'para' } } },
+  // pegadinhas
+  { frase: 'abasteci 200 no posto', esperado: { tipo: 'nota', pergunta: true, palpite: 'gasto' } },
+  { frase: 'estorno de 45 do ifood', entries: [{ id: 'g-ifood', kind: 'gasto', text: 'gastei 45 no ifood', ts: 1, day: '2026-09-28', data: { valor: 4500, descricao: 'ifood', lugar: 'ifood', data: '2026-09-28', categoria: 'alimentação' } }],
+    esperado: { tipo: 'entrada', campos: { valor: 4500, categoria: 'reembolso', ref: 'g-ifood' } } },
+  { frase: 'estorno de 45 do ifood', esperado: { tipo: 'entrada', campos: { valor: 4500, categoria: 'reembolso', ref: undefined } } },
+  { frase: 'deu ruim a prova', esperado: { tipo: 'nota', pergunta: false } },
+  { frase: 'saiu o resultado da prova', esperado: { tipo: 'nota', pergunta: false } },
   { frase: 'pagar o boleto de 120 amanhã', esperado: { tipo: 'tarefa', campos: { prazo: '2026-10-02' } } },
 
   // treino (dado bruto)
@@ -106,6 +137,7 @@ export async function rodarFrases(interpretar, frases = FRASES, ctxBase = () => 
     if (!motivo && !r) motivo = 'sem resposta';
     if (!motivo && r.tipo !== e.tipo) motivo = `tipo ${r.tipo}, esperado ${e.tipo}`;
     if (!motivo && e.pergunta !== undefined && !!r.pergunta !== e.pergunta) motivo = e.pergunta ? 'deveria perguntar' : 'perguntou sem precisar';
+    if (!motivo && e.palpite !== undefined && r.palpite !== e.palpite) motivo = `palpite ${r.palpite}, esperado ${e.palpite}`;
     if (!motivo && e.minConfianca !== undefined && !(r.confianca >= e.minConfianca)) motivo = `confiança ${r.confianca} < ${e.minConfianca}`;
     for (const [k, v] of Object.entries(e.campos || {})) {
       if (!motivo && !same(r.campos?.[k], v)) motivo = `${k}: veio ${JSON.stringify(r.campos?.[k])}, esperado ${JSON.stringify(v)}`;

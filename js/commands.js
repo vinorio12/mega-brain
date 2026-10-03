@@ -20,6 +20,7 @@ import {
 } from './tasks.js';
 import { eventsOf } from './historico.js';
 import { fmtValor } from './valores.js';
+import { FORMA_ROTULO } from './financas.js';
 import { REGISTRO } from './tipos.js';
 import { previa, interpretar } from './interpretar.js';
 import { registroAprendizado, resumoAprendizado, exportarFrases } from './aprendizado.js';
@@ -228,7 +229,7 @@ export function createCommands(ctx) {
     } else {
       // gasto, entrada, treino...: só o dado bruto por enquanto
       S.undo.push({ label: `${tipo.rotulo} guardado`, items: [], created: [e.id] });
-      term[queued ? 'warn' : 'ok']('store', `${esc(tipo.rotulo)} guardado${queued ? ' na fila' : ''} · ${hl(e.text)} ${meta}`);
+      term[queued ? 'warn' : 'ok']('store', `${esc(tipo.rotulo)} ${/a$/.test(tipo.rotulo) ? 'guardada' : 'guardado'}${queued ? ' na fila' : ''} · ${hl(e.text)} ${meta}`);
     }
     ctx.ui.pulse(queued ? 'warn' : 'act');
     return { e, n };
@@ -294,7 +295,7 @@ export function createCommands(ctx) {
   }
   // rótulo do processo que aparece enquanto grava
   const rotuloCaptura = text => (/^-\s+\S/.test(text) ? 'nova tarefa'
-    : { link: 'guardar link', trecho: 'guardar texto', tarefa: 'nova tarefa', gasto: 'novo gasto', entrada: 'nova entrada', treino: 'novo treino' }[previa(text, ictx())?.tipo] || 'captura');
+    : { link: 'guardar link', trecho: 'guardar texto', tarefa: 'nova tarefa', gasto: 'novo gasto', entrada: 'nova entrada', transferencia: 'transferência', treino: 'novo treino' }[previa(text, ictx())?.tipo] || 'captura');
 
   // cartão de uma pessoa: nome, apelidos e o que está ligado a ela
   function mostrarPessoa(r) {
@@ -334,7 +335,8 @@ export function createCommands(ctx) {
     const porque = mp?.tipo === 'pista' ? ` <span class="dim">(${esc(mp.pista)}: ${mp.estado === 'fixado' ? 'fixado' : `${mp.peso} de ${mp.total}`})</span>` : '';
     const partes = {
       tarefa: () => [c.projeto ? `<span class="c-act">#${esc(c.projeto)}</span>${A('projeto')}${porque}` : '<span class="c-warn">sem projeto</span>', `${c.prazo ? '>' + esc(fmtDue(c.prazo)) : '>sem prazo'}${A('prazo')}`, `!${esc(c.prioridade || 'média')}${A('prioridade')}`],
-      gasto: () => [esc(fmtValor(c.valor)), c.descricao ? esc(c.descricao) : '', `${esc(fmtDia(c.data))}${A('data')}`],
+      gasto: () => [esc(fmtValor(c.valor)), c.categoria ? `${esc(c.categoria)}${A('categoria')}` : '', c.forma ? esc(FORMA_ROTULO[c.forma] || c.forma) : '', c.descricao ? esc(c.descricao) : '', `${esc(fmtDia(c.data))}${A('data')}`],
+      transferencia: () => [esc(fmtValor(c.valor)), c.conta ? `${c.sentido === 'de' ? 'da' : 'pra'} ${esc(c.conta)}` : '', '<span class="dim">não mexe no saldo</span>', `${esc(fmtDia(c.data))}${A('data')}`],
       treino: () => [c.duracao_min ? c.duracao_min + 'min' : '', c.distancia_km ? c.distancia_km + 'km' : '', `${esc(fmtDia(c.data))}${A('data')}`],
     };
     partes.entrada = partes.gasto;
@@ -1096,11 +1098,11 @@ export function createCommands(ctx) {
       },
     },
     {
-      name: 'tipo', alias: ['era', 'corrigir'], data: true, async: true, exec: true, args: '<tarefa|nota|gasto|entrada|treino|link|texto> [#3 | t2 | a1]',
+      name: 'tipo', alias: ['era', 'corrigir'], data: true, async: true, exec: true, args: '<tarefa|nota|gasto|entrada|transferência|treino|link|texto> [#3 | t2 | a1]',
       desc: 'corrige o que o app entendeu · sem alvo, vale pra última coisa que você escreveu · ex: /tipo tarefa · /tipo nota t4',
       async run(arg, signal, t) {
         const [rawTipo, alvo] = String(arg).trim().toLowerCase().split(/\s+/);
-        const ALIAS = { texto: 'trecho', textos: 'trecho', tarefas: 'tarefa', notas: 'nota', gastos: 'gasto', entradas: 'entrada', treinos: 'treino' };
+        const ALIAS = { texto: 'trecho', textos: 'trecho', tarefas: 'tarefa', notas: 'nota', gastos: 'gasto', entradas: 'entrada', treinos: 'treino', 'transferência': 'transferencia', transferir: 'transferencia' };
         const tipo = ALIAS[rawTipo] || rawTipo;
         if (!tipo || !REGISTRO.get(tipo)) throw usage('tipo', `${REGISTRO.ids().map(x => (x === 'trecho' ? 'texto' : x)).join('|')} [#3 | t2]`);
         // qual entrada: a última escrita, ou a do número (#3 nota, a2 acervo, t1 tarefa)

@@ -32,6 +32,7 @@ Não é um dashboard com terminal no meio: é uma inteligência com ambiente ope
 ## Como rodar localmente
 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/serve.ps1` → http://localhost:5173
 Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
+Testar o app sem tocar na nuvem: http://localhost:5173/?local (modo local forçado, só em localhost). Porta 5173 ocupada: `serve.ps1 -Port 5174` (config `mega-brain-5174` no launch.json).
 
 ## Manual de manutenção (siga em toda mudança)
 1. Mudanças pequenas. Explique ao Vini o que vai fazer antes de fazer.
@@ -83,10 +84,10 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 
 ## Formato das entradas (tabela `entries`)
 { id, text, tags[], kind, ts (epoch ms), day "AAAA-MM-DD", data {} }
-- toda entrada pode ter `data.pessoas: [id]` (Fase 2.5) · kind `nota` · `tarefa` (data: projeto, status, prazo, prioridade, feito_em, auto, frase) · `link` (data: url, contexto) · `trecho` · `gasto`/`entrada` (data: valor em centavos, descricao, data) · `treino` (data: descricao, duracao_min, distancia_km, data)
+- toda entrada pode ter `data.pessoas: [id]` (Fase 2.5) · kind `nota` · `tarefa` (data: projeto, status, prazo, prioridade, feito_em, auto, frase) · `link` (data: url, contexto) · `trecho` · `gasto`/`entrada` (data: valor em centavos, descricao, data, categoria, forma pix|credito|debito|dinheiro|boleto, lugar, ref = gasto que o estorno devolve, auto) · `transferencia` (data: valor, conta, sentido para|de, descricao, data; não entra no saldo) · `treino` (data: descricao, duracao_min, distancia_km, data)
 - registros: kind `memoria` (decisão sua sobre uma pista: data: chave pessoa:id|palavra:x, acao fixar|bloquear|desafixar|limpar, projeto) · kind `pessoa` (text: nome; data: apelidos, arquivada, juntada_em) · kind `projeto` (data: ordem, arquivado, palavras) · `status` (data: ordem, final) · `evento` (histórico, só cresce: data: alvo, alvo_kind, acao, mudancas {campo: [de, para]}, origem, texto), ficam em `S.records`, fora das listas
 - `interpretacao` (aprendizado: frase que o app não entendeu ou que você corrigiu com /tipo; data: palpite, confianca, era, corrigido), também escondido
-- só `nota`, `tarefa`, `link`, `trecho`, `gasto`, `entrada`, `treino` aparecem (`CONTENT_KINDS` em tasks.js); qualquer outro kind fica escondido. Tipo novo de conteúdo (ex: gasto) precisa entrar nessa lista
+- só `nota`, `tarefa`, `link`, `trecho`, `gasto`, `entrada`, `transferencia`, `treino` aparecem (`CONTENT_KINDS` em tasks.js); qualquer outro kind fica escondido. Tipo novo de conteúdo (ex: gasto) precisa entrar nessa lista
 
 ## Roadmap
 - [x] 0. Esqueleto (protótipo no Cowork): terminal, HUD (hoje, semana, ano, memória, tags, módulos), inbox, comandos /ajuda /inbox /hoje /buscar /apagar /desfazer /status /roadmap /limpar
@@ -134,7 +135,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - [ ] 3. Finanças · dividida em três partes, cada uma com plano aprovado separado · pedido completo em `docs/prompt-fase-3.md`
   - [ ] 3a · lançamento, categorias, aprendizado, visão do mês e HUD · plano em `docs/plano-financas.md` (aprovado 02/10/2026: forma não informada = pergunta; crédito conta no mês da compra até a 3b; sem pista = outros + pergunta)
     - [x] 0 · plano aprovado, roadmap atualizado
-    - [x] 1 `js/financas.js` puro (categorias padrão + `categoriasDe`, `acharCategoria`, `acharForma`, vocabulário semente, `categoriaSemente`, `lerFinanca`: valor, data, forma, lugar, verbo forte/fraco, direção do pix, transferência, estorno, futuro; 378 testes) · [ ] 2 intérprete + régua · [ ] 3 memória generalizada · [ ] 4 tela da captura · [ ] 5 `js/comandos-financas.js` · [ ] 6 categorias + `/categorizar` · [ ] 7 HUD + contexto · [ ] 8 fechamento
+    - [x] 1 `js/financas.js` puro (categorias padrão + `categoriasDe`, `acharCategoria`, `acharForma`, vocabulário semente, `categoriaSemente`, `lerFinanca`: valor, data, forma, lugar, verbo forte/fraco, direção do pix, transferência, estorno, futuro; 378 testes) · [x] 2 intérprete + régua (`tipoFinanceiro` em tipos-financas.js; gasto/entrada com categoria pela semente, forma, lugar, `ref` do estorno via `acharEstornado`; kind `transferencia`; verbos ensinados via `verbosAprendidos`; histórico usa `REGISTRO.rastrear()` (gasto, entrada, transferência e treino); régua com as frases 1–18 e 23–27; "uber 18,50" e "almoço R$ 32,90" agora são gasto; 405 testes) · [ ] 3 memória generalizada · [ ] 4 tela da captura · [ ] 5 `js/comandos-financas.js` · [ ] 6 categorias + `/categorizar` · [ ] 7 HUD + contexto · [ ] 8 fechamento
   - [ ] 3b · cartões, fatura e parcelas (plano próprio depois da 3a)
   - [ ] 3c · recorrentes (plano próprio depois da 3b)
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)

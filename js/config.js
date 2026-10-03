@@ -25,3 +25,8 @@ export const INTERPRETADOR = {
 // Memória que aprende (Fase 2.5, js/memoria.js): uma pessoa ou palavra só "vota" num projeto quando
 // ele tem pelo menos `dominancia` do peso dela E peso total >= `pesoMinimo`. Pesos: apareceu 1 · você escreveu 2 · você corrigiu 3.
 export const MEMORIA = { dominancia: 0.7, pesoMinimo: 3 };
+
+// Finanças (Fase 3a, js/financas.js e js/tipos-financas.js).
+//   formaPadrao: forma de pagamento quando você não diz e a memória não sabe · null = o app pergunta (/forma pix)
+//   (troque por 'pix', 'credito', 'debito'... pra ele usar essa e marcar como automática)
+export const FINANCAS = { formaPadrao: null };

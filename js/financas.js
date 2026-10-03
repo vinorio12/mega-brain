@@ -124,6 +124,9 @@ export const tipoDaPalavra = w => TIPOS_FINANCAS.find(t => SEMENTE_MAPA[t].has(s
 // palavras que sobram no começo da descrição (verbos, artigos, preposições)
 const SOBRA = /^(?:gastei|paguei|comprei|torrei|desembolsei|recebi|ganhei|entrou|entraram|caiu|caíram|cairam|vendi|faturei|saiu|saíram|sairam|deu|deram|custou|custaram|pagaram|me\s+pagaram|no|na|nos|nas|num|numa|o|a|os|as|de|do|da|dos|das|com|em|pro|pra|pros|pras|para|por|um|uma|via)\s+/i;
 
+// "no almoço", "no fim de semana": é quando, não onde
+const NAO_LUGAR = new Set('almoco jantar janta lanche cafe fim final comeco meio mes semana dia total'.split(' '));
+
 // "gastei 45 no ifood ontem" → { valor: 4500, data: ontem, temData, forma: null, lugar: 'ifood', verbo: { tipo: 'gasto', palavra: 'gastei' }, ... }
 // opts: { now, pessoas (cadastro, pra direção do pix), aprendidos: { gasto: ['abasteci'], entrada: [] } (verbos que você ensinou) }
 export function lerFinanca(texto, { now = new Date(), pessoas = [], aprendidos = {} } = {}) {
@@ -181,7 +184,7 @@ export function lerFinanca(texto, { now = new Date(), pessoas = [], aprendidos =
   let lugar = null;
   for (const m of resto.matchAll(/(?<![\p{L}])(?:no|na|num|numa|em)\s+(\p{L}[\p{L}\d'’-]*)/giu)) {
     const w = m[1];
-    if (acharForma(w) || findPessoas(w, pessoas).length) continue;
+    if (acharForma(w) || NAO_LUGAR.has(strip(w)) || findPessoas(w, pessoas).length) continue;
     lugar = w.toLowerCase();
     break;
   }
@@ -208,3 +211,36 @@ export function lerFinanca(texto, { now = new Date(), pessoas = [], aprendidos =
   };
 }
 const ME_PAGOU_TXT = /(?<![\p{L}])me\s+(?:pagou|pagaram|mandou|mandaram|devolveu|devolveram|transferiu|transferiram|passou|passaram|deu|deram)(?![\p{L}])/giu;
+
+/* ---------- verbos que você ensinou ---------- */
+
+// Registros da memória com chave 'verbo:<palavra>' (campo 'tipo'): só entram depois do seu /sim.
+//   { kind: 'memoria', text: 'abasteci', data: { chave: 'verbo:abasteci', campo: 'tipo', acao: 'fixar', valor: 'gasto' } }
+// O mais novo vale; 'desafixar' ou 'limpar' tira. → { gasto: ['abasteci'], entrada: [] }
+export function verbosAprendidos(records = []) {
+  const atual = new Map();
+  for (const r of records.filter(e => e.kind === 'memoria' && String(e.data?.chave || '').startsWith('verbo:')).sort((a, b) => a.ts - b.ts)) {
+    const w = r.data.chave.slice(6);
+    if (r.data.acao === 'fixar' && TIPOS_FINANCAS.includes(r.data.valor)) atual.set(w, r.data.valor);
+    else atual.delete(w);
+  }
+  const out = { gasto: [], entrada: [] };
+  for (const [w, t] of atual) out[t].push(w);
+  return out;
+}
+
+/* ---------- estorno ---------- */
+
+// "estorno de 45 do ifood" → o gasto que ele devolve: o mais recente (até `dias` atrás) que tem a mesma palavra
+// (lugar ou descrição); valor igual tem preferência. Não achou → null.
+const NAO_PISTA = new Set('estorno estornaram estornou estornado reembolso reembolsaram reembolsou devolucao cashback de do da dos das no na o a os as em pro pra com reais real'.split(' '));
+export function acharEstornado(texto, valor, entries = [], { now = new Date(), dias = 60 } = {}) {
+  const ws = palavras(texto).filter(w => w.length >= 3 && !/^\d+$/.test(w) && !NAO_PISTA.has(w));
+  if (!ws.length) return null;
+  const desde = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - dias));
+  const cands = entries.filter(e => e.kind === 'gasto' && (e.data?.data || e.day || '') >= desde &&
+    ws.some(w => palavras(`${e.data?.lugar || ''} ${e.data?.descricao || ''} ${e.text || ''}`).includes(w)));
+  if (!cands.length) return null;
+  const recente = (a, b) => (b.data?.data || b.day || '').localeCompare(a.data?.data || a.day || '') || (b.ts || 0) - (a.ts || 0);
+  return cands.filter(e => e.data?.valor === valor).sort(recente)[0] || cands.sort(recente)[0];
+}

@@ -405,7 +405,7 @@ export function linhaContexto(entries = [], now = new Date(), opts = {}) {
 export function cartoesDe(records = [], { todos = false } = {}) {
   const dia = v => Math.min(31, Math.max(1, Math.round(Number(v)) || 1));
   return records.filter(e => e.kind === 'cartao' && (todos || !e.data?.arquivado)).sort((a, b) => a.ts - b.ts)
-    .map(e => ({ id: e.id, nome: String(e.text).toLowerCase(), fechamento: dia(e.data?.fechamento), vencimento: dia(e.data?.vencimento ?? 10), padrao: !!e.data?.padrao, arquivado: !!e.data?.arquivado }));
+    .map(e => ({ id: e.id, nome: String(e.text).toLowerCase(), fechamento: dia(e.data?.fechamento), vencimento: dia(e.data?.vencimento ?? 10), padrao: !!e.data?.padrao, arquivado: !!e.data?.arquivado, limite: Number.isInteger(e.data?.limite) && e.data.limite > 0 ? e.data.limite : null }));
 }
 // o padrão: o marcado (se dois aparelhos marcaram, o mais novo) · senão o primeiro · sem cartão: null (arquivado nunca é padrão)
 export const cartaoPadrao = cartoes => { const at = cartoes.filter(c => !c.arquivado); return at.filter(c => c.padrao).pop() || at[0] || null; };
@@ -576,4 +576,103 @@ export function lembretesVariaveis(recs = [], entries = [], now = new Date()) {
   const doMes = entries.filter(e => mesDe(e) === mes);
   return recs.filter(r => r.status === 'ativa' && r.valor === null && r.desde <= mes && !doMes.some(e => eDaRecorrente(e, r)))
     .map(rec => ({ rec, vence: dataNoMes(mes, rec.dia) })).sort((a, b) => a.vence.localeCompare(b.vence));
+}
+
+/* ---------- os três saldos (Fase 3d) ---------- */
+
+// "Poupança", "poupanca", "a poupança" → 'poupanca' (a chave do lugar) · 'conta' é a conta corrente
+export const chaveLugar = nome => strip(nome).replace(/^(?:a|o|minha|meu)\s+/, '').replace(/\s+/g, ' ').trim();
+
+// Âncoras = "eu tenho X aqui": registros kind 'saldo' (só crescem, o mais novo de cada lugar vale)
+//   { kind: 'saldo', text: 'poupança', data: { onde: 'poupanca' | 'conta', valor, data: 'AAAA-MM-DD' } }
+// → Map(onde → { id, nome, valor, data, ts })
+export function ancorasDe(records = []) {
+  const out = new Map();
+  for (const r of records.filter(e => e.kind === 'saldo' && Number.isInteger(e.data?.valor)).sort((a, b) => a.ts - b.ts)) {
+    const onde = chaveLugar(r.data.onde || r.text);
+    out.set(onde, { id: r.id, nome: String(r.text), valor: r.data.valor, data: r.data.data || dayKey(new Date(r.ts)), ts: r.ts });
+  }
+  return out;
+}
+
+// "paguei a fatura do nubank": registros kind 'faturapaga' { data: { cartao, mes (o do vencimento), data } } → Map('cartao|mes' → data do pagamento)
+export function faturasPagas(records = []) {
+  const out = new Map();
+  for (const r of records.filter(e => e.kind === 'faturapaga' && e.data?.cartao && e.data?.mes)) {
+    const k = r.data.cartao + '|' + r.data.mes, d = r.data.data || dayKey(new Date(r.ts));
+    if (!out.has(k) || d < out.get(k)) out.set(k, d);
+  }
+  return out;
+}
+// quando uma fatura sai da conta: no dia em que você disse que pagou, ou sozinha no vencimento
+const pagaEm = (pagas, cartao, mes, vence) => { const p = pagas.get(cartao.id + '|' + mes); return p && p < vence ? p : vence; };
+
+// 1. Conta: âncora + o que foi registrado DEPOIS dela (pela hora em que você escreveu) − faturas pagas depois da data da âncora.
+//    entradas + · gastos à vista − (crédito vai pra fatura) · guardar em investimento − · resgatar + · rendimento não mexe
+//    → { valor, ancora } | null (sem âncora)
+export function saldoConta(entries = [], records = [], now = new Date(), cartoes = cartoesDe(records, { todos: true })) {
+  const a = ancorasDe(records).get('conta');
+  if (!a) return null;
+  const hoje = dayKey(now);
+  let v = a.valor;
+  for (const e of entries) {
+    if (!(e.ts > a.ts) || !Number.isInteger(e.data?.valor)) continue;
+    if (e.kind === 'entrada') v += e.data.valor;
+    else if (e.kind === 'gasto' && !(e.data?.forma === 'credito' && cartaoDoGasto(e, cartoes))) v -= e.data.valor;
+    else if (e.kind === 'transferencia') v += e.data?.sentido === 'de' ? e.data.valor : -e.data.valor;
+  }
+  // faturas: as que foram pagas entre a âncora (exclusive) e hoje (inclusive as de meses futuros pagas adiantado)
+  const pagas = faturasPagas(records);
+  const [ay, am] = a.data.split('-').map(Number);
+  const [hy, hm] = hoje.split('-').map(Number);
+  const ate = dayKey(new Date(hy, hm + 2, 1)).slice(0, 7);
+  for (let d = new Date(ay, am - 2, 1); dayKey(d).slice(0, 7) <= ate; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+    const mes = dayKey(d).slice(0, 7);
+    for (const c of cartoes) {
+      const total = parcelasNoMes(entries, mes, cartoes).filter(p => p.cartao.id === c.id).reduce((s, p) => s + p.valor, 0);
+      if (!total) continue;
+      const quando = pagaEm(pagas, c, mes, vencimentoDa(c, mes).vence);
+      if (quando > a.data && quando <= hoje) v -= total;
+    }
+  }
+  return { valor: v, ancora: a };
+}
+
+// 2. Investimentos por lugar: âncora do lugar (se tiver) + guardei − resgatei + rendimentos registrados depois dela
+//    → [{ lugar, nome, valor, ancora }] (do maior pro menor)
+export function investimentosPorLugar(entries = [], records = []) {
+  const ancoras = ancorasDe(records);
+  const lugares = new Map();
+  const nomeDe = new Map();
+  for (const [k, a] of ancoras) if (k !== 'conta') { lugares.set(k, a); nomeDe.set(k, a.nome); }
+  const movs = entries.filter(e => (e.kind === 'transferencia' && e.data?.conta) || (e.kind === 'rendimento' && e.data?.lugar));
+  for (const e of movs) { const k = chaveLugar(e.data.conta || e.data.lugar); if (!nomeDe.has(k)) nomeDe.set(k, String(e.data.conta || e.data.lugar).toLowerCase()); if (!lugares.has(k)) lugares.set(k, null); }
+  return [...lugares].map(([k, a]) => {
+    let v = a ? a.valor : 0;
+    for (const e of movs) {
+      if (chaveLugar(e.data.conta || e.data.lugar) !== k || (a && !(e.ts > a.ts)) || !Number.isInteger(e.data?.valor)) continue;
+      v += e.kind === 'rendimento' ? e.data.valor : e.data.sentido === 'de' ? -e.data.valor : e.data.valor;
+    }
+    return { lugar: k, nome: nomeDe.get(k), valor: v, ancora: a };
+  }).sort((x, y) => y.valor - x.valor);
+}
+
+// 3. Cartões: quanto ainda devo (toda parcela de fatura não paga: aberta, fechada antes do vencimento e as futuras) e o limite livre
+//    → [{ cartao, nome, devo, limite, livre }] (livre null sem limite cadastrado)
+export function devoNoCartao(entries = [], records = [], now = new Date(), cartoes = cartoesDe(records, { todos: true })) {
+  const hoje = dayKey(now), pagas = faturasPagas(records);
+  const devo = new Map(cartoes.map(c => [c.id, 0]));
+  for (const e of entries) {
+    if (e.kind !== 'gasto' || e.data?.forma !== 'credito') continue;
+    const c = cartaoDoGasto(e, cartoes), data = e.data?.data || e.day;
+    if (!c || !data) continue;
+    const n = e.data?.parcelas >= 2 ? e.data.parcelas : 1, vals = parcelasDe(e.data?.valor || 0, n);
+    for (let k = 0; k < n; k++) {
+      const f = faturaDaCompra(data, c, k);
+      if (pagaEm(pagas, c, f.mes, f.vence) > hoje) devo.set(c.id, devo.get(c.id) + vals[k]);
+    }
+  }
+  return cartoes.filter(c => !c.arquivado || devo.get(c.id)).map(c => ({
+    cartao: c.id, nome: c.nome, devo: devo.get(c.id), limite: c.limite ?? null, livre: c.limite ? c.limite - devo.get(c.id) : null,
+  }));
 }

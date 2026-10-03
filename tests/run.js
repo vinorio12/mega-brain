@@ -17,7 +17,7 @@ import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
 import { lerMovimento } from '../js/tipos-financas.js';
-import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura, parcelasNoMes, proximasFaturas, recorrentesDe, desdeInicial, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis } from '../js/financas.js';
+import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura, parcelasNoMes, proximasFaturas, recorrentesDe, desdeInicial, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, saldoConta, devoNoCartao, investimentosPorLugar, ancorasDe, chaveLugar } from '../js/financas.js';
 import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
@@ -1550,6 +1550,43 @@ describe('recorrentes no /mes, ↻, variável ligada e contexto (etapa 5 · Fase
     ]);
     const E = [{ id: 'g', kind: 'gasto', text: 'netflix (recorrente)', ts: 1, day: '2026-10-15', data: { valor: 5590, data: '2026-10-15', recorrente: 'r1' } }];
     ok(linhaContexto(E, now, { recorrentes: recs }).endsWith('· recorrentes R$ 55,90/mês (1) · lembrete: luz'), linhaContexto(E, now, { recorrentes: recs }));
+  });
+});
+
+describe('os três saldos · funções puras (etapa 1 · Fase 3d)', () => {
+  const now = new Date(2026, 9, 15, 12);
+  const nubank = { id: 'c1', kind: 'cartao', text: 'nubank', ts: 1, data: { fechamento: 3, vencimento: 10, padrao: true, limite: 500000 } };
+  const ancora = (onde, valor, data, ts) => ({ id: 'a' + ts, kind: 'saldo', text: onde, ts, data: { onde, valor, data } });
+  const M = (id, kind, valor, data, ts, extra = {}) => ({ id, kind, text: id, ts, day: data, data: { valor, data, ...extra } });
+  const E = [
+    M('pix', 'gasto', 4500, '2026-10-05', 200, { forma: 'pix' }),
+    M('sal', 'entrada', 320000, '2026-10-01', 50),                                        // antes da âncora: já estava no saldo
+    M('guarda', 'transferencia', 20000, '2026-10-06', 300, { conta: 'poupança', sentido: 'para' }),
+    M('tenis', 'gasto', 30000, '2026-10-06', 400, { forma: 'credito', parcelas: 3 }),      // faturas de nov, dez, jan
+    M('luz', 'gasto', 12000, '2026-09-20', 10, { forma: 'credito' }),                       // fatura que vence 10/10
+    M('rend', 'rendimento', 300, '2026-10-10', 500, { lugar: 'poupança' }),
+    M('tesouro', 'transferencia', 10000, '2026-10-12', 600, { conta: 'Tesouro', sentido: 'para' }),
+  ];
+  const R = [nubank, ancora('conta', 250000, '2026-10-05', 100), ancora('poupança', 500000, '2026-10-05', 250)];
+  test('sem âncora não há saldo da conta (NA)', () => eq(saldoConta(E, [nubank], now), null));
+  test('conta = âncora + o que veio depois − fatura paga no vencimento', () => {
+    eq(saldoConta(E, R, now).valor, 250000 - 4500 - 20000 - 10000 - 12000);
+  });
+  test('"paguei a fatura" antes do vencimento sai da conta na hora e some do devo', () => {
+    const paga = { id: 'p', kind: 'faturapaga', ts: 700, data: { cartao: 'c1', mes: '2026-11', data: '2026-10-14' } };
+    eq(saldoConta(E, [...R, paga], now).valor, 250000 - 4500 - 20000 - 10000 - 12000 - 10000);
+    eq(devoNoCartao(E, [...R, paga], now).map(d => [d.devo, d.livre]), [[20000, 480000]]);
+  });
+  test('cartão: devo = parcelas ainda não pagas (com as futuras) · livre = limite − devo', () => {
+    eq(devoNoCartao(E, R, now), [{ cartao: 'c1', nome: 'nubank', devo: 30000, limite: 500000, livre: 470000 }]);
+    eq(devoNoCartao(E, [{ ...nubank, data: { ...nubank.data, limite: undefined } }], now)[0].livre, null);
+  });
+  test('investimentos por lugar: âncora + guardei + rendeu; lugar sem âncora começa do zero', () => {
+    eq(investimentosPorLugar(E, R).map(i => [i.nome, i.valor, !!i.ancora]), [['poupança', 520300, true], ['tesouro', 10000, false]]);
+  });
+  test('âncora: a mais nova de cada lugar vale; chaveLugar ignora acento e artigo', () => {
+    eq([...ancorasDe([ancora('conta', 100, '2026-10-01', 1), ancora('conta', 900, '2026-10-02', 2)]).values()].map(a => a.valor), [900]);
+    eq([chaveLugar('a Poupança'), chaveLugar('poupanca'), chaveLugar('CDB')], ['poupanca', 'poupanca', 'cdb']);
   });
 });
 

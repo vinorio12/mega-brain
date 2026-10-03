@@ -20,7 +20,7 @@ import {
 } from './tasks.js';
 import { eventsOf } from './historico.js';
 import { fmtValor } from './valores.js';
-import { verboCandidato, categoriasDe, acharCategoria, acharForma, FORMA_ROTULO } from './financas.js';
+import { verboCandidato, categoriasDe, acharCategoria, acharForma, cartoesDe, FORMA_ROTULO } from './financas.js';
 import { criarFinancas, isFinanca } from './comandos-financas.js';
 import { REGISTRO } from './tipos.js';
 import { previa, interpretar } from './interpretar.js';
@@ -996,10 +996,12 @@ export function createCommands(ctx) {
           if (reg.projects.includes(v.toLowerCase())) return { campo: 'projeto', valor: v.toLowerCase() };
           for (const tipo of ['gasto', 'entrada']) { const c = acharCategoria(v, cats[tipo]); if (c) return { campo: campoCategoria(tipo), valor: c }; }
           const f = acharForma(v);
-          return f ? { campo: 'forma', valor: f } : null;
+          if (f) return { campo: 'forma', valor: f };
+          const k = cartoesDe(S.records || []).find(x => x.nome === v.toLowerCase()); // Fase 3b: /memoria ifood = nubank
+          return k ? { campo: 'cartao', valor: k.id } : null;
         };
-        const NOME = { projeto: 'projeto', 'categoria:gasto': 'categoria', 'categoria:entrada': 'categoria de entrada', forma: 'forma', tipo: 'verbo' };
-        const val = (campo, v) => (campo === 'projeto' ? '#' + v : campo === 'forma' ? FORMA_ROTULO[v] || v : v);
+        const NOME = { projeto: 'projeto', 'categoria:gasto': 'categoria', 'categoria:entrada': 'categoria de entrada', forma: 'forma', cartao: 'cartão', tipo: 'verbo' };
+        const val = (campo, v) => (campo === 'projeto' ? '#' + v : campo === 'forma' ? FORMA_ROTULO[v] || v : campo === 'cartao' ? (S.records || []).find(e => e.id === v)?.text || '?' : v);
         const pct = i => (i.total ? Math.round(((i.peso || 0) / i.total) * 100) : 0);
         const linha = (i, mostraCampo = false) => {
           const V = v => esc(val(i.campo, v));
@@ -1020,6 +1022,7 @@ export function createCommands(ctx) {
             ['palavras que puxam projeto', dom(i => i.campo === 'projeto' && i.chave.startsWith('palavra:'))],
             ['categorias', dom(i => i.campo.startsWith('categoria:'))],
             ['formas', dom(i => i.campo === 'forma', 8)],
+            ['cartões', dom(i => i.campo === 'cartao', 8)],
             ['verbos que você ensinou', todas.filter(i => i.campo === 'tipo' && i.estado === 'fixado')],
           ].filter(([, l]) => l.length);
           for (const [titulo, l] of grupos) { term.print(titulo, 'tgrp'); l.forEach(i => term.print(linha(i), 'tbl')); }
@@ -1039,7 +1042,7 @@ export function createCommands(ctx) {
         const chave = p.pessoa ? 'pessoa:' + p.pessoa.id : chavePalavra(pista);
         const verbo = 'verbo:' + chavePalavra(pista).slice(8);
         // o que a memória sabe dessa pista em cada campo (o verbo ensinado também)
-        const campos = ['projeto', campoCategoria('gasto'), campoCategoria('entrada'), 'forma'];
+        const campos = ['projeto', campoCategoria('gasto'), campoCategoria('entrada'), 'forma', 'cartao'];
         const sabe = mm2 => [...campos.map(c => mm2.info(chave, c)), mm2.info(verbo, 'tipo')].filter(i => i.estado !== 'nada' || i.bloqueados.length);
         if (!acao) {
           term.print(`── memória · ${esc(pista)} ${'─'.repeat(8)}`, 'sep');

@@ -5,6 +5,7 @@
 //   projeto            tarefas (e notas com #projeto)
 //   categoria:gasto    gastos   (alimentação, mercado...)      categoria:entrada  entradas (salário, freela...)
 //   forma              gastos e entradas (pix, credito, debito, dinheiro, boleto)
+//   cartao             gastos no crédito (id do cartão: ifood → nubank) · Fase 3b
 //   tipo               verbos que você ensinou ('verbo:abasteci' → gasto) · só por /sim, nunca sozinho
 // Pesos: o app decidiu (e você não mexeu) 1 · você escreveu ou confirmou 2 · você CORRIGIU (lido do histórico) 3
 //        nota com #projeto 1 · o PADRÃO não é evidência ("outros" sem pista vale 0, senão ele se reforça sozinho)
@@ -70,6 +71,8 @@ function licoes(e, { projetos, corrigidos }) {
     if (forma) out.push({ campo: 'forma', valor: forma, peso: corrigidos.get('forma')?.has(e.id) ? 3 : auto.includes('forma') ? 1 : 2 });
     const p = (e.tags || []).find(t => projetos.includes(t)); // "gastei 30 no xerox #tcc" também ensina o projeto
     if (p) out.push({ campo: 'projeto', valor: p, peso: 1 });
+    const cartao = e.data?.cartao; // Fase 3b: o padrão não é gravado, então não vira evidência
+    if (cartao) out.push({ campo: 'cartao', valor: cartao, peso: corrigidos.get('cartao')?.has(e.id) ? 3 : auto.includes('cartao') ? 1 : 2 });
     return out;
   }
   const p = (e.tags || []).find(t => projetos.includes(t));
@@ -100,7 +103,7 @@ export function criarMemoria(entries = [], records = [], { reg = registry([]), p
   for (const ev of records) {
     if (ev.kind !== 'evento' || ev.data?.acao !== 'alterada' || (ev.data?.origem || 'usuario') !== 'usuario') continue; // só o que VOCÊ mudou (desfazer, renomear categoria e o app não contam)
     for (const [c, [de]] of Object.entries(ev.data?.mudancas || {})) {
-      if (!['projeto', 'categoria', 'forma'].includes(c)) continue;
+      if (!['projeto', 'categoria', 'forma', 'cartao'].includes(c)) continue;
       if (c !== 'projeto' && (!de || (c === 'categoria' && de === 'outros'))) continue;
       if (!corrigidos.has(c)) corrigidos.set(c, new Set());
       corrigidos.get(c).add(ev.data.alvo);

@@ -84,6 +84,15 @@ export function decidirCategoria(texto, tipo, f, ctx = {}) {
   return { categoria: validos.includes('outros') ? 'outros' : validos[validos.length - 1] || 'outros', motivo: { tipo: 'padrao' } };
 }
 
+// O cartão de um gasto no crédito sem nome na frase: só a memória (ifood → nubank). Sem pista → null (o padrão vale na hora de ler).
+export function decidirCartao(texto, ctx = {}) {
+  const ids = cartoesDe(ctx.records || []).map(c => c.id);
+  if (ids.length < 2) return { cartao: null, motivo: { tipo: 'nada' } }; // com um cartão só, o padrão resolve
+  const { mem, ids: pes } = pistasDe(texto, ctx);
+  const d = decidirPorPistas(texto, 'cartao', { mem, pessoas: pes, validos: ids });
+  return { cartao: d.valor, motivo: d.motivo };
+}
+
 // A forma de pagamento quando você não escreveu: memória (ifood → crédito) · senão FINANCAS.formaPadrao · senão null (pergunta)
 export function decidirForma(texto, ctx = {}) {
   const { mem, ids } = pistasDe(texto, ctx);
@@ -126,10 +135,16 @@ function registrarMovimento(r, id, rotulo, exemplos) {
         motivos.forma = fm.motivo;
         if (forma) auto.push('forma');
       }
+      // qual cartão (Fase 3b): o nome na frase · senão a memória (ifood → nubank) · senão nada (o padrão vale na hora de ler)
+      let cartao = f.cartao;
+      if (id === 'gasto' && forma === 'credito' && !cartao) {
+        const dc = decidirCartao(texto, ctx || {});
+        if (dc.cartao) { cartao = dc.cartao; auto.push('cartao'); motivos.cartao = dc.motivo; }
+      }
       const ref = id === 'entrada' && f.estorno ? acharEstornado(texto, f.valor, ctx?.entries || [], { now })?.id : null;
       return {
         confianca: forcado ? 1 : t.confianca,
-        campos: { valor: f.valor, descricao: f.descricao, data: f.data, categoria: cat.categoria, forma, lugar: f.lugar, ref, parcelas, cartao: f.cartao, tags: tagsOf(texto) },
+        campos: { valor: f.valor, descricao: f.descricao, data: f.data, categoria: cat.categoria, forma, lugar: f.lugar, ref, parcelas, cartao, tags: tagsOf(texto) },
         auto,
         motivos,
       };

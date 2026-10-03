@@ -12,7 +12,7 @@ import { fmtDia, findDate } from './dates.js';
 import { parseMonth } from './views.js';
 import { seedId } from './tasks.js';
 import { decidirCategoria } from './tipos-financas.js';
-import { cartoesDe, parcelasDe, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
+import { cartoesDe, cartaoPadrao, vencimentoDa, proximaFatura, parcelasDe, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
 
 export const KINDS_FINANCAS = ['gasto', 'entrada', 'transferencia'];
 export const isFinanca = e => KINDS_FINANCAS.includes(e?.kind);
@@ -65,11 +65,14 @@ export function criarFinancas(h) {
     if (r.tipo === 'transferencia') {
       partes = [esc(fmtValor(c.valor)), c.conta ? `${c.sentido === 'de' ? 'da' : 'pra'} ${esc(c.conta)}` : '', '<span class="dim">não mexe no saldo</span>', `${esc(fmtDia(c.data))}${A('data')}`];
     } else {
-      const cartao = c.cartao && cartoesDe(S.records || []).find(x => x.id === c.cartao);
+      // o cartão: o escrito/aprendido, ou o padrão (que vale na hora de ler, sem gravar)
+      const lista = cartoesDe(S.records || []);
+      const cartao = c.cartao ? lista.find(x => x.id === c.cartao) : c.forma === 'credito' ? cartaoPadrao(lista) : null;
+      const sufixo = cartao && !c.cartao ? ' <span class="dim">(padrão)</span>' : porque(r.motivos?.cartao);
       partes = [
         esc(fmtValor(c.valor)) + (c.parcelas ? ` <span class="c-int">${esc(textoParcelas(c.valor, c.parcelas))}</span>` : ''),
         c.categoria ? `<span class="c-act">${esc(c.categoria)}</span>${A('categoria')}${porque(r.motivos?.categoria)}` : '<span class="c-warn">sem categoria</span>',
-        c.forma ? `${esc(formaTxt(c.forma))}${cartao ? ' ' + esc(cartao.nome) : ''}${A('forma')}${porque(r.motivos?.forma)}` : '',
+        c.forma ? `${esc(formaTxt(c.forma))}${A('forma')}${porque(r.motivos?.forma)}${cartao ? ` <span class="c-act">${esc(cartao.nome)}</span>${sufixo}` : ''}` : '',
         c.lugar ? esc(c.lugar) : '', ...nomes.map(esc),
         `${esc(fmtDia(c.data))}${A('data')}`,
       ];
@@ -307,6 +310,99 @@ export function criarFinancas(h) {
     term.print('<span class="dim">/categoria nova pets [entrada] · renomear mercado = supermercado · arquivar pets</span>');
   }
 
+  /* ---------- cartões (Fase 3b) ---------- */
+
+  const regsCartao = () => (S.records || []).filter(e => e.kind === 'cartao' && !e.data?.arquivado);
+  function regCartao(nome) {
+    const k = String(nome || '').trim().toLowerCase();
+    const r = regsCartao().find(e => String(e.text).toLowerCase() === k) || regsCartao().find(e => acharCategoria(k, [String(e.text)]));
+    if (!r) throw new CmdError('E_404', 'fin', `não conheço o cartão "${nome}"`, `cadastre com <span class="c-int">/cartao novo ${esc(k || 'nubank')} fecha 3 vence 10</span> · veja os seus com <span class="c-int">/cartoes</span>`);
+    return r;
+  }
+  // "nubank fecha 3 vence 10 padrão" → { nome: 'nubank', fechamento: 3, vencimento: 10, padrao: true }
+  function lerCartao(txt) {
+    let t = ` ${String(txt).toLowerCase()} `;
+    const pega = re => { const m = t.match(re); if (!m) return null; t = t.replace(m[0], ' '); return +m[1]; };
+    const fechamento = pega(/\s(?:fecha(?:mento)?|fecho)\s+(?:dia\s+|no\s+dia\s+)?(\d{1,2})(?=\s)/);
+    const vencimento = pega(/\s(?:vence|vencimento)\s+(?:dia\s+|no\s+dia\s+)?(\d{1,2})(?=\s)/);
+    const padrao = /\spadr[aã]o\s/.test(t);
+    t = t.replace(/\spadr[aã]o\s/, ' ');
+    for (const [n, v] of [['fechamento', fechamento], ['vencimento', vencimento]]) {
+      if (v !== null && (v < 1 || v > 31)) throw new CmdError('E_ARG', 'fin', `dia de ${n} inválido: ${v}`, 'use um dia de 1 a 31');
+    }
+    return { nome: t.replace(/\s+/g, ' ').trim(), fechamento, vencimento, padrao };
+  }
+  const descCartao = c => `<span class="c-act">${esc(c.text)}</span> <span class="dim">fecha dia ${c.data?.fechamento} · vence dia ${c.data?.vencimento}${c.data?.padrao ? ' · padrão' : ''}</span>`;
+
+  async function cartao(raw, t) {
+    const txt = String(raw).trim();
+    const [sub0, ...rest] = txt.split(/\s+/);
+    const sub = (sub0 || '').toLowerCase();
+    const done = (msg, tone = 'act') => { S.lastLatency = t.elapsed(); term.ok('fin', `${msg} <span class="c-meta">· /desfazer volta · ${t.id}</span>`); ctx.ui.pulse(tone); };
+    // marcar um como padrão desmarca os outros (tudo num passo do /desfazer)
+    const tirarPadrao = async (exceto, items) => {
+      for (const e of regsCartao().filter(x => x.id !== exceto && x.data?.padrao)) { items.push(e); await ctx.store.restore({ ...e, data: { ...e.data, padrao: false } }); }
+    };
+    if (!sub || sub === 'lista') return listarCartoes();
+    if (sub === 'novo' || sub === 'nova' || sub === 'criar') {
+      const c = lerCartao(rest.join(' '));
+      if (!c.nome || c.fechamento === null || c.vencimento === null) throw usage('cartao', 'novo nubank fecha 3 vence 10 [padrão]');
+      if (regsCartao().some(e => String(e.text).toLowerCase() === c.nome)) return term.say(`o cartão ${esc(c.nome)} já existe · pra mudar os dias: <span class="c-int">/cartao ${esc(c.nome)} fecha 5 vence 12</span>`);
+      const padrao = c.padrao || !regsCartao().length; // o primeiro já nasce padrão
+      const items = [];
+      if (padrao) await tirarPadrao(null, items);
+      const e = await ctx.store.add({ kind: 'cartao', text: c.nome, tags: [], ts: Date.now(), day: dayKey(new Date()), data: { fechamento: c.fechamento, vencimento: c.vencimento, padrao, arquivado: false } });
+      S.undo.push({ label: 'cartão criado', items, created: [e.id] });
+      return done(`cartão novo · ${descCartao(e)}${padrao ? ' <span class="dim">· "no cartão" e "no crédito" vão pra ele</span>' : ''}`);
+    }
+    if (sub === 'padrao' || sub === 'padrão') {
+      const r = regCartao(rest.join(' '));
+      if (r.data?.padrao) return term.say(`${esc(r.text)} já é o padrão.`);
+      const items = [r];
+      await tirarPadrao(r.id, items);
+      await ctx.store.restore({ ...r, data: { ...r.data, padrao: true } });
+      S.undo.push({ label: 'cartão padrão', items });
+      return done(`padrão agora é <span class="c-act">${esc(r.text)}</span> <span class="dim">· crédito sem cartão escrito vai pra ele</span>`);
+    }
+    if (sub === 'renomear') {
+      const i = rest.join(' ').search(/\s*(?:=|\bpara\b|\bpra\b)\s*/);
+      if (i < 0) throw usage('cartao', 'renomear nubank = roxinho');
+      const de = rest.join(' ').slice(0, i), para = rest.join(' ').slice(i).replace(/^\s*(?:=|para|pra)\s*/, '').trim().toLowerCase();
+      const r = regCartao(de);
+      if (!para) throw usage('cartao', 'renomear nubank = roxinho');
+      S.undo.push({ label: 'cartão renomeado', items: [r] });
+      await ctx.store.restore({ ...r, text: para });
+      return done(`${esc(r.text)} → <span class="c-act">${esc(para)}</span> <span class="dim">· os gastos continuam ligados a ele</span>`);
+    }
+    if (sub === 'arquivar') {
+      const r = regCartao(rest.join(' '));
+      S.undo.push({ label: 'cartão arquivado', items: [r] });
+      await ctx.store.restore({ ...r, data: { ...r.data, arquivado: true, padrao: false } });
+      return done(`${esc(r.text)} arquivado · some das sugestões · os gastos dele continuam nas faturas`, 'warn');
+    }
+    // "/cartao nubank fecha 5 vence 12" ou "/cartao nubank": edita ou mostra
+    const c = lerCartao(txt);
+    const r = regCartao(c.nome);
+    if (c.fechamento === null && c.vencimento === null && !c.padrao) return term.print(descCartao(r));
+    const items = [r];
+    if (c.padrao) await tirarPadrao(r.id, items);
+    await ctx.store.restore({ ...r, data: { ...r.data, ...(c.fechamento !== null ? { fechamento: c.fechamento } : {}), ...(c.vencimento !== null ? { vencimento: c.vencimento } : {}), ...(c.padrao ? { padrao: true } : {}) } });
+    S.undo.push({ label: 'cartão editado', items });
+    return done(`cartão · ${descCartao(S.records.find(e => e.id === r.id) || r)}`);
+  }
+
+  function listarCartoes() {
+    const lista = cartoesDe(S.records || []);
+    if (!lista.length) return term.say('nenhum cartão ainda · <span class="c-int">/cartao novo nubank fecha 3 vence 10</span> cadastra (o primeiro vira o padrão)');
+    const now = new Date(), padrao = cartaoPadrao(lista);
+    term.print(`── cartões · ${lista.length} ${'─'.repeat(10)}`, 'sep');
+    for (const c of lista) {
+      const prox = vencimentoDa(c, proximaFatura(c, now));
+      term.print(`<span class="k c-act">${esc(c.nome)}</span><span>fecha dia ${c.fechamento} · vence dia ${c.vencimento}${c.id === padrao?.id ? ' · <span class="c-int">padrão</span>' : ''} <span class="dim">· próxima fatura vence ${esc(fmtDia(prox.vence, now))}</span></span>`, 'tbl');
+    }
+    term.print('<span class="dim">/cartao novo inter fecha 28 vence 5 · /cartao padrao inter · /cartao nubank fecha 5 vence 12 · renomear · arquivar</span>');
+  }
+
   /* ---------- lançamentos antigos sem categoria ---------- */
 
   let filaCat = [];
@@ -390,6 +486,16 @@ export function criarFinancas(h) {
       name: 'categoria', data: true, async: true, exec: true, args: 'nova pets [entrada] | renomear mercado = supermercado | arquivar pets',
       desc: 'cria, renomeia ou arquiva categorias · renomear muda nos lançamentos também',
       async run(arg, signal, t) { await categoria(arg, t); },
+    },
+    {
+      name: 'cartoes', alias: ['cartões'], data: true, desc: 'os seus cartões: fechamento, vencimento, o padrão e a próxima fatura',
+      run() { listarCartoes(); },
+    },
+    {
+      name: 'cartao', alias: ['cartão'], data: true, async: true, exec: true,
+      args: 'novo nubank fecha 3 vence 10 [padrão] | padrao inter | nubank fecha 5 vence 12 | renomear nubank = roxinho | arquivar inter',
+      desc: 'cadastra e edita cartões de crédito · o primeiro vira o padrão ("no cartão", "no crédito")',
+      async run(arg, signal, t) { await cartao(arg, t); },
     },
     {
       name: 'categorizar', data: true, async: true, exec: true,

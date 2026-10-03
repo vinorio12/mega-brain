@@ -1232,6 +1232,56 @@ describe('intérprete: parcelas e cartão pelo nome (etapa 2 · Fase 3b)', () =>
   });
 });
 
+describe('cartões por comando e memória do cartão (etapa 3 · Fase 3b)', () => {
+  const T = { id: 'T0001', elapsed: () => 1 };
+  const plain = s => s.term.text().replace(/<[^>]+>/g, '');
+  // por nome (no teste os cartões nascem no mesmo milissegundo, então a ordem não diz nada)
+  const cards = S => cartoesDe(S.records).map(c => [c.nome, c.fechamento, c.vencimento, c.padrao]).sort((a, b) => b[0].localeCompare(a[0]));
+  test('/cartao novo (o primeiro é padrão), padrao, editar, renomear, arquivar · /desfazer', async () => {
+    const s = setup([]);
+    await s.run('/cartao novo nubank fecha 3 vence 10');
+    await s.run('/cartao novo inter fecha dia 28 vence dia 5');
+    eq(cards(s.S), [['nubank', 3, 10, true], ['inter', 28, 5, false]]);
+    await s.run('/cartao padrao inter');
+    eq(cards(s.S).map(c => c[3]), [false, true]);
+    await s.run('/desfazer');
+    eq(cards(s.S).map(c => c[3]), [true, false]);
+    await s.run('/cartao nubank fecha 5 vence 12');
+    eq(cards(s.S)[0], ['nubank', 5, 12, true]);
+    await s.run('/cartao renomear nubank = roxinho');
+    await s.run('/cartao arquivar inter');
+    eq(cards(s.S), [['roxinho', 5, 12, true]]);
+    await s.run('/cartoes');
+    ok(/roxinho/.test(plain(s)) && /próxima fatura vence/.test(plain(s)), plain(s));
+    await throws(() => s.run('/cartao novo c6'), 'E_ARG');
+    await throws(() => s.run('/cartao novo c6 fecha 40 vence 3'), 'E_ARG');
+    await throws(() => s.run('/cartao padrao zzz'), 'E_404');
+  });
+  test('captura: nome do cartão grava o cartão; "no crédito" usa o padrão sem gravar', async () => {
+    const s = setup([]);
+    await s.run('/cartao novo nubank fecha 3 vence 10');
+    await s.run('/cartao novo inter fecha 28 vence 5');
+    const inter = cartoesDe(s.S.records)[1].id;
+    await s.ctx.commands.capturar('gastei 45 no ifood no inter', T);
+    await s.ctx.commands.capturar('almoço 30 no crédito', T);
+    const [a, b] = s.S.entries.filter(e => e.kind === 'gasto');
+    eq([a.data.forma, a.data.cartao, b.data.forma, b.data.cartao], ['credito', inter, 'credito', undefined]);
+    ok(/crédito nubank \(padrão\)/.test(plain(s)), plain(s));
+  });
+  test('a memória aprende o cartão (ifood → inter) e /memoria ifood = nubank fixa', async () => {
+    const s = setup([]);
+    await s.run('/cartao novo nubank fecha 3 vence 10');
+    await s.run('/cartao novo inter fecha 28 vence 5');
+    const [nubank, inter] = cartoesDe(s.S.records).map(c => c.id);
+    for (const f of ['ifood 30 no inter', 'gastei 20 no ifood no inter']) await s.ctx.commands.capturar(f, T);
+    await s.ctx.commands.capturar('gastei 45 no ifood no crédito', T);
+    eq(s.S.entries.filter(e => e.kind === 'gasto').at(-1).data.cartao, inter);
+    await s.run('/memoria ifood = nubank');
+    await s.ctx.commands.capturar('ifood 50 no cartão', T);
+    eq(s.S.entries.filter(e => e.kind === 'gasto').at(-1).data.cartao, nubank);
+  });
+});
+
 describe('palavras-chave por projeto (Fase 2)', () => {
   const seeds = (palavras = {}) => seedEntries([], 'local', new Date(2026, 9, 1))
     .map(e => (e.kind === 'projeto' && palavras[e.text] ? { ...e, data: { ...e.data, palavras: palavras[e.text] } } : e));

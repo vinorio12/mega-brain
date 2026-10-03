@@ -7,15 +7,15 @@
 // Perguntas de dinheiro não travam e não usam /sim: cada uma tem o seu comando (/cat, /forma), então aparecem na hora.
 
 import { esc, hl, dayKey, CmdError } from './util.js';
-import { fmtValor, parseValor } from './valores.js';
+import { fmtValor, parseValor, findValor } from './valores.js';
 import { fmtDia, findDate } from './dates.js';
 import { parseMonth } from './views.js';
 import { seedId } from './tasks.js';
 import { decidirCategoria } from './tipos-financas.js';
 import { previa } from './interpretar.js';
-import { recorrentesDe, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, dataNoMes, eDaRecorrente, mesDe, cartoesDe, cartaoPadrao, cartaoDoGasto, vencimentoDa, proximaFatura, parcelasDe, parcelasNoMes, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
+import { saldoConta, investimentosPorLugar, devoNoCartao, chaveLugar, recorrentesDe, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, dataNoMes, eDaRecorrente, mesDe, cartoesDe, cartaoPadrao, cartaoDoGasto, vencimentoDa, proximaFatura, parcelasDe, parcelasNoMes, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
 
-export const KINDS_FINANCAS = ['gasto', 'entrada', 'transferencia'];
+export const KINDS_FINANCAS = ['gasto', 'entrada', 'transferencia', 'rendimento'];
 export const isFinanca = e => KINDS_FINANCAS.includes(e?.kind);
 
 export function criarFinancas(h) {
@@ -65,7 +65,9 @@ export function criarFinancas(h) {
     const c = r.campos, A = k => (r.auto.includes(k) ? '<span class="dim">*</span>' : '');
     const nomes = (r.pessoas || []).map(id => (S.records || []).find(x => x.id === id)?.text).filter(Boolean);
     let partes;
-    if (r.tipo === 'transferencia') {
+    if (r.tipo === 'rendimento') {
+      partes = [esc(fmtValor(c.valor)), `na <span class="c-act">${esc(c.lugar)}</span>`, '<span class="dim">soma no investimento · não é entrada do mês</span>', `${esc(fmtDia(c.data))}${A('data')}`];
+    } else if (r.tipo === 'transferencia') {
       partes = [esc(fmtValor(c.valor)), c.conta ? `${c.sentido === 'de' ? 'da' : 'pra'} ${esc(c.conta)}` : '', '<span class="dim">não mexe no saldo</span>', `${esc(fmtDia(c.data))}${A('data')}`];
     } else {
       // o cartão: o escrito/aprendido, ou o padrão (que vale na hora de ler, sem gravar)
@@ -80,8 +82,8 @@ export function criarFinancas(h) {
         `${esc(fmtDia(c.data))}${A('data')}`,
       ];
     }
-    const rot = { gasto: 'gasto', entrada: 'entrada', transferencia: 'transferência' }[r.tipo];
-    const corrigir = r.tipo === 'transferencia' ? '/tipo gasto' : `/cat ${n}`;
+    const rot = { gasto: 'gasto', entrada: 'entrada', transferencia: 'transferência', rendimento: 'rendimento' }[r.tipo];
+    const corrigir = r.tipo === 'transferencia' ? '/tipo gasto' : r.tipo === 'rendimento' ? `/editar ${n}` : `/cat ${n}`;
     term.print(`<span class="c-int">↳ entendi</span> · ${rot} · ${partes.filter(Boolean).join(' · ')}` +
       ` <span class="dim">· ${r.auto.length ? '* auto · ' : ''}${esc(r.origem)} ${Math.round(r.confianca * 100)}% · /desfazer ou ${corrigir}</span>`, 'auto');
   }
@@ -89,7 +91,7 @@ export function criarFinancas(h) {
   // perguntas logo depois de salvar: categoria (outros / dividida / conflito), forma (gasto sem forma), estorno ligado
   function perguntar(r, e, n) {
     S.ultimaFin = e.id; // o /cat e o /forma sem número valem pra este
-    if (r.tipo === 'transferencia') return;
+    if (r.tipo === 'transferencia' || r.tipo === 'rendimento') return;
     const mc = r.motivos?.categoria, lista = cats()[r.tipo] || [];
     const sugestoes = lista.filter(x => x !== 'outros').slice(0, 6).map(x => `<span class="c-int">${esc(x)}</span>`).join(' · ');
     if (mc?.tipo === 'padrao') {
@@ -555,6 +557,75 @@ export function criarFinancas(h) {
     term.print(`<span class="c-int">↳ entendi</span> · recorrente · ${partes.filter(Boolean).join(' · ')} <span class="dim">· /desfazer · /recorrentes</span>`, 'auto');
   }
 
+  /* ---------- os três saldos (Fase 3d) ---------- */
+
+  // o que eu calculava antes de você me dizer o valor novo (sem a âncora que acabou de entrar)
+  function achava(onde, semId) {
+    const recs = (S.records || []).filter(e => e.id !== semId);
+    if (chaveLugar(onde) === 'conta') return saldoConta(S.entries, recs, new Date())?.valor ?? null;
+    const i = investimentosPorLugar(S.entries, recs).find(x => x.lugar === chaveLugar(onde));
+    return i ? i.valor : null;
+  }
+  // "↳ conta R$ 2.500,00 · eu achava R$ 2.480,00 · diferença +R$ 20,00"
+  function entendiSaldo(r, e) {
+    const onde = r.campos.onde, antes = achava(onde, e.id), dif = antes === null ? null : r.campos.valor - antes;
+    const nome = chaveLugar(onde) === 'conta' ? 'conta' : onde;
+    const resto = antes === null
+      ? '<span class="dim">daqui pra frente eu somo o que você lançar</span>'
+      : dif === 0 ? '<span class="dim">bate com o que eu calculava ✓</span>'
+        : `<span class="dim">eu achava ${esc(fmtValor(antes))} · diferença</span> <span class="${dif < 0 ? 'c-warn' : 'c-act'}">${dif > 0 ? '+' : ''}${esc(fmtValor(dif))}</span>${dif < 0 ? ' <span class="dim">(algo não foi lançado?)</span>' : ''}`;
+    term.print(`<span class="c-int">↳ saldo</span> · ${esc(nome)} <span class="c-act">${esc(fmtValor(r.campos.valor))}</span> · ${resto} <span class="dim">· /saldo · /desfazer</span>`, 'auto');
+  }
+  // "↳ fatura nubank (vence 10.11) paga · R$ 420,00 saiu da conta"
+  function entendiFatura(r) {
+    const now = new Date(), c = cartoesDe(S.records || [], { todos: true }).find(x => x.id === r.campos.cartao);
+    if (!c) return;
+    const total = parcelasNoMes(S.entries, r.campos.mes, opts().cartoes).filter(p => p.cartao.id === c.id).reduce((s, p) => s + p.valor, 0);
+    term.print(`<span class="c-int">↳ fatura</span> <span class="c-act">${esc(c.nome)}</span> <span class="dim">(vence ${esc(fmtDia(vencimentoDa(c, r.campos.mes).vence, now))})</span> paga · ${esc(fmtValor(total))} saiu da conta <span class="dim">· não é gasto (as compras já contaram) · /desfazer</span>`, 'auto');
+  }
+
+  // /saldo 2.500 · /saldo poupança 5.000 · /saldo xp 3.000 (qualquer lugar)
+  async function ajustarSaldo(raw, t) {
+    const v = findValor(raw);
+    if (!v) throw usage('saldo', '2.500 (a conta) · poupança 5.000 · tesouro 8 mil');
+    const onde = (v.resto || '').replace(/^(?:na|no|em|da|do|a|o)\s+/i, '').trim().toLowerCase() || 'conta';
+    const e = await ctx.store.add({ kind: 'saldo', text: onde, tags: [], ts: Date.now(), day: dayKey(new Date()), data: { onde: chaveLugar(onde), valor: v.centavos, data: dayKey(new Date()) } });
+    S.undo.push({ label: 'saldo', items: [], created: [e.id] });
+    S.lastLatency = t.elapsed();
+    term.ok('fin', `saldo · ${esc(onde)} ${esc(fmtValor(v.centavos))} <span class="c-meta">· ${t.id}</span>`);
+    entendiSaldo({ campos: { onde, valor: v.centavos } }, e);
+    ctx.ui.pulse('act');
+  }
+
+  // /saldo: os três, com o detalhe
+  function mostrarSaldos() {
+    const now = new Date();
+    const conta = saldoConta(S.entries, S.records || [], now);
+    const inv = investimentosPorLugar(S.entries, S.records || []);
+    const cards = devoNoCartao(S.entries, S.records || [], now);
+    const totalInv = inv.reduce((s, i) => s + i.valor, 0), devo = cards.reduce((s, c) => s + c.devo, 0);
+    const livres = cards.filter(c => c.livre != null), livre = livres.reduce((s, c) => s + c.livre, 0);
+    term.print(`── saldos ${'─'.repeat(12)}`, 'sep');
+    h.table([
+      ['conta', conta ? `<span class="${conta.valor < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(conta.valor))}</span> <span class="dim">· você disse ${esc(fmtValor(conta.ancora.valor))} em ${esc(fmtDia(conta.ancora.data, now))}, eu somei o que veio depois</span>`
+        : '<span class="dim">NA · diga quanto tem:</span> <span class="c-int">/saldo 2.500</span>'],
+      ['investido', inv.length ? `<span class="c-act">${esc(fmtValor(totalInv))}</span>` : '<span class="dim">NA · <span class="c-int">/saldo poupança 5.000</span> ou "transferi 200 pra poupança"</span>'],
+      ...inv.map(i => [`&nbsp;&nbsp;${esc(i.nome)}`, `${esc(fmtValor(i.valor))}${i.ancora ? '' : ' <span class="dim">(desde que comecei a contar · /saldo ' + esc(i.nome) + ' valor)</span>'}`]),
+      ['cartões', cards.length ? `deve <span class="c-warn">${esc(fmtValor(devo))}</span>${livres.length ? ` · livre <span class="c-act">${esc(fmtValor(livre))}</span>` : ''}` : '<span class="dim">NA · /cartao novo nubank fecha 3 vence 10 limite 5.000</span>'],
+      ...cards.map(c => [`&nbsp;&nbsp;${esc(c.nome)}`, `deve ${esc(fmtValor(c.devo))}${c.livre != null ? ` · livre ${esc(fmtValor(c.livre))} de ${esc(fmtValor(c.limite))}` : ' <span class="dim">· sem limite: /cartao ' + esc(c.nome) + ' limite 5.000</span>'}`]),
+    ]);
+    term.print('<span class="dim">o saldo do mês (entradas − gastos) continua no /mes · "paguei a fatura" tira da conta antes do vencimento · /investimentos</span>');
+  }
+
+  function listarInvestimentos() {
+    const inv = investimentosPorLugar(S.entries, S.records || []);
+    if (!inv.length) return term.say('nenhum investimento ainda · <span class="c-int">/saldo poupança 5.000</span> marca quanto tem · "transferi 200 pra poupança" e "rendeu 32 na poupança" atualizam');
+    term.print(`── investimentos · ${esc(fmtValor(inv.reduce((s, i) => s + i.valor, 0)))} ${'─'.repeat(8)}`, 'sep');
+    const rend = l => S.entries.filter(e => e.kind === 'rendimento' && chaveLugar(e.data?.lugar) === l).reduce((s, e) => s + (e.data?.valor || 0), 0);
+    h.table(inv.map(i => [esc(i.nome), `<span class="c-act">${esc(fmtValor(i.valor))}</span>${rend(i.lugar) ? ` <span class="dim">· rendeu ${esc(fmtValor(rend(i.lugar)))}</span>` : ''}${i.ancora ? ` <span class="dim">· marcado em ${esc(fmtDia(i.ancora.data, new Date()))}</span>` : ' <span class="dim">· sem valor inicial</span>'}`]));
+    term.print('<span class="dim">/saldo poupança 5.000 corrige · "transferi 200 pra poupança" · "resgatei 300 do cdb" · "rendeu 32 na poupança"</span>');
+  }
+
   /* ---------- cartões (Fase 3b) ---------- */
 
   const regsCartao = () => (S.records || []).filter(e => e.kind === 'cartao' && !e.data?.arquivado);
@@ -572,12 +643,16 @@ export function criarFinancas(h) {
     const vencimento = pega(/\s(?:vence|vencimento)\s+(?:dia\s+|no\s+dia\s+)?(\d{1,2})(?=\s)/);
     const padrao = /\spadr[aã]o\s/.test(t);
     t = t.replace(/\spadr[aã]o\s/, ' ');
+    // "limite 5.000", "limite de R$ 5 mil" (Fase 3d)
+    let limite = null;
+    const lm = t.match(/\slimite\s+(?:de\s+)?((?:r\$\s*)?[\d.,]+(?:\s*mil)?(?:\s*reais)?)(?=\s)/);
+    if (lm) { limite = parseValor(lm[1].trim()); t = t.replace(lm[0], ' '); if (!limite) throw new CmdError('E_ARG', 'fin', `limite inválido: ${lm[1].trim()}`, 'ex: limite 5.000'); }
     for (const [n, v] of [['fechamento', fechamento], ['vencimento', vencimento]]) {
       if (v !== null && (v < 1 || v > 31)) throw new CmdError('E_ARG', 'fin', `dia de ${n} inválido: ${v}`, 'use um dia de 1 a 31');
     }
-    return { nome: t.replace(/\s+/g, ' ').trim(), fechamento, vencimento, padrao };
+    return { nome: t.replace(/\s+/g, ' ').trim(), fechamento, vencimento, padrao, limite };
   }
-  const descCartao = c => `<span class="c-act">${esc(c.text)}</span> <span class="dim">fecha dia ${c.data?.fechamento} · vence dia ${c.data?.vencimento}${c.data?.padrao ? ' · padrão' : ''}</span>`;
+  const descCartao = c => `<span class="c-act">${esc(c.text)}</span> <span class="dim">fecha dia ${c.data?.fechamento} · vence dia ${c.data?.vencimento}${c.data?.limite ? ' · limite ' + esc(fmtValor(c.data.limite)) : ''}${c.data?.padrao ? ' · padrão' : ''}</span>`;
 
   async function cartao(raw, t) {
     const txt = String(raw).trim();
@@ -596,7 +671,7 @@ export function criarFinancas(h) {
       const padrao = c.padrao || !regsCartao().length; // o primeiro já nasce padrão
       const items = [];
       if (padrao) await tirarPadrao(null, items);
-      const e = await ctx.store.add({ kind: 'cartao', text: c.nome, tags: [], ts: Date.now(), day: dayKey(new Date()), data: { fechamento: c.fechamento, vencimento: c.vencimento, padrao, arquivado: false } });
+      const e = await ctx.store.add({ kind: 'cartao', text: c.nome, tags: [], ts: Date.now(), day: dayKey(new Date()), data: { fechamento: c.fechamento, vencimento: c.vencimento, padrao, arquivado: false, ...(c.limite ? { limite: c.limite } : {}) } });
       S.undo.push({ label: 'cartão criado', items, created: [e.id] });
       return done(`cartão novo · ${descCartao(e)}${padrao ? ' <span class="dim">· "no cartão" e "no crédito" vão pra ele</span>' : ''}`);
     }
@@ -628,10 +703,10 @@ export function criarFinancas(h) {
     // "/cartao nubank fecha 5 vence 12" ou "/cartao nubank": edita ou mostra
     const c = lerCartao(txt);
     const r = regCartao(c.nome);
-    if (c.fechamento === null && c.vencimento === null && !c.padrao) return term.print(descCartao(r));
+    if (c.fechamento === null && c.vencimento === null && !c.padrao && !c.limite) return term.print(descCartao(r));
     const items = [r];
     if (c.padrao) await tirarPadrao(r.id, items);
-    await ctx.store.restore({ ...r, data: { ...r.data, ...(c.fechamento !== null ? { fechamento: c.fechamento } : {}), ...(c.vencimento !== null ? { vencimento: c.vencimento } : {}), ...(c.padrao ? { padrao: true } : {}) } });
+    await ctx.store.restore({ ...r, data: { ...r.data, ...(c.fechamento !== null ? { fechamento: c.fechamento } : {}), ...(c.vencimento !== null ? { vencimento: c.vencimento } : {}), ...(c.padrao ? { padrao: true } : {}), ...(c.limite ? { limite: c.limite } : {}) } });
     S.undo.push({ label: 'cartão editado', items });
     return done(`cartão · ${descCartao(S.records.find(e => e.id === r.id) || r)}`);
   }
@@ -640,12 +715,13 @@ export function criarFinancas(h) {
     const lista = cartoesDe(S.records || []);
     if (!lista.length) return term.say('nenhum cartão ainda · <span class="c-int">/cartao novo nubank fecha 3 vence 10</span> cadastra (o primeiro vira o padrão)');
     const now = new Date(), padrao = cartaoPadrao(lista);
+    const devo = new Map(devoNoCartao(S.entries, S.records || [], now).map(d => [d.cartao, d]));
     term.print(`── cartões · ${lista.length} ${'─'.repeat(10)}`, 'sep');
     for (const c of lista) {
-      const prox = vencimentoDa(c, proximaFatura(c, now));
-      term.print(`<span class="k c-act">${esc(c.nome)}</span><span>fecha dia ${c.fechamento} · vence dia ${c.vencimento}${c.id === padrao?.id ? ' · <span class="c-int">padrão</span>' : ''} <span class="dim">· próxima fatura vence ${esc(fmtDia(prox.vence, now))}</span></span>`, 'tbl');
+      const prox = vencimentoDa(c, proximaFatura(c, now)), d = devo.get(c.id);
+      term.print(`<span class="k c-act">${esc(c.nome)}</span><span>deve ${esc(fmtValor(d?.devo || 0))}${d?.livre != null ? ` · livre <span class="${d.livre < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(d.livre))}</span> de ${esc(fmtValor(d.limite))}` : ' · <span class="dim">limite NA</span>'} <span class="dim">· fecha dia ${c.fechamento} · vence dia ${c.vencimento}${c.id === padrao?.id ? ' · padrão' : ''} · próxima fatura vence ${esc(fmtDia(prox.vence, now))}</span></span>`, 'tbl');
     }
-    term.print('<span class="dim">/cartao novo inter fecha 28 vence 5 · /cartao padrao inter · /cartao nubank fecha 5 vence 12 · renomear · arquivar</span>');
+    term.print('<span class="dim">/cartao nubank limite 5.000 · /cartao novo inter fecha 28 vence 5 · /cartao padrao inter · /cartao nubank fecha 5 vence 12 · renomear · arquivar</span>');
   }
 
   /* ---------- lançamentos antigos sem categoria ---------- */
@@ -738,6 +814,15 @@ export function criarFinancas(h) {
       run(arg) { mostrarFatura(arg); },
     },
     {
+      name: 'saldo', alias: ['saldos'], data: true, async: true, exec: true, args: '[valor | lugar valor]',
+      desc: 'os três saldos: conta, investimentos e cartões · /saldo 2.500 diz quanto tem na conta · /saldo poupança 5.000',
+      async run(arg, signal, t) { if (String(arg).trim()) await ajustarSaldo(arg, t); else mostrarSaldos(); },
+    },
+    {
+      name: 'investimentos', alias: ['investido', 'investimento'], data: true, desc: 'quanto tem em cada lugar (poupança, tesouro, CDB…) e quanto rendeu',
+      run() { listarInvestimentos(); },
+    },
+    {
       name: 'recorrentes', data: true, desc: 'contas fixas e assinaturas: valor (ou variável), dia, próximo lançamento e o fixo por mês',
       run() { listarRecorrentes(); },
     },
@@ -780,5 +865,5 @@ export function criarFinancas(h) {
     },
   ];
 
-  return { defs, entendi, perguntar, numero, pool, alvo, editar, apagar, mostrarMes, lancarRecorrentes, entendiRecorrente };
+  return { defs, entendi, perguntar, numero, pool, alvo, editar, apagar, mostrarMes, lancarRecorrentes, entendiRecorrente, entendiSaldo, entendiFatura };
 }

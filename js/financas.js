@@ -616,7 +616,7 @@ export function saldoConta(entries = [], records = [], now = new Date(), cartoes
   const hoje = dayKey(now);
   let v = a.valor;
   for (const e of entries) {
-    if (!(e.ts > a.ts) || !Number.isInteger(e.data?.valor)) continue;
+    if (!(e.ts >= a.ts) || !Number.isInteger(e.data?.valor)) continue;
     if (e.kind === 'entrada') v += e.data.valor;
     else if (e.kind === 'gasto' && !(e.data?.forma === 'credito' && cartaoDoGasto(e, cartoes))) v -= e.data.valor;
     else if (e.kind === 'transferencia') v += e.data?.sentido === 'de' ? e.data.valor : -e.data.valor;
@@ -650,7 +650,7 @@ export function investimentosPorLugar(entries = [], records = []) {
   return [...lugares].map(([k, a]) => {
     let v = a ? a.valor : 0;
     for (const e of movs) {
-      if (chaveLugar(e.data.conta || e.data.lugar) !== k || (a && !(e.ts > a.ts)) || !Number.isInteger(e.data?.valor)) continue;
+      if (chaveLugar(e.data.conta || e.data.lugar) !== k || (a && !(e.ts >= a.ts)) || !Number.isInteger(e.data?.valor)) continue;
       v += e.kind === 'rendimento' ? e.data.valor : e.data.sentido === 'de' ? -e.data.valor : e.data.valor;
     }
     return { lugar: k, nome: nomeDe.get(k), valor: v, ancora: a };

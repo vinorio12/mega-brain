@@ -1607,6 +1607,58 @@ describe('frases dos saldos (etapa 2 · Fase 3d)', () => {
   });
 });
 
+describe('/saldo, /investimentos, limite e fatura paga na tela (etapa 3 · Fase 3d)', () => {
+  const T = { id: 'T', elapsed: () => 1 };
+  const plain = s => s.term.text().replace(/<[^>]+>/g, '');
+  const tick = () => new Promise(r => setTimeout(r, 3)); // ordem garantida pela hora em que foi escrito
+  test('âncora, gasto à vista e reajuste com diferença', async () => {
+    const s = setup([]);
+    await s.run('/saldo');
+    ok(/conta\s*NA/.test(plain(s)), plain(s));
+    await s.run('/saldo 2.500');
+    await tick();
+    await s.ctx.commands.capturar('gastei 45 no ifood no pix', T);
+    eq(saldoConta(s.S.entries, s.S.records).valor, 245500);
+    s.term.out.length = 0;
+    await tick();
+    await s.ctx.commands.capturar('tenho 2.400 na conta', T);
+    ok(/eu achava R\$ 2\.455,00 · diferença -R\$ 55,00/.test(plain(s)), plain(s));
+    eq(saldoConta(s.S.entries, s.S.records).valor, 240000);
+    await s.run('/desfazer');
+    eq(saldoConta(s.S.entries, s.S.records).valor, 245500);
+  });
+  test('cartão com limite: deve e livre; "paguei a fatura" não vira gasto', async () => {
+    const s = setup([]);
+    await s.run('/cartao novo nubank fecha 3 vence 10 limite 5.000');
+    eq(cartoesDe(s.S.records)[0].limite, 500000);
+    await s.ctx.commands.capturar('comprei um tênis 300 em 3x', T);
+    s.term.out.length = 0;
+    await s.run('/cartoes');
+    ok(/deve R\$ 300,00 · livre R\$ 4\.700,00 de R\$ 5\.000,00/.test(plain(s)), plain(s));
+    await s.ctx.commands.capturar('paguei a fatura do nubank', T);
+    eq([s.S.records.some(e => e.kind === 'faturapaga'), s.S.entries.filter(e => e.kind === 'gasto').length], [true, 1]);
+    ok(/↳ fatura nubank/.test(plain(s)) && /não é gasto/.test(plain(s)), plain(s));
+    await s.run('/cartao nubank limite 6 mil');
+    eq(cartoesDe(s.S.records)[0].limite, 600000);
+  });
+  test('investimentos: âncora, transferência e rendimento (com número f)', async () => {
+    const s = setup([]);
+    await s.run('/saldo poupança 5.000');
+    await tick();
+    await s.ctx.commands.capturar('transferi 200 pra poupança', T);
+    await s.ctx.commands.capturar('rendeu 32 na poupança', T);
+    const r = s.S.entries.find(e => e.kind === 'rendimento');
+    eq([r.data.valor, r.data.lugar], [3200, 'poupança']);
+    ok(/rendimento lançado f2/.test(plain(s)), plain(s));
+    eq(investimentosPorLugar(s.S.entries, s.S.records).map(i => [i.nome, i.valor]), [['poupança', 523200]]);
+    s.term.out.length = 0;
+    await s.run('/investimentos');
+    ok(/poupança/.test(plain(s)) && /R\$ 5\.232,00/.test(plain(s)) && /rendeu R\$ 32,00/.test(plain(s)), plain(s));
+    await s.run('/saldo');
+    ok(/investido/.test(plain(s)) && /cartões/.test(plain(s)), plain(s));
+  });
+});
+
 describe('palavras-chave por projeto (Fase 2)', () => {
   const seeds = (palavras = {}) => seedEntries([], 'local', new Date(2026, 9, 1))
     .map(e => (e.kind === 'projeto' && palavras[e.text] ? { ...e, data: { ...e.data, palavras: palavras[e.text] } } : e));

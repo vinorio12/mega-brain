@@ -75,7 +75,7 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - `tests/frases.js` régua do intérprete: frase → resultado esperado (regras e IA passam na mesma lista; `FRASES_IA` só pra IA)
 - `tests/` testes no navegador · `docs/` passo a passo e planos
 - `sw.js` + `manifest.webmanifest` + `icons/` PWA (ao mudar arquivos do app, aumentar `CACHE` no sw.js)
-- `supabase/*.sql` banco (rodar no SQL Editor) · `tools/icons.ps1` gera os PNGs dos ícones
+- `supabase/*.sql` banco (rodar no SQL Editor): 001 tabela + RLS · 002 coluna `data` · 003 `updated_at` + gatilho (sincronização leve) · `tools/icons.ps1` gera os PNGs dos ícones
 - `.mcp.json` conecta o MCP do Supabase (projeto xfvfgidvqrubdtogtczy)
 
 ## Formato das entradas (tabela `entries`)
@@ -126,6 +126,8 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
   - Pessoas reconhecidas por nome/apelido sem `@` (registro `kind: pessoa`, `data.pessoas` nas entradas), nome novo pergunta (`/sim`), "esperando o João" → `esperando`, `/pessoa` ver/editar/juntar
   - Memória única (pessoas e palavras): projeto em que cada pista aparece, com peso (aparição 1, escrito 2, correção 3, fixado manda); só vota se dominante (≥70%, peso ≥3); dividida = não chuta, pergunta; `/memoria` edita
   - [x] 0 plano aprovado · [x] 1 `js/pessoas.js` (`pessoasDe`, `findPessoas`, `candidatosPessoa`, `acharPessoa`, `editApelidos`, `juntarPessoas`; 329 testes) · [x] 2 cadastro: `/pessoas`, `/pessoa nova|apelido|renomear|juntar|arquivar` com `/desfazer` (332 testes) · [x] 3 intérprete marca pessoas (`pessoasNaFrase`, contrato ganha `pessoas`/`pessoasNovas`/`pessoasAmbiguas`, `data.pessoas` em toda entrada, histórico rastreia) + "esperando/aguardando/depende de" + pessoa → esperando, "tô fazendo/comecei" → fazendo (345 testes) · [x] 4 nome novo pergunta ("↳ Carla é uma pessoa?"), `/sim` cadastra e liga, `/nao` não pergunta mais (`data.naoPessoa` no aprendizado); `/sim` `/nao` também respondem "era tarefa?"; fila `S.perguntas`, uma por vez (350 testes) · [x] 5 `/pessoa João` vê tudo (`resumoPessoa`: esperando ela, abertas numeradas, feitas 30d, notas, outros, projetos, últimas mudanças; 352 testes) · [x] 6 `js/memoria.js` (`criarMemoria`, `memoriaDe` com cache, `decidirProjeto`: nome → pistas dominantes → conflito/dividida não chuta (tarefa sem projeto + "↳ projeto? … /editar t4 #weg") → palavras em comum → pessoal; palavras-chave antigas = fixadas; motivo na linha entendi; `MEMORIA` em config.js; 360 testes) · [x] 7 `/memoria [pista] [= proj | -proj | solta | limpar]` (registros `kind: memoria`); `/palavras` agora grava fixar/desafixar na mesma memória (as antigas continuam valendo) (362 testes) · [x] 8 `montarContexto` cita "esperando: João (2)", pedido da IA leva nomes e apelidos, v0.10.0, README, módulo "pessoas e memória" no painel (364 testes)
+- [x] Pré-Fase 3 · sincronização leve: a cada 60s o app baixa só as linhas com `updated_at` novo (cursor do relógio do servidor, inclusivo); leitura completa ao abrir, no `/sync` e a cada 30 min (pega o que foi apagado); sem a coluna, segue completa · `/condition` mostra a leitura · **falta: Vini rodar `supabase/003_updated_at.sql`**
+- [ ] Pré-Fase 3 · Vini usa o app uns dias; depois `/aprendizado exportar` vira ajuste das regras e frases novas na régua
 - [ ] 3. Finanças: gastos, entradas, categorias, saldo do mês
 - [ ] 4. Corpo e hábitos: treino, saúde, hábitos com filosofia "cadence" (padrão semanal, sem streak, sem bronca)
 - [ ] 5. Dashboards: gráficos por área e tendências, só com dados reais
@@ -140,3 +142,4 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - "Cofre"/"Vault" pra algo secreto
 - Pessoas com dados extras (aniversário, contato, onde conheci) · depois da Fase 2.5
 - Lembrete de follow-up: tarefa "esperando fulano" parada há X dias aparece no `/inicio` · depois da Fase 2.5
+- Dividir o `js/commands.js` (1.500+ linhas) por área: tarefas, pessoas, intérprete, acervo, sistema · sugerido antes da Fase 3, o Vini deixou pra depois (02/10/2026)

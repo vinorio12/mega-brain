@@ -118,19 +118,62 @@ export function createCloudStore(sb, user, { onSync } = {}) {
     return e;
   };
 
-  async function pull() {
-    const t0 = performance.now();
+  // Leitura do servidor, em dois modos:
+  //   completa: a tabela inteira (ao abrir, no /sync e a cada 30 min; pega também o que foi apagado em outro aparelho)
+  //   leve: só as linhas com updated_at depois da última vista (o resto do tempo, a cada minuto)
+  // Sem a coluna updated_at no banco (antes da supabase/003_updated_at.sql), fica sempre na completa, como antes.
+  const CURSOR = 'mb.cloud.cursor.v1:' + user.id;
+  let cursor = (() => { try { return localStorage.getItem(CURSOR) || null; } catch { return null; } })(); // maior updated_at visto (relógio do servidor)
+  let leve = true;     // vira false se o banco não tem updated_at
+  let lastFull = 0;
+  const FULL_MS = 30 * 60 * 1000;
+  const avancar = rows => {
+    for (const r of rows) if (r.updated_at && (!cursor || r.updated_at > cursor)) cursor = r.updated_at;
+    try { cursor ? localStorage.setItem(CURSOR, cursor) : localStorage.removeItem(CURSOR); } catch {}
+  };
+  const semColuna = e => e?.code === '42703' || /updated_at/i.test(String(e?.message || ''));
+
+  async function paged(query) {
     const rows = [];
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await sb.from('entries').select(COLS).order('ts').range(from, from + 999);
+      const { data, error } = await query().range(from, from + 999);
       if (error) throw error;
       rows.push(...data);
       if (data.length < 1000) break;
     }
+    return rows;
+  }
+
+  async function pull({ full = false } = {}) {
+    if (full || !leve || !cursor || Date.now() - lastFull > FULL_MS) return pullFull();
+    const t0 = performance.now();
+    let rows;
+    try { rows = await paged(() => sb.from('entries').select(COLS).gte('updated_at', cursor).order('updated_at')); }
+    catch (e) { if (semColuna(e)) { leve = false; return pullFull(); } throw e; }
+    if (rows.length) {
+      const map = new Map(server.map(e => [e.id, e]));
+      for (const r of rows) map.set(r.id, clean(r));
+      server = [...map.values()];
+      write(CACHE, server);
+      avancar(rows);
+      rebuild();
+    }
+    setStatus({ latency: Math.round(performance.now() - t0), lastSync: Date.now(), modo: 'leve', linhas: rows.length });
+    return server.length;
+  }
+
+  async function pullFull() {
+    const t0 = performance.now();
+    const rows = await paged(() => sb.from('entries').select(COLS).order('ts'));
     server = rows.map(clean);
     write(CACHE, server);
+    // o banco tem a coluna? (tabela vazia: tenta o modo leve na próxima)
+    leve = !rows.length || rows.some(r => r.updated_at);
+    cursor = null;
+    avancar(rows);
+    lastFull = Date.now();
     rebuild();
-    setStatus({ latency: Math.round(performance.now() - t0), lastSync: Date.now() });
+    setStatus({ latency: Math.round(performance.now() - t0), lastSync: Date.now(), modo: 'completa', linhas: rows.length });
     return server.length;
   }
 
@@ -212,9 +255,12 @@ export function createCloudStore(sb, user, { onSync } = {}) {
       return entries.length;
     },
 
+    // o mesmo do relógio de 60s: envia a fila e lê só o que mudou (ou a completa, se for a hora)
+    async refresh() { await flush(); return pull(); },
+
     async sync() {
       await flush();
-      const n = await pull();
+      const n = await pull({ full: true }); // /sync e abrir o app: sempre a leitura completa
       setStatus({ state: outbox.length ? 'pending' : 'sync' });
       return n;
     },
@@ -238,6 +284,7 @@ export function createCloudStore(sb, user, { onSync } = {}) {
       if (channel) sb.removeChannel(channel);
       localStorage.removeItem(CACHE);
       localStorage.removeItem(OUTBOX);
+      localStorage.removeItem(CURSOR);
     },
   };
 }

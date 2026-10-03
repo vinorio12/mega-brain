@@ -101,12 +101,30 @@ function setup(texts) {
 // Supabase falso pro teste da memória na nuvem
 function fakeSb() {
   const rows = new Map();
-  const api = { fail: false, calls: [], rows };
+  // semColuna: banco antigo, sem updated_at (antes da supabase/003_updated_at.sql)
+  const api = { fail: false, semColuna: false, calls: [], rows };
   const err = () => ({ error: { message: 'TypeError: Failed to fetch' } });
+  let clock = 0;
+  // o "banco" carimba updated_at em todo insert/update (como o gatilho da 003)
+  api.gravar = row => rows.set(row.id, { ...row, ...(api.semColuna ? {} : { updated_at: 't' + String(++clock).padStart(8, '0') }) });
   api.from = () => ({
-    upsert: async row => { api.calls.push('upsert'); if (api.fail) return err(); rows.set(row.id, { ...row }); return { error: null }; },
+    upsert: async row => { api.calls.push('upsert'); if (api.fail) return err(); api.gravar(row); return { error: null }; },
     delete: () => ({ eq: async (_, id) => { api.calls.push('delete'); if (api.fail) return err(); rows.delete(id); return { error: null }; } }),
-    select: () => ({ order: () => ({ range: async () => (api.fail ? err() : { data: [...rows.values()], error: null }) }) }),
+    select: () => {
+      let min = null;
+      const b = {
+        gte: (col, v) => { min = v; return b; },
+        order: () => b,
+        range: async () => {
+          api.calls.push(min ? 'leitura-leve' : 'leitura-completa');
+          if (api.fail) return err();
+          if (min && api.semColuna) return { error: { code: '42703', message: 'column entries.updated_at does not exist' } };
+          const all = [...rows.values()];
+          return { data: min ? all.filter(r => r.updated_at >= min) : all, error: null };
+        },
+      };
+      return b;
+    },
   });
   api.auth = { getSession: async () => ({ data: { session: null } }) };
   api.realtime = { setAuth: async () => {} };
@@ -1705,6 +1723,55 @@ describe('memória na nuvem (Supabase falso)', () => {
     await Promise.all([st.add({ text: 'a', ts: 1, day: 'x' }), st.add({ text: 'b', ts: 2, day: 'x' })]);
     eq(st.pending(), 0, 'nada preso na fila');
     eq(sb.rows.size, 2);
+    st.forget();
+    clean();
+  });
+  test('leitura leve: depois da completa, baixa só o que mudou', async () => {
+    clean();
+    const sb = fakeSb();
+    const st = createCloudStore(sb, user);
+    let seen = [];
+    st.subscribe(l => { seen = l; });
+    await st.connect();
+    for (const t of ['a', 'b', 'c']) await st.add({ text: t, ts: 1, day: 'x' });
+    await st.sync();
+    eq([st.status.modo, st.status.linhas], ['completa', 3]);
+    // outro aparelho muda uma linha
+    const [id] = [...sb.rows.keys()];
+    sb.gravar({ ...sb.rows.get(id), text: 'a editada no celular' });
+    await st.refresh();
+    eq([sb.calls.at(-1), st.status.modo, st.status.linhas], ['leitura-leve', 'leve', 2]); // a editada + a última já vista (marcador inclusivo)
+    ok(seen.some(e => e.text === 'a editada no celular'), 'a mudança chegou');
+    await st.refresh();
+    eq(st.status.linhas, 1, 'na próxima, só a última vista de novo (cursor inclusivo, sem perder nada)');
+    st.forget();
+    clean();
+  });
+  test('apagado em outro aparelho: a leitura completa (abrir, /sync) tira', async () => {
+    clean();
+    const sb = fakeSb();
+    const st = createCloudStore(sb, user);
+    let seen = [];
+    st.subscribe(l => { seen = l; });
+    await st.connect();
+    await st.add({ text: 'a', ts: 1, day: 'x' });
+    await st.sync();
+    sb.rows.clear();
+    await st.sync();
+    eq(seen.length, 0);
+    st.forget();
+    clean();
+  });
+  test('banco sem a coluna updated_at: continua na leitura completa, sem erro', async () => {
+    clean();
+    const sb = fakeSb();
+    sb.semColuna = true;
+    const st = createCloudStore(sb, user);
+    await st.connect();
+    await st.add({ text: 'a', ts: 1, day: 'x' });
+    await st.sync();
+    await st.refresh();
+    eq([st.status.modo, sb.calls.includes('leitura-leve')], ['completa', false]);
     st.forget();
     clean();
   });

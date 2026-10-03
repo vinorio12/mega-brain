@@ -64,7 +64,8 @@ export function criarMemoria(entries = [], records = [], { reg = registry([]), p
 
   const pistas = new Map(); // chave → Map(projeto → peso)
   const soma = (k, p, peso, ts) => {
-    if ((manual.get(k)?.desde || 0) > ts) return;
+    const desde = manual.get(k)?.desde || 0;
+    if (desde && ts <= desde) return; // "limpar" esquece tudo até aquele instante (inclusive)
     if (!pistas.has(k)) pistas.set(k, new Map());
     pistas.get(k).set(p, (pistas.get(k).get(p) || 0) + peso);
   };

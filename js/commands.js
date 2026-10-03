@@ -1361,6 +1361,7 @@ export function createCommands(ctx) {
             (st?.lastSync ? ` <span class="dim">· último sync ${hhmm(new Date(st.lastSync))}</span>` : '') +
             (st?.lastError ? ` <span class="c-warn">· ${esc(st.lastError)}</span>` : '')],
           ['tempo real', st?.realtime ?? '<span class="dim">NA</span>'],
+          ['leitura', st?.modo ? `${st.modo === 'leve' ? 'leve (só o que mudou)' : 'completa'} · ${st.linhas ?? 0} linhas` : '<span class="dim">NA</span>'],
           ['tarefas', (s => `${s.abertas} abertas · hoje ${s.hoje}` + (s.atrasadas ? ` · <span class="c-warn">${s.atrasadas} atrasadas</span>` : '') + ` · feitas hoje ${s.feitasHoje}`)(taskStats(S.entries))],
           ['aba', S.ctx ? `<span class="c-act">~/${esc(S.ctx)}</span>` : '~ (inbox)'],
           ['entradas', `${S.entries.length} <span class="dim">· hoje ${S.entries.filter(e => e.day === k).length} · ${ctx.store ? kb(ctx.store.bytes()) : 'NA'}</span>`],

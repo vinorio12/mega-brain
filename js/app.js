@@ -9,7 +9,8 @@ import { createCommands } from './commands.js';
 import { createUI } from './ui.js';
 import { createBoot, bootMode } from './boot.js';
 import { savedPlace, fetchWeather } from './weather.js';
-import { isRecord, registry, seedEntries } from './tasks.js';
+import { isRecord, registry, seedEntries, seedId } from './tasks.js';
+import { seedCategorias } from './financas.js';
 import { withHistory } from './historico.js';
 
 // só pra testar no PC: http://localhost:5173/?local abre em modo local (dados só neste navegador), sem tocar na nuvem
@@ -138,10 +139,12 @@ function attachStore(store) {
 // Cria os projetos (tcc, weg, pessoal) e status (a fazer, fazendo, esperando, feito) iniciais, se faltarem.
 // Só roda depois de a memória estar completa (nuvem sincronizada), pra não duplicar.
 async function ensureSeed() {
-  const missing = seedEntries(S.records, S.user?.id || 'local');
+  const owner = S.user?.id || 'local';
+  const missing = [...seedEntries(S.records, owner), ...seedCategorias(S.records, owner, new Date(), seedId)];
   if (!missing.length) return;
   for (const e of missing) await ctx.store.restore(e);
-  term.ok('store', `registros iniciais · ${missing.filter(e => e.kind === 'projeto').map(e => '#' + e.text).join(' ')} ${missing.filter(e => e.kind === 'status').map(e => '@' + esc(e.text)).join(' ')}`.trim());
+  const cats = missing.filter(e => e.kind === 'categoria').length;
+  term.ok('store', `registros iniciais · ${missing.filter(e => e.kind === 'projeto').map(e => '#' + e.text).join(' ')} ${missing.filter(e => e.kind === 'status').map(e => '@' + esc(e.text)).join(' ')}${cats ? ` · ${cats} categorias de dinheiro` : ''}`.replace(/\s+/g, ' ').trim());
 }
 
 async function openLocal() {

@@ -196,7 +196,7 @@ export function createCommands(ctx) {
     data: outro ? { chave, acao, campo: outro.campo, valor: outro.valor ?? null } : { chave, acao, projeto: projeto || null },
   });
   // finanças (js/comandos-financas.js): números f1…, linha "↳ entendi" de dinheiro, perguntas, /cat, /forma
-  const fin = criarFinancas({ S, term, ctx, usage, mem, table: (...a) => table(...a) });
+  const fin = criarFinancas({ S, term, ctx, usage, mem, ictx, table: (...a) => table(...a) });
   // palavras que você disse que não são pessoa (/nao): ficam no aprendizado
   const ignorados = () => (S.records || []).filter(e => e.kind === 'interpretacao' && e.data?.naoPessoa).map(e => e.data.naoPessoa);
 

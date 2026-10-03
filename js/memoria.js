@@ -98,7 +98,7 @@ export function criarMemoria(entries = [], records = [], { reg = registry([]), p
   // correção: vale como "você escreveu" (2). Mudar o que o app tinha chutado é correção (3).
   const corrigidos = new Map();
   for (const ev of records) {
-    if (ev.kind !== 'evento' || ev.data?.acao !== 'alterada' || ev.data?.origem === 'desfazer') continue;
+    if (ev.kind !== 'evento' || ev.data?.acao !== 'alterada' || (ev.data?.origem || 'usuario') !== 'usuario') continue; // só o que VOCÊ mudou (desfazer, renomear categoria e o app não contam)
     for (const [c, [de]] of Object.entries(ev.data?.mudancas || {})) {
       if (!['projeto', 'categoria', 'forma'].includes(c)) continue;
       if (c !== 'projeto' && (!de || (c === 'categoria' && de === 'outros'))) continue;

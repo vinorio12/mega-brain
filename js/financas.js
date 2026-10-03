@@ -305,3 +305,20 @@ export function lancamentos(entries = [], { mes = null, kind = 'gasto', categori
   return entries.filter(e => e.kind === kind && (!mes || mesDe(e) === mes) && (!categoria || (e.data?.categoria || 'sem categoria') === categoria))
     .sort((a, b) => String(a.data?.data || a.day).localeCompare(String(b.data?.data || b.day)) || a.ts - b.ts);
 }
+
+/* ---------- semente das categorias ---------- */
+
+// As categorias padrão que ainda faltam virar registro (id fixo: dois aparelhos criam o mesmo, sem duplicar).
+// Só semeia um tipo que ainda não tem nenhum registro (igual aos projetos).
+export function seedCategorias(records = [], owner = 'local', now = new Date(), seedId = s => s) {
+  const out = [];
+  const day = dayKey(now), ts = now.getTime();
+  for (const tipo of TIPOS_FINANCAS) {
+    if (records.some(e => e.kind === 'categoria' && (e.data?.tipo || 'gasto') === tipo)) continue;
+    CATEGORIAS_PADRAO[tipo].forEach((nome, i) => out.push({
+      id: seedId(`${owner}:categoria:${tipo}:${nome}`), kind: 'categoria', text: nome, tags: [], ts: ts + 20 + out.length, day,
+      data: { tipo, ordem: i + 1, arquivada: false },
+    }));
+  }
+  return out;
+}

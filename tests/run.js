@@ -17,7 +17,7 @@ import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
 import { lerMovimento } from '../js/tipos-financas.js';
-import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos } from '../js/financas.js';
+import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias } from '../js/financas.js';
 import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
@@ -1091,6 +1091,65 @@ describe('o mês: saldo, categorias, /mes, /gastos, /editar f3, /memoria de cate
     await s.run('/memoria ifood limpar');
     eq(s.S.records.filter(r => r.kind === 'memoria').length, 4, 'limpar grava um registro por campo');
     await throws(() => s.run('/memoria ifood = xyz'), 'E_404');
+  });
+});
+
+describe('categorias por comando e /categorizar (etapa 6 · Fase 3a)', () => {
+  const T = { id: 'T0001', elapsed: () => 1 };
+  const plain = s => s.term.text().replace(/<[^>]+>/g, '');
+  test('semente das categorias: id fixo, só o que falta', () => {
+    const now = new Date(2026, 9, 1);
+    const sd = seedCategorias([], 'u1', now, seedId);
+    eq([sd.length, sd.filter(e => e.data.tipo === 'entrada').map(e => e.text)], [14, ['salário', 'freela', 'reembolso', 'outros']]);
+    eq(seedCategorias([], 'u1', now, seedId)[0].id, sd[0].id, 'o mesmo id nos dois aparelhos');
+    eq(seedCategorias(sd, 'u1', now, seedId), []);
+    eq(categoriasDe(sd).gasto, CATEGORIAS_PADRAO.gasto);
+  });
+  test('/categoria nova, renomear (lançamentos e memória juntos) e arquivar · /desfazer', async () => {
+    const s = setup([]);
+    await s.run('/categoria nova pets');
+    eq(categoriasDe(s.S.records).gasto.includes('pets'), true);
+    await s.run('/desfazer');
+    eq(categoriasDe(s.S.records).gasto.includes('pets'), false);
+    await s.ctx.commands.capturar('mercado 87', T);
+    await s.run('/memoria atacadão = mercado');
+    await s.run('/categoria renomear mercado = supermercado');
+    eq([s.S.entries.find(e => e.kind === 'gasto').data.categoria, categoriasDe(s.S.records).gasto.includes('supermercado')], ['supermercado', true]);
+    eq(s.S.records.find(e => e.kind === 'memoria').data.valor, 'supermercado');
+    await s.run('/desfazer');
+    eq(s.S.entries.find(e => e.kind === 'gasto').data.categoria, 'mercado');
+    await throws(() => s.run('/categoria arquivar outros'), 'E_AMBIGUO'); // existe em gasto e em entrada
+    await throws(() => s.run('/categoria arquivar outros gasto'), 'E_ARG');
+    await throws(() => s.run('/categoria arquivar outros entrada'), 'E_ARG');
+    await s.run('/categoria arquivar lazer');
+    eq(categoriasDe(s.S.records).gasto.includes('lazer'), false);
+    await s.run('/categoria nova lazer');
+    eq(categoriasDe(s.S.records).gasto.includes('lazer'), true, 'criar de novo desarquiva');
+    await s.run('/categorias');
+    ok(/categorias de entrada/.test(plain(s)));
+  });
+  test('/categorizar: antigos ganham categoria pela memória; o resto pergunta um por vez', async () => {
+    const s = setup([]);
+    const velho = (id, text, valor) => ({ id, kind: 'gasto', text, tags: [], ts: 1, day: '2026-09-20', data: { valor, descricao: text, data: '2026-09-20' } });
+    for (const e of [velho('v1', 'gastei 30 no almoço', 3000), velho('v2', 'gastei 40 na xpto', 4000), velho('v3', 'paguei 50 no zzz', 5000)]) await s.ctx.store.restore(e);
+    await s.run('/categorizar');
+    const cat = id => s.S.entries.find(e => e.id === id).data.categoria;
+    eq([cat('v1'), cat('v2'), cat('v3')], ['alimentação', undefined, undefined]);
+    eq(s.S.entries.find(e => e.id === 'v1').text, 'gastei 30 no almoço', 'a frase original não muda');
+    ok(/1 ganhou categoria/.test(plain(s)) && /↳ categoria\? f\d gastei 40 na xpto/.test(plain(s)) && /depois tem mais 1/.test(plain(s)), plain(s));
+    const n = plain(s).match(/↳ categoria\? (f\d)/)[1];
+    await s.run(`/cat ${n} lazer`);
+    eq(cat('v2'), 'lazer');
+    ok(/↳ categoria\? f\d paguei 50 no zzz/.test(plain(s)), 'mostra o próximo');
+    await s.run('/desfazer');
+    await s.run('/desfazer');
+    eq(cat('v1'), undefined, 'o /categorizar volta num passo só');
+  });
+  test('mudança que não foi você (origem regra) não conta como correção na memória', () => {
+    const reg = registry([]);
+    const g = { id: 'g1', kind: 'gasto', text: 'mercado 30', ts: 1, data: { valor: 3000, categoria: 'supermercado' } };
+    const ev = origem => ({ id: 'e' + origem, kind: 'evento', ts: 2, data: { alvo: 'g1', acao: 'alterada', mudancas: { categoria: ['mercado', 'supermercado'] }, origem } });
+    eq([criarMemoria([g], [ev('regra')], { reg }).info('palavra:mercado', 'categoria:gasto').total, criarMemoria([g], [ev('usuario')], { reg }).info('palavra:mercado', 'categoria:gasto').total], [2, 3]);
   });
 });
 

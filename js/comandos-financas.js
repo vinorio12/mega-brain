@@ -10,7 +10,9 @@ import { esc, hl, dayKey, CmdError } from './util.js';
 import { fmtValor, parseValor } from './valores.js';
 import { fmtDia, findDate } from './dates.js';
 import { parseMonth } from './views.js';
-import { categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
+import { seedId } from './tasks.js';
+import { decidirCategoria } from './tipos-financas.js';
+import { lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
 
 export const KINDS_FINANCAS = ['gasto', 'entrada', 'transferencia'];
 export const isFinanca = e => KINDS_FINANCAS.includes(e?.kind);
@@ -213,6 +215,127 @@ export function criarFinancas(h) {
     ctx.ui.pulse('int');
   }
 
+  /* ---------- categorias por comando ---------- */
+
+  const regsCat = () => (S.records || []).filter(e => e.kind === 'categoria');
+  // garante que as padrão existem como registro antes de mexer (o boot já semeia; isto é só por segurança)
+  async function semear() {
+    for (const e of seedCategorias(S.records || [], S.user?.id || 'local', new Date(), seedId)) await ctx.store.restore(e);
+  }
+  // acha o registro de uma categoria pelo nome · tipo: 'gasto' | 'entrada' | null (procura nos dois)
+  function regCat(nome, tipo = null) {
+    const achados = regsCat().filter(e => !e.data?.arquivada && (!tipo || (e.data?.tipo || 'gasto') === tipo) && acharCategoria(nome, [String(e.text)]));
+    if (achados.length > 1) throw new CmdError('E_AMBIGUO', 'fin', `"${nome}" existe em gasto e em entrada`, `diga qual: <span class="c-int">/categoria … ${esc(nome)} entrada</span>`);
+    if (!achados.length) throw new CmdError('E_404', 'fin', `categoria "${nome}" não existe${tipo ? ' em ' + tipo : ''}`, 'veja as categorias com <span class="c-int">/categorias</span>');
+    return achados[0];
+  }
+  // "... entrada" no fim diz o tipo
+  const tipoNoFim = ws => (/^entradas?$/i.test(ws[ws.length - 1] || '') ? ['entrada', ws.slice(0, -1)] : /^gastos?$/i.test(ws[ws.length - 1] || '') ? ['gasto', ws.slice(0, -1)] : [null, ws]);
+
+  async function categoria(raw, t) {
+    const [sub0, ...rest] = String(raw).trim().split(/\s+/);
+    const sub = (sub0 || '').toLowerCase();
+    const done = (msg, tone = 'act') => { S.lastLatency = t.elapsed(); term.ok('fin', `${msg} <span class="c-meta">· /desfazer volta · ${t.id}</span>`); ctx.ui.pulse(tone); };
+    await semear();
+    if (sub === 'nova' || sub === 'novo' || sub === 'criar') {
+      const [tipo0, ws] = tipoNoFim(rest);
+      const tipo = tipo0 || 'gasto';
+      const nome = ws.join(' ').trim().toLowerCase();
+      if (!nome) throw usage('categoria', 'nova pets [entrada]');
+      if (acharCategoria(nome, cats()[tipo])) return term.say(`${esc(nome)} já existe em ${tipo}.`);
+      const arq = regsCat().find(e => e.data?.arquivada && (e.data?.tipo || 'gasto') === tipo && acharCategoria(nome, [String(e.text)]));
+      if (arq) { // já existiu: desarquiva
+        S.undo.push({ label: 'categoria', items: [arq] });
+        await ctx.store.restore({ ...arq, data: { ...arq.data, arquivada: false } });
+        return done(`categoria <span class="c-act">${esc(arq.text)}</span> voltou (${tipo})`);
+      }
+      const ordem = Math.max(0, ...regsCat().map(e => e.data?.ordem || 0)) + 1;
+      const e = await ctx.store.add({ kind: 'categoria', text: nome, tags: [], ts: Date.now(), day: dayKey(new Date()), data: { tipo, ordem, arquivada: false } });
+      S.undo.push({ label: 'categoria criada', items: [], created: [e.id] });
+      return done(`categoria nova · <span class="c-act">${esc(nome)}</span> (${tipo})`);
+    }
+    if (sub === 'renomear') {
+      const txt = rest.join(' ');
+      const i = txt.search(/\s*(?:=|\bpara\b|\bpra\b)\s*/);
+      if (i < 0) throw usage('categoria', 'renomear mercado = supermercado [entrada]');
+      const de = txt.slice(0, i).trim(), [tipo0, ws] = tipoNoFim(txt.slice(i).replace(/^\s*(?:=|para|pra)\s*/, '').split(/\s+/));
+      const para = ws.join(' ').trim().toLowerCase();
+      if (!de || !para) throw usage('categoria', 'renomear mercado = supermercado [entrada]');
+      const r = regCat(de, tipo0);
+      const tipo = r.data?.tipo || 'gasto';
+      if (String(r.text).toLowerCase() === 'outros') throw new CmdError('E_ARG', 'fin', '"outros" não muda de nome', 'é pra onde vai o que o app não sabe');
+      if (acharCategoria(para, cats()[tipo])) throw new CmdError('E_ARG', 'fin', `${para} já existe em ${tipo}`, 'escolha outro nome');
+      const velho = String(r.text);
+      // os lançamentos e as decisões da memória com o nome velho passam pro novo (tudo num passo só do /desfazer)
+      const lancs = S.entries.filter(e => e.kind === tipo && e.data?.categoria === velho);
+      const mems = (S.records || []).filter(e => e.kind === 'memoria' && e.data?.campo === 'categoria:' + tipo && e.data?.valor === velho);
+      S.undo.push({ label: 'categoria renomeada', items: [r, ...lancs, ...mems] });
+      await ctx.store.restore({ ...r, text: para });
+      for (const e of lancs) await ctx.store.restore({ ...e, data: { ...e.data, categoria: para } }, { origem: 'regra' });
+      for (const e of mems) await ctx.store.restore({ ...e, data: { ...e.data, valor: para } });
+      return done(`${esc(velho)} → <span class="c-act">${esc(para)}</span> · ${lancs.length} ${lancs.length === 1 ? 'lançamento' : 'lançamentos'}`);
+    }
+    if (sub === 'arquivar') {
+      const [tipo0, ws] = tipoNoFim(rest);
+      const r = regCat(ws.join(' '), tipo0);
+      if (String(r.text).toLowerCase() === 'outros') throw new CmdError('E_ARG', 'fin', '"outros" não pode ser arquivada', 'é pra onde vai o que o app não sabe');
+      S.undo.push({ label: 'categoria arquivada', items: [r] });
+      await ctx.store.restore({ ...r, data: { ...r.data, arquivada: true } });
+      return done(`${esc(r.text)} arquivada · some das sugestões · os lançamentos continuam como estão`, 'warn');
+    }
+    if (sub && sub !== 'lista') throw usage('categoria', 'nova pets [entrada] · renomear mercado = supermercado · arquivar pets');
+    listarCategorias();
+  }
+
+  function listarCategorias() {
+    const r = resumoMes(S.entries, dayKey(new Date()).slice(0, 7));
+    const noMes = new Map([...r.porCategoria, ...r.entradasPorCategoria.map(([c, v]) => ['e:' + c, v])]);
+    for (const tipo of ['gasto', 'entrada']) {
+      term.print(`── categorias de ${tipo} ${'─'.repeat(10)}`, 'sep');
+      for (const c of cats()[tipo]) {
+        const v = noMes.get(tipo === 'gasto' ? c : 'e:' + c);
+        term.print(`<span class="k">${esc(c)}</span><span>${v ? esc(fmtValor(v)) + ' <span class="dim">este mês</span>' : '<span class="dim">—</span>'}</span>`, 'tbl');
+      }
+    }
+    term.print('<span class="dim">/categoria nova pets [entrada] · renomear mercado = supermercado · arquivar pets</span>');
+  }
+
+  /* ---------- lançamentos antigos sem categoria ---------- */
+
+  let filaCat = [];
+  function proximaCategoria() {
+    filaCat = filaCat.filter(id => S.entries.some(e => e.id === id && !e.data?.categoria));
+    const e = S.entries.find(x => x.id === filaCat[0]);
+    if (!e) return;
+    const sug = (cats()[e.kind] || []).filter(x => x !== 'outros').slice(0, 5).map(x => `<span class="c-int">${esc(x)}</span>`).join(' · ');
+    term.print(`<span class="c-warn">↳ categoria?</span> <span class="c-meta">${esc(numero(e))}</span> ${hl(e.text)} <span class="c-act">${esc(fmtValor(e.data?.valor))}</span> <span class="dim">·</span> <span class="c-int">/cat ${esc(numero(e))}</span> ${sug} <span class="dim">· ${filaCat.length > 1 ? `depois tem mais ${filaCat.length - 1}` : 'é o último'}</span>`, 'auto');
+  }
+  async function categorizar(t) {
+    const velhos = S.entries.filter(e => (e.kind === 'gasto' || e.kind === 'entrada') && !e.data?.categoria);
+    if (!velhos.length) return term.say('todos os lançamentos já têm categoria. ✓');
+    const certos = [], duvida = [];
+    for (const e of velhos) {
+      const f = lerFinanca(e.text, { pessoas: h.ictx().pessoas }) || { lugar: null, estorno: false };
+      const d = decidirCategoria(e.text, e.kind, f, h.ictx());
+      if (d.categoria && d.motivo.tipo !== 'padrao') certos.push([e, d.categoria]);
+      else duvida.push(e);
+    }
+    if (certos.length) {
+      S.undo.push({ label: 'categorizar', items: certos.map(([e]) => e) });
+      for (const [e, c] of certos) {
+        const campos = [...new Set([...(e.data?.auto?.campos || []), 'categoria'])];
+        await ctx.store.restore({ ...e, data: { ...e.data, categoria: c, auto: { ...(e.data?.auto || { fonte: 'regra' }), campos } } }, { origem: 'regra' });
+      }
+    }
+    S.lastLatency = t.elapsed();
+    term.ok('fin', `${certos.length} ${certos.length === 1 ? 'ganhou' : 'ganharam'} categoria pela memória${duvida.length ? ` · ${duvida.length} sem certeza: pergunto um por vez` : ''} <span class="c-meta">· a frase original não muda · /desfazer volta · ${t.id}</span>`);
+    for (const [e, c] of certos.slice(0, 8)) term.print(`<span class="c-meta">${esc(numero(e))}</span> ${hl(e.text)} → <span class="c-act">${esc(c)}</span><span class="dim">*</span>`);
+    if (certos.length > 8) term.print(`<span class="dim">… e mais ${certos.length - 8}</span>`);
+    filaCat = duvida.map(e => e.id);
+    proximaCategoria();
+    ctx.ui.pulse('act');
+  }
+
   const defs = [
     {
       name: 'mes', alias: ['mês', 'fin', 'financas', 'finanças', 'grana'], data: true, args: '[mês: -1 | 9 | 2026-09]',
@@ -249,7 +372,22 @@ export function criarFinancas(h) {
         await mudar(e, 'categoria', cat, t, 'categoria');
         term.ok('fin', `${esc(numero(e))} · <span class="c-act">${esc(cat)}</span>${e.data?.categoria && e.data.categoria !== cat ? ` <span class="dim">(era ${esc(e.data.categoria)})</span>` : ''} · ${hl(e.text)} <span class="c-meta">· aprendi · /desfazer volta · ${t.id}</span>`);
         ctx.ui.pulse('act');
+        proximaCategoria(); // /categorizar: o próximo antigo sem categoria
       },
+    },
+    {
+      name: 'categorias', data: true, desc: 'as categorias de gasto e de entrada, com o total do mês',
+      run() { listarCategorias(); },
+    },
+    {
+      name: 'categoria', data: true, async: true, exec: true, args: 'nova pets [entrada] | renomear mercado = supermercado | arquivar pets',
+      desc: 'cria, renomeia ou arquiva categorias · renomear muda nos lançamentos também',
+      async run(arg, signal, t) { await categoria(arg, t); },
+    },
+    {
+      name: 'categorizar', data: true, async: true, exec: true,
+      desc: 'dá categoria aos gastos e entradas antigos que não têm · a memória decide; o que ela não sabe, pergunto um por vez',
+      async run(arg, signal, t) { await categorizar(t); },
     },
     {
       name: 'forma', alias: ['pagamento', 'pagou'], data: true, async: true, exec: true, args: '<pix|crédito|débito|dinheiro|boleto> [f3]',

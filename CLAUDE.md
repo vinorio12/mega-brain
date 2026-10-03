@@ -143,3 +143,4 @@ Testes: http://localhost:5173/tests/ (o título da aba mostra ✓ N ou ✕ N).
 - Pessoas com dados extras (aniversário, contato, onde conheci) · depois da Fase 2.5
 - Lembrete de follow-up: tarefa "esperando fulano" parada há X dias aparece no `/inicio` · depois da Fase 2.5
 - Dividir o `js/commands.js` (1.500+ linhas) por área: tarefas, pessoas, intérprete, acervo, sistema · sugerido antes da Fase 3, o Vini deixou pra depois (02/10/2026)
+- Finanças, depois da Fase 3: importar extrato do banco (CSV/OFX) pra conferir com o real · saldo real das contas (não só o fluxo do mês) · rachar conta entre pessoas (quem deve quanto)

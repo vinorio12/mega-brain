@@ -1,6 +1,6 @@
 # Fase 3c · Finanças: recorrentes (contas fixas e assinaturas)
 
-> Status: **aprovado pelo Vini em 03/10/2026** · etapa 0 feita. Última parte da Fase 3; o Vini testa 3a + 3b + 3c juntas no fim.
+> Status: **aprovado pelo Vini em 03/10/2026** · **etapas 1 a 6 feitas (v0.13.0)**, esperando o Vini testar 3a + 3b + 3c. Última parte da Fase 3; o Vini testa 3a + 3b + 3c juntas no fim.
 > Ritual de cada etapa: explico antes, função pura + teste, `/tests/` verde, teste no navegador (`/?local`, PC e 375px), `sw.js` (SHELL + CACHE), commit em português, `CLAUDE.md` + roadmap.
 
 ## Contexto

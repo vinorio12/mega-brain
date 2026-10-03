@@ -225,7 +225,7 @@ export function createCore(canvas, satEls = {}) {
     rot += dt * (0.05 + energy * 0.25) * stutter * lockedHold;
     rotIn += dt * (0.25 + energy * 2.2) * stutter * lockedHold;
     orb += dt * (0.12 + energy * 0.5) * stutter;
-    satT += dt * (0.6 + energy * 0.9) * stutter * lockedHold; // satélites flutuam mais rápido quando o núcleo trabalha
+    satT += dt * 0.3 * lockedHold; // satélites: deriva lenta e constante (um balanço leva ~30–50s), sem acelerar com o estado
     t += dt;
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

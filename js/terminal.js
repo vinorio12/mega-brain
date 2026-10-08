@@ -251,6 +251,16 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
   // Botões tocáveis: <button data-cmd="/forma pix f3"> roda o comando como se você tivesse digitado.
   // Um botão de uma pergunta respondida apaga os irmãos dela (não dá pra responder duas vezes).
   out.addEventListener('click', ev => {
+    // botão que escreve o comando no campo pra você completar (ex: "/cat " precisa da categoria)
+    const f = ev.target.closest('[data-fill]');
+    if (f && out.contains(f)) {
+      ev.preventDefault();
+      input.value = f.dataset.fill;
+      changed();
+      input.focus({ preventScroll: true });
+      placeCursor();
+      return;
+    }
     const b = ev.target.closest('[data-cmd]');
     if (!b || !out.contains(b)) return;
     ev.preventDefault();

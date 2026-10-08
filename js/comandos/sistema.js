@@ -84,8 +84,16 @@ export function criarSistema(kit) {
         if (ar) {
           term.print(`── ${ar.nome} ${'─'.repeat(10)}`, 'sep');
           if (ar.ex.length) { term.print('escreva assim', 'tgrp'); exemplos(ar.ex); }
-          term.print('comandos', 'tgrp');
-          table(todos.filter(c => areaDe.get(c) === ar.key).map(c => [`<span class="${c.args?.startsWith('<') || c.exec ? 'c-act' : 'c-int'}">/${esc(c.name)}</span>`, curto(c.desc)]), 'cmd');
+          term.print('comandos <span class="dim">· toque: os cheios rodam na hora · os tracejados escrevem no campo pra você completar</span>', 'tgrp');
+          // um botão claro por comando + a descrição em cor normal (antes: texto pequeno em duas cores, difícil de ler)
+          const NUNCA = ['sair', 'entrar', 'codigo', 'boot', 'migrar', 'importar', 'exportar', 'limpar'];
+          for (const c of todos.filter(x => areaDe.get(x) === ar.key)) {
+            const roda = !c.exec && !String(c.args || '').startsWith('<') && !NUNCA.includes(c.name);
+            const botao = roda
+              ? `<button type="button" class="cmdpill" data-cmd="/${esc(c.name)}">/${esc(c.name)}</button>`
+              : `<button type="button" class="cmdpill is-fill" data-fill="/${esc(c.name)} ">/${esc(c.name)}</button>`;
+            term.print(`${botao}<span class="cd">${curto(c.desc)}</span>`, 'cmdrow');
+          }
           if (ar.key === 'sistema') teclado();
           term.print(`<span class="dim">/ajuda &lt;comando&gt; mostra o uso completo · outras áreas:</span>${chips(AREAS.filter(x => x !== ar).map(x => chip(x.nome, '/ajuda ' + x.key)))}`);
           return;

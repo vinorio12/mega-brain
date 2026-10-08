@@ -42,7 +42,7 @@ export { pickTargets, prepareImport } from './comandos/dados.js';
 // A ordem dos comandos no /ajuda, no Tab e no painel (os de finanças vêm depois, na ordem de js/comandos/financas.js)
 const ORDEM = ['ajuda', 'inbox', 'hoje', 'overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'reabrir', 'adiar', 'editar', 'mover', 'status',
   'feitas', 'revisar', 'mudancas', 'palavras', 'memoria', 'sim', 'nao', 'pessoas', 'pessoa', 'tipo', 'contexto', 'aprendizado', 'projeto', 'ir',
-  'buscar', 'acervo', 'guardar', 'apagar', 'desfazer', 'arrumar', 'condition', 'clima', 'log', 'historico', 'exportar', 'entrar', 'codigo', 'sair',
+  'buscar', 'acervo', 'guardar', 'apagar', 'desfazer', 'arrumar', 'limpeza', 'condition', 'clima', 'log', 'historico', 'exportar', 'entrar', 'codigo', 'sair',
   'sync', 'migrar', 'instalar', 'importar', 'boot', 'roadmap', 'sistema', 'detalhes', 'painel', 'foco', 'limpar'];
 
 export function createCommands(ctx) {

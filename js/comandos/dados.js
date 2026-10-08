@@ -1,4 +1,5 @@
-// Dados: /apagar (nota, acervo, tarefa, lançamento ou texto), /desfazer, /exportar, /importar e /arrumar (limpeza com o seu /sim).
+// Dados: /apagar (nota, acervo, tarefa, lançamento ou texto), /desfazer, /exportar, /importar, /arrumar (sugestões com o seu /sim)
+// e /limpeza (você escolhe o que apagar, por grupo ou item por item; aprendizado, pessoas e configurações ficam).
 // pickTargets e prepareImport são funções puras (testadas em tests/run.js).
 // Uma das áreas da linguagem de comandos: js/commands.js junta todas (veja o comentário de lá).
 
@@ -6,6 +7,7 @@ import { esc, hl, dayKey, tagsOf, uid, CmdError, VERSION } from '../util.js';
 import { isTask } from '../tasks.js';
 import { previa } from '../interpretar.js';
 import { sugestoesArrumacao, semTags } from '../arrumar.js';
+import { gruposLimpeza, planoLimpeza } from '../limpeza.js';
 
 // Decide quais entradas um "/apagar ..." está pedindo. Função pura (não apaga nada), testada em tests/.
 //   números: "3", "1 2 3", "1,2,3", "1-4", "#2"  → { mode: 'num', targets: [{n, e}], bad: ['#9', ...] }
@@ -78,6 +80,26 @@ export function criarDados(kit) {
   const chips = (...a) => kit.chips(...a);
   const ictx = (...a) => kit.ictx(...a);
 
+  /* ---------- /limpeza (v0.14): você escolhe o que apagar; a tela (palco "limpeza") marca, este comando apaga ---------- */
+
+  // apaga o que está marcado em S.limpeza.sel (só o que está nos grupos: nunca aprendizado, pessoas, projetos, categorias…)
+  async function aplicarLimpeza(t) {
+    const sel = S.limpeza?.sel;
+    if (!sel?.size) throw new CmdError('E_ARG', 'store', 'nada marcado', 'abra <span class="c-int">/limpeza</span> e marque o que quer apagar');
+    const grupos = gruposLimpeza(S.entries, S.records || []);
+    const porGrupo = grupos.map(g => [g.nome, g.itens.filter(i => sel.has(i.id)).length]).filter(([, n]) => n);
+    const { remover, recorrentes } = planoLimpeza(sel, S.entries, S.records || []);
+    const antigas = recorrentes.map(r => (S.records || []).find(x => x.id === r.id)).filter(Boolean);
+    S.undo.push({ label: 'limpeza', items: [...remover, ...antigas] });
+    for (const e of remover) await ctx.store.remove(e.id);
+    for (const r of recorrentes) await ctx.store.restore(r);
+    S.limpeza = { sel: new Set(), abertos: S.limpeza.abertos, confirmar: false };
+    S.lastLatency = t.elapsed();
+    term.ok('store', `apagado · ${porGrupo.map(([nome, n]) => `${esc(nome.split(' (')[0])} ${n}`).join(' · ')}${recorrentes.length ? ' <span class="dim">· as recorrentes pulam esses meses</span>' : ''} <span class="c-meta">· ${t.id}</span>${chips([chip('desfazer', '/desfazer', 'is-undo')])}`);
+    ctx.ui.pulse('warn');
+    ctx.ui.render();
+  }
+
   /* ---------- /arrumar (v0.14): sugere limpezas e só aplica com o seu sim ---------- */
 
   const ROTULO = { apagar: 'apagar', fatura: 'virar fatura paga', 'tirar-tag': 'tirar do título', 'sem-prazo': 'tirar o prazo' };
@@ -146,7 +168,17 @@ export function criarDados(kit) {
 
   const defs = [
     {
-      name: 'arrumar', alias: ['limpar-dados', 'faxina'], data: true, async: true, exec: true, args: '[1 3 5]',
+      name: 'limpeza', alias: ['limpar-dados', 'excluir'], data: true, async: true, exec: true, args: '',
+      desc: 'escolha o que apagar (tarefas, notas, acervo, gastos, entradas…) por grupo ou item por item · aprendizado, pessoas, projetos e categorias ficam',
+      async run(arg, signal, t) {
+        if (String(arg).trim() === 'apagar') return aplicarLimpeza(t);
+        S.limpeza = { sel: new Set(), abertos: new Set(), confirmar: false };
+        ctx.ui.openStage('limpeza');
+        term.say('limpeza aberta · marque o que quer apagar · nada some até você confirmar · <span class="c-int">esc</span> fecha');
+      },
+    },
+    {
+      name: 'arrumar', alias: ['faxina'], data: true, async: true, exec: true, args: '[1 3 5]',
       desc: 'procura o que limpar (notas que eram respostas, tarefa "fazendo", fatura gravada como gasto, prazo automático) e só mexe com o seu sim',
       async run(arg, signal, t) {
         const ns = String(arg).trim().split(/[\s,]+/).filter(Boolean);

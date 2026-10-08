@@ -13,6 +13,7 @@ import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes, cartoesDe, proximasFatura
 import { shortUrl, isAcervo, isLink, safeUrl } from './acervo.js';
 import { deriveState, describeState, readIntent, LISTEN_MS, FAULT_MS } from './state.js';
 import { pessoasDe } from './pessoas.js';
+import { gruposLimpeza } from './limpeza.js';
 
 const MODULES = [
   { name: 'inbox', phase: '0' },
@@ -540,9 +541,9 @@ export function createUI(ctx) {
 
   function renderStage(E, now) {
     const meta = `${DOW[now.getDay()]} ${ddmm(now)} · ${hhmm(now)} · ~${stage.proj ? '/' + stage.proj : ''}`;
-    $('st-title').textContent = stage.titulo || { kanban: 'KANBAN', financas: 'FINANÇAS', hoje: 'HOJE' }[stage.kind] || 'OVERVIEW';
+    $('st-title').textContent = stage.titulo || { kanban: 'KANBAN', financas: 'FINANÇAS', hoje: 'HOJE', limpeza: 'LIMPEZA' }[stage.kind] || 'OVERVIEW';
     $('st-meta').textContent = stage.kind === 'kanban' ? `${stage.proj ? '#' + stage.proj : 'todas'}${stage.status ? ' · @' + stage.status : ''} · ${hhmm(now)}` : meta;
-    const html = stage.html ?? (stage.kind === 'kanban' ? kanbanHtml(E, now) : stage.kind === 'financas' ? financasHtml(E, now) : stage.kind === 'hoje' ? hojeHtml(E, now) : overviewHtml(E, now));
+    const html = stage.html ?? (stage.kind === 'kanban' ? kanbanHtml(E, now) : stage.kind === 'financas' ? financasHtml(E, now) : stage.kind === 'hoje' ? hojeHtml(E, now) : stage.kind === 'limpeza' ? limpezaHtml(E) : overviewHtml(E, now));
     // só troca o HTML quando muda: digitar não reinicia a rolagem nem a aba do kanban
     if (html !== stageHtml) { $('st-body').innerHTML = html; stageHtml = html; }
   }
@@ -580,6 +581,22 @@ export function createUI(ctx) {
     // botão tracejado: escreve o comando no campo pra você completar (a tela continua aberta)
     const f = e.target.closest('[data-fill]');
     if (f) { e.preventDefault(); const i = $('cmd'); i.value = f.dataset.fill; i.dispatchEvent(new Event('input', { bubbles: true })); i.focus(); }
+    // limpeza: marcar/desmarcar não grava nada (só a tela muda); quem apaga é o /limpeza apagar, depois da confirmação
+    const L = S.limpeza, lz = e.target.closest('[data-lz]');
+    if (L && lz) {
+      e.preventDefault();
+      const [acao, val] = lz.dataset.lz.split(':');
+      const grupo = val && gruposLimpeza(S.entries, S.records || []).find(g => g.key === val);
+      if (acao === 'item') { L.sel.has(val) ? L.sel.delete(val) : L.sel.add(val); }
+      else if (acao === 'grupo' && grupo) { const todos = grupo.itens.every(i => L.sel.has(i.id)); grupo.itens.forEach(i => (todos ? L.sel.delete(i.id) : L.sel.add(i.id))); }
+      else if (acao === 'abrir') { L.abertos.has(val) ? L.abertos.delete(val) : L.abertos.add(val); }
+      else if (acao === 'apagar') L.confirmar = true;
+      else if (acao === 'cancelar') L.confirmar = false;
+      else if (acao === 'nada') { L.sel.clear(); L.confirmar = false; }
+      if (acao !== 'apagar' && acao !== 'cancelar') L.confirmar = false;
+      stageHtml = '';
+      renderNow();
+    }
   });
   // tocar num satélite abre a área (/tarefas tcc, /financas)
   $('field').addEventListener('click', e => { const c = e.target.closest('.sat[data-cmd], .field-strip[data-cmd]'); if (c) rodar(c.dataset.cmd); });
@@ -594,6 +611,39 @@ export function createUI(ctx) {
     const dx = e.changedTouches[0].clientX - touchX; touchX = null;
     if (Math.abs(dx) > 60) kbGo(kbTab + (dx < 0 ? 1 : -1));
   }, { passive: true });
+
+  // LIMPEZA (v0.14): você escolhe o que apagar · grupos com "marcar tudo", a lista de cada grupo (tocar no nome abre),
+  // e a barra de baixo: "apagar N marcados" → confirmação → /limpeza apagar (um /desfazer volta tudo)
+  function limpezaHtml(E) {
+    const L = S.limpeza || (S.limpeza = { sel: new Set(), abertos: new Set(), confirmar: false });
+    const grupos = gruposLimpeza(E, S.records || []);
+    const vivos = new Set(grupos.flatMap(g => g.itens.map(i => i.id)));
+    for (const id of [...L.sel]) if (!vivos.has(id)) L.sel.delete(id); // o que já foi apagado sai da seleção
+    const caixa = (estado, attr, rot) => `<button type="button" class="lz-ck${estado === 'todos' ? ' is-on' : estado === 'alguns' ? ' is-some' : ''}" data-lz="${attr}" aria-label="${esc(rot)}" aria-pressed="${estado === 'todos'}">${estado === 'todos' ? '✓' : estado === 'alguns' ? '–' : ''}</button>`;
+    const dm = d => (d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '');
+    const secoes = grupos.map(g => {
+      const n = g.itens.filter(i => L.sel.has(i.id)).length;
+      const estado = n === 0 ? 'nenhum' : n === g.itens.length ? 'todos' : 'alguns';
+      const aberto = L.abertos.has(g.key);
+      const lista = aberto ? `<ul class="lz-lista">${g.itens.slice(0, 300).map(i =>
+        `<li class="${L.sel.has(i.id) ? 'is-sel' : ''}">${caixa(L.sel.has(i.id) ? 'todos' : 'nenhum', 'item:' + i.id, 'marcar ' + i.texto)}` +
+        `<button type="button" class="lz-txt" data-lz="item:${esc(i.id)}"><span class="d">${esc(dm(i.data))}</span><span class="t">${hl(i.texto)}</span>${i.valor != null ? `<b>${esc(fmtValor(i.valor))}</b>` : ''}</button></li>`).join('')}` +
+        `${g.itens.length > 300 ? `<li class="lz-mais">+${g.itens.length - 300} (use "marcar tudo" no grupo)</li>` : ''}</ul>` : '';
+      return `<section class="lz-g${aberto ? ' is-open' : ''}"><header>${caixa(estado, 'grupo:' + g.key, 'marcar tudo de ' + g.nome)}` +
+        `<button type="button" class="lz-nome" data-lz="abrir:${g.key}"><span>${esc(g.nome)}</span><span class="dim">${g.itens.length}</span><span class="lz-seta">${aberto ? '▾' : '▸'}</span></button>` +
+        `${n ? `<span class="lz-n">${n} marcad${n > 1 ? 'os' : 'o'}</span>` : ''}</header>${lista}</section>`;
+    }).join('');
+    const total = L.sel.size;
+    const barra = !total
+      ? '<span class="dim">marque um grupo inteiro (caixinha) ou abra e escolha item por item</span>'
+      : L.confirmar
+        ? `<span class="c-warn">apagar ${total} ${total > 1 ? 'itens' : 'item'}?</span> <span class="dim">dá pra voltar com /desfazer</span>` +
+          `<button type="button" class="chip is-danger" data-cmd="/limpeza apagar">sim, apagar</button><button type="button" class="chip" data-lz="cancelar">cancelar</button>`
+        : `<b>${total} marcad${total > 1 ? 'os' : 'o'}</b><button type="button" class="chip is-danger" data-lz="apagar">apagar ${total}</button><button type="button" class="chip" data-lz="nada">desmarcar tudo</button>`;
+    return `<div class="lz"><p class="lz-info">Escolha o que apagar. <span class="dim">Ficam sempre: o aprendizado, a memória, as pessoas, os projetos, as categorias, os cartões, as recorrentes, o seu crédito e o histórico.</span></p>` +
+      (grupos.length ? `<div class="lz-grupos">${secoes}</div>` : '<div class="ov-empty">nada pra apagar</div>') +
+      `<div class="lz-bar">${barra}</div></div>`;
+  }
 
   // O dia em poucas palavras (faixa do celular e tela Hoje): "hoje 1/5" · "2 atrasadas · crédito resta R$ 977,10"
   function resumoDia(E, now) {

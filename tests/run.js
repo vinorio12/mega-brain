@@ -30,6 +30,7 @@ import { pessoasDe, findPessoas, candidatosPessoa, acharPessoa, editApelidos, ju
 import { criarMemoria, decidirProjeto, palavrasDe } from '../js/memoria.js';
 import { lerAtalhoTarefa, respostaPergunta, comandoSozinho } from '../js/conversa.js';
 import { sugestoesArrumacao, semTags } from '../js/arrumar.js';
+import { gruposLimpeza, planoLimpeza } from '../js/limpeza.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -237,6 +238,48 @@ describe('valores (valores.js · Fase 2)', () => {
   test('tirar o valor não cola o marcador na palavra de antes', () => eq(findValor('pagar 30 !alta').resto, 'pagar !alta'));
   test('fmtValor', () => eq([3000, 123456, 5, -500, 0, 100000000].map(fmtValor),
     ['R$ 30,00', 'R$ 1.234,56', 'R$ 0,05', '-R$ 5,00', 'R$ 0,00', 'R$ 1.000.000,00']));
+});
+
+describe('limpeza escolhida (v0.14 · /limpeza)', () => {
+  const T = { id: 'T', elapsed: () => 1 };
+  const es = [
+    { id: 't1', kind: 'tarefa', text: 'aberta', tags: [], ts: 1, day: '2026-10-01', data: { status: 'a fazer' } },
+    { id: 't2', kind: 'tarefa', text: 'feita', tags: [], ts: 2, day: '2026-10-01', data: { status: 'feito', feito_em: 5 } },
+    { id: 'n1', kind: 'nota', text: 'uma nota', tags: [], ts: 3, day: '2026-10-02' },
+    { id: 'g1', kind: 'gasto', text: 'netflix (recorrente)', tags: [], ts: 4, day: '2026-10-15', data: { valor: 5590, data: '2026-10-15', recorrente: 'r1' } },
+    { id: 'l1', kind: 'link', text: 'https://x.com', tags: [], ts: 5, day: '2026-10-02', data: { url: 'https://x.com' } },
+  ];
+  const recs = [
+    { id: 'r1', kind: 'recorrente', text: 'netflix', ts: 0, data: { tipo: 'gasto', valor: 5590, dia: 15, status: 'ativa', pulados: [] } },
+    { id: 'p1', kind: 'pessoa', text: 'Ana', ts: 0, data: {} },
+    { id: 'm1', kind: 'memoria', text: 'ifood', ts: 0, data: {} },
+    { id: 'i1', kind: 'interpretacao', text: 'abasteci', ts: 0, data: {} },
+    { id: 's1', kind: 'saldo', text: 'conta', ts: 6, data: { onde: 'conta', valor: 100000, data: '2026-10-02' } },
+  ];
+  test('grupos: tarefas abertas e feitas, notas, acervo, gastos, saldos · nunca aprendizado, memória, pessoas, recorrentes', () => {
+    const g = gruposLimpeza(es, recs);
+    eq(g.map(x => [x.key, x.itens.map(i => i.id)]), [['abertas', ['t1']], ['feitas', ['t2']], ['notas', ['n1']], ['acervo', ['l1']], ['gastos', ['g1']], ['saldos', ['s1']]]);
+  });
+  test('planoLimpeza: ignora o que não está nos grupos; gasto de recorrente anota o mês em "pulados"', () => {
+    const p = planoLimpeza(['g1', 'p1', 'm1', 'i1', 'r1', 'n1'], es, recs);
+    eq(p.remover.map(e => e.id), ['n1', 'g1']);
+    eq(p.recorrentes.map(r => [r.id, r.data.pulados]), [['r1', ['2026-10']]]);
+  });
+  test('/limpeza abre a tela; "/limpeza apagar" apaga só o marcado; /desfazer volta tudo', async () => {
+    const s = setup([]);
+    for (const e of [...es, ...recs]) await s.ctx.store.restore(e);
+    await s.run('/limpeza');
+    eq(s.ctx.ui.stage.kind, 'limpeza');
+    await throws(() => s.run('/limpeza apagar'), 'E_ARG'); // nada marcado
+    s.S.limpeza.sel = new Set(['t2', 'g1', 'n1']);
+    await s.run('/limpeza apagar');
+    eq(s.S.entries.map(e => e.id).sort(), ['l1', 't1']);
+    eq(s.S.records.find(r => r.id === 'r1').data.pulados, ['2026-10']);
+    ok(['p1', 'm1', 'i1', 's1'].every(id => s.S.records.some(r => r.id === id)), 'aprendizado, pessoas e saldos ficam');
+    await s.run('/desfazer');
+    eq(s.S.entries.map(e => e.id).sort(), ['g1', 'l1', 'n1', 't1', 't2']);
+    eq(s.S.records.find(r => r.id === 'r1').data.pulados, []);
+  });
 });
 
 describe('revisar e arrumar (v0.14 · etapa 7)', () => {

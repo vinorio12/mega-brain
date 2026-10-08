@@ -48,6 +48,7 @@ No celular, o app abre na tela **Hoje**, com botões logo acima do teclado. A te
 | `/revisar` | as tarefas vencidas, uma por uma: feito · amanhã · sexta · semana que vem · sem prazo · apagar |
 | `/financas` · `/credito 1500` · `paguei a fatura 1.680` | a tela de finanças, o seu crédito do mês e o pagamento da fatura (não é gasto) |
 | `/arrumar` | procura o que limpar nos dados e só mexe com o seu sim |
+| `/limpeza` | tela pra escolher o que apagar: um grupo inteiro (tarefas, gastos, notas…) ou item por item; só apaga depois do "sim, apagar" e um `/desfazer` volta tudo. Aprendizado, pessoas, projetos, categorias, cartões e recorrentes nunca aparecem lá |
 | `/desfazer` | desfaz a última mudança |
 | `/detalhes` · `/sistema` | as linhas técnicas de cada lançamento · a telemetria na tela |
 | `/ajuda` · `/ajuda dinheiro` · `/ajuda tudo` | o essencial e as áreas em botões · os comandos de uma área · todos |
@@ -149,7 +150,7 @@ Abra http://localhost:5173. Os testes ficam em http://localhost:5173/tests/.
 | `js/core.js`, `js/boot.js`, `js/state.js` | o núcleo, a sequência de boot, os estados e a prévia do que o Enter vai fazer |
 | `js/terminal.js` | o terminal: saída, log, teclado e os botões tocáveis |
 | `js/commands.js`, `js/comandos/*.js` | a linguagem de comandos: o índice e uma área por arquivo (tela, intérprete, tarefas, pessoas, notas, dados, sistema, finanças) |
-| `js/conversa.js`, `js/arrumar.js` | frases curtas antes do intérprete ("t2 sexta", "débito", "ajuda") · o que o `/arrumar` sugere limpar |
+| `js/conversa.js`, `js/arrumar.js`, `js/limpeza.js` | frases curtas antes do intérprete ("t2 sexta", "débito", "ajuda") · o que o `/arrumar` sugere limpar · o que a `/limpeza` deixa escolher |
 | `js/interpretar.js`, `js/provedor-regras.js`, `js/provedor-ia.js` | o intérprete: regras, IA (desligada) e a ordem entre eles |
 | `js/tipos.js`, `js/tipos-base.js`, `js/tipos-financas.js`, `js/tipos-corpo.js` | contrato + registro de tipos (nota, tarefa, link, trecho, gasto, entrada, transferência, treino) |
 | `js/financas.js` | finanças: leitura da frase, categorias, o mês, cartões, recorrentes, os saldos e o crédito |

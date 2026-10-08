@@ -1,6 +1,6 @@
 # v0.14 · polimento com uso real (UX, bugs e dois saldos)
 
-> Status: **aprovado pelo Vini em 08/10/2026**, com as mudanças da seção "Decisões do Vini" · **feito até a etapa 4 (v0.14.6, publicada 08/10)** · próxima: etapa 4.5 (`/ajuda` enxuta), depois 5 (visual), 6 (celular), 7 (`/revisar` + `/arrumar`, que corrige o "paguei cartão de crédito 1.680" antigo), 8 (fechamento) · pedido completo em `docs/prompt-ux-uso-real.md`.
+> Status: **aprovado pelo Vini em 08/10/2026**, com as mudanças da seção "Decisões do Vini" · **feito até a etapa 4.5 (v0.14.7)** · próxima: etapa 5 (visual), 6 (celular), 7 (`/revisar` + `/arrumar`, que corrige o "paguei cartão de crédito 1.680" antigo), 8 (fechamento) · pedido completo em `docs/prompt-ux-uso-real.md`.
 > Nada de funcionalidade nova além do pedido. Ritual de cada etapa: explico antes → faço → `/tests/` verde → prints **antes e depois** em 1440×900, 1280×720 e 390×844 → como testar → `sw.js` (`CACHE`) → commit em português → `CLAUDE.md`.
 > Versão: cada etapa sobe um número (v0.14.1, v0.14.2…), porque a v0.14.0 já é a da 3d. No roadmap a rodada aparece como "v0.14 · polimento com uso real".
 
@@ -60,7 +60,7 @@
 
 ### Etapa 4 · Finanças: conta, crédito e a tela de finanças (seção 6) · **feita (v0.14.6)** · detalhes logo abaixo
 
-### Etapa 4.5 · `/ajuda` enxuta (pedido do Vini, 08/10)
+### Etapa 4.5 · `/ajuda` enxuta (pedido do Vini, 08/10) · **feita (v0.14.7)**
 Hoje o `/ajuda` despeja todos os comandos numa lista só. Vira um menu curto:
 - o que dá pra **escrever sem barra** (3–4 exemplos: tarefa, gasto, "t2 sexta", link);
 - as **áreas** como botões (tarefas · dinheiro · pessoas · notas e acervo · sistema): tocar numa área mostra só os comandos dela, curtos, com exemplo;

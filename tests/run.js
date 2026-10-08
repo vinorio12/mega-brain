@@ -238,6 +238,34 @@ describe('valores (valores.js · Fase 2)', () => {
     ['R$ 30,00', 'R$ 1.234,56', 'R$ 0,05', '-R$ 5,00', 'R$ 0,00', 'R$ 1.000.000,00']));
 });
 
+describe('/ajuda enxuta (v0.14 · etapa 4.5)', () => {
+  test('/ajuda sem nada: poucas linhas, exemplos e as áreas como botões', () => {
+    const s = setup([]);
+    s.ctx.commands.get('ajuda').run('');
+    ok(s.term.out.length <= 10, `linhas: ${s.term.out.length}`);
+    const txt = s.term.text();
+    ok(/gastei 45 no ifood/.test(txt) && /data-cmd="\/ajuda dinheiro"/.test(txt) && /data-cmd="\/ajuda tarefas"/.test(txt), txt);
+    ok(!/\/recorrente nova/.test(txt), 'não despeja todos os comandos');
+  });
+  test('/ajuda dinheiro: só os comandos de dinheiro, uma linha cada', () => {
+    const s = setup([]);
+    s.ctx.commands.get('ajuda').run('dinheiro');
+    const txt = s.term.text();
+    ok(/\/mes/.test(txt) && /\/credito/.test(txt) && /paguei a fatura 1\.680/.test(txt) && !/\/pessoa\b/.test(txt), txt);
+  });
+  test('/ajuda tudo lista todos os comandos; /ajuda mes detalha; palavra estranha dá erro', async () => {
+    const s = setup([]);
+    s.ctx.commands.get('ajuda').run('tudo');
+    const txt = s.term.text();
+    const faltam = s.ctx.commands.names().filter(n => !txt.includes('/' + n));
+    eq(faltam, []);
+    s.term.out.length = 0;
+    s.ctx.commands.get('ajuda').run('mes');
+    ok(/uso/.test(s.term.text()) && /dinheiro/.test(s.term.text()), s.term.text());
+    await throws(() => s.ctx.commands.get('ajuda').run('xyzw'), 'E_CMD_404');
+  });
+});
+
 describe('conversa na tela (v0.14 · resposta curta, botões, fila de perguntas)', () => {
   const T = { id: 'T0001', elapsed: () => 1 };
   test('resposta curta: uma linha ✓ com o que importa, sem T0001/ms/regra', async () => {

@@ -456,6 +456,7 @@ a.acard:hover { border-color: color-mix(in srgb, var(--int) 50%, transparent); }
 .auto { color: var(--meta); padding-left: 6.4ch; }
 /* resposta curta (v0.14): "✓ gasto f2 · R$ 46,00 · saúde · hoje" + botões */
 .res { margin: 4px 0 2px; }
+.ex { padding-left: 2ch; } /* exemplos do /ajuda: "gastei 45 no ifood → gasto" */
 .lg-c { margin: 2px 0; }
 .lg-c .mk { display: inline-block; width: 1.4ch; color: var(--act); }
 .lg-c.lv-wrn .mk, .lg-c.lv-wrn { color: var(--warn); }

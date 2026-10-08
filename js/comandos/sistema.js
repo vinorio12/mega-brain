@@ -22,55 +22,83 @@ export function criarSistema(kit) {
   const { S, term, ctx, usage, fin } = kit;
   // de outras áreas: lidos na hora do uso (a ordem em que as áreas nascem não importa)
   const table = (...a) => kit.table(...a);
+  const chip = (...a) => kit.chip(...a);
+  const chips = (...a) => kit.chips(...a);
+  const strip = x => String(x).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const get = (...a) => kit.get(...a);
   const notFound = (...a) => kit.notFound(...a);
 
   const defs = [
     {
-      name: 'ajuda', alias: ['help', '?'], args: '[comando]', desc: 'lista os comandos, ou detalha um',
+      name: 'ajuda', alias: ['help', '?'], args: '[área | comando | tudo]', desc: 'o essencial e as áreas · /ajuda dinheiro mostra uma área · /ajuda mes detalha um comando',
       run(arg) {
-        if (arg) {
-          const c = get(arg.replace(/^\//, ''));
-          if (!c) throw notFound(arg.replace(/^\//, ''));
-          table([
-            ['uso', `<span class="c-act">/${c.name}</span> ${esc(c.args || '')}`],
-            ['faz', esc(c.desc)],
-            ['atalhos', c.alias?.length ? c.alias.map(a => '/' + esc(a)).join(' ') : '<span class="dim">—</span>'],
-            ['tipo', c.async ? 'assíncrono · ganha ID, ctrl+c cancela' : 'imediato'],
-          ]);
+        const a = String(arg || '').trim().toLowerCase().replace(/^\//, '');
+        const todos = kit.defs();
+        // as áreas (v0.14, pedido do Vini: o /ajuda era muita coisa numa lista só)
+        const AREAS = [
+          { key: 'tarefas', nome: 'tarefas', alias: ['tarefa', 'projetos'], pick: c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name),
+            ex: [['- revisar cap 2 #tcc sexta', 'cria tarefa'], ['t2 feito · t2 sexta · t2 fazendo', 'mexe na t2'], ['hoje concluí t1, t3', 'conclui várias']] },
+          { key: 'dinheiro', nome: 'dinheiro', alias: ['financas', 'finanças', 'fin'], pick: c => fin.defs.includes(c),
+            ex: [['gastei 45 no ifood', 'gasto (categoria e forma aprendem)'], ['paguei a fatura 1.680', 'sai da conta, não é gasto'], ['netflix 55,90 todo mês dia 15', 'recorrente']] },
+          { key: 'pessoas', nome: 'pessoas', alias: ['pessoa'], pick: c => ['pessoas', 'pessoa', 'sim', 'nao'].includes(c.name),
+            ex: [['falar com a Ana amanhã', 'o app liga a tarefa à Ana']] },
+          { key: 'notas', nome: 'notas e acervo', alias: ['acervo', 'nota'], pick: c => ['inbox', 'hoje', 'acervo', 'guardar', 'buscar'].includes(c.name),
+            ex: [['https://… contexto', 'guarda o link'], ['"uma frase', 'guarda o texto'], ['nota: qualquer coisa', 'força nota']] },
+          { key: 'interprete', nome: 'intérprete', alias: ['intérprete', 'memoria'], pick: c => ['tipo', 'memoria', 'palavras', 'aprendizado', 'mudancas', 'contexto'].includes(c.name),
+            ex: [['/tipo tarefa', 'corrige o que o app entendeu']] },
+          { key: 'sistema', nome: 'sistema', alias: ['tela', 'conta'], pick: () => true, ex: [] },
+        ];
+        // cada comando cai na primeira área que o pega (o resto vai pra "sistema")
+        const areaDe = new Map();
+        for (const c of todos) areaDe.set(c, AREAS.find(ar => ar.pick(c)).key);
+        const curto = d => esc(String(d || '').split(' · ')[0]);
+        const exemplos = ex => ex.forEach(([f, o]) => term.print(`<span class="c-int">${esc(f)}</span> <span class="dim">→ ${esc(o)}</span>`, 'ex'));
+        const teclado = () => {
+          term.print('teclado', 'tgrp');
+          table([['tab', 'completa /comandos e #tags'], ['↑ ↓', 'histórico'], ['ctrl+c', 'cancela a tarefa em andamento'], ['ctrl+k', 'limpa a tela'], ['ctrl+.', 'mostra/esconde o painel'], ['alt+1..4', 'abas: ~ · tcc · weg · pessoal'], ['esc', 'apaga a linha · fecha a tela grande']]);
+        };
+
+        // /ajuda (sem nada): o essencial em poucas linhas + as áreas como botões
+        if (!a) {
+          term.print(`── ajuda ${'─'.repeat(12)}`, 'sep');
+          term.print('escreva do seu jeito, sem barra:', 'tgrp');
+          exemplos([['- revisar cap 2 #tcc sexta', 'tarefa'], ['gastei 45 no ifood', 'gasto'], ['t2 feito · t2 sexta', 'mexe na tarefa t2'], ['https://… · "uma frase', 'acervo']]);
+          term.print(`áreas${chips(AREAS.map(ar => chip(ar.nome, '/ajuda ' + ar.key)))}`, 'tgrp');
+          term.print(`<span class="dim">/ajuda mes detalha um comando ·</span> <span class="c-int">/ajuda tudo</span> <span class="dim">lista todos</span>`);
           return;
         }
-        table([['qualquer texto', 'captura na inbox · use #tags: <span class="dim">ler cap 2</span> <span class="c-act">#tcc</span>']], 'cmd');
-        table([['- texto #proj @status >prazo !prio', 'cria tarefa (igual ao /t) · o que faltar vira ↳ auto'], ['gastei 45 no ifood · caiu o salário 3.200', 'lança gasto ou entrada (categoria e forma aprendem pelo uso) · /mes mostra o mês'], ['https://… contexto', 'guarda o link no acervo'], ['"texto', 'guarda o texto no acervo']], 'cmd');
-        const groups = [
-          ['tarefas e projetos', c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name)],
-          ['pessoas', c => ['pessoas', 'pessoa', 'sim', 'nao'].includes(c.name)],
-          ['finanças', c => fin.defs.includes(c)],
-          ['intérprete', c => ['tipo', 'memoria', 'palavras', 'aprendizado', 'mudancas', 'contexto'].includes(c.name)],
-          ['acervo', c => ['acervo', 'guardar', 'buscar'].includes(c.name)],
-          ['memória', c => c.data],
-          ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
-          ['tela', c => ['detalhes', 'painel', 'foco', 'limpar', 'log', 'historico', 'boot'].includes(c.name)],
-        ];
-        const used = new Set();
-        const section = (title, pick) => {
-          const list = kit.defs().filter(c => !used.has(c) && pick(c));
-          if (!list.length) return;
-          list.forEach(c => used.add(c));
-          term.print(`── ${title}`, 'sep');
-          table(list.map(c => [`/${c.name}${c.args ? ' ' + esc(c.args) : ''}`, esc(c.desc)]), 'cmd');
-        };
-        groups.forEach(([title, pick]) => section(title, pick));
-        section('sistema', () => true);
-        term.print('── teclado', 'sep');
+
+        // /ajuda tudo: a lista completa de antes, por área
+        if (a === 'tudo' || a === 'todos') {
+          for (const ar of AREAS) {
+            const lista = todos.filter(c => areaDe.get(c) === ar.key);
+            if (!lista.length) continue;
+            term.print(`── ${ar.nome}`, 'sep');
+            table(lista.map(c => [`/${c.name}${c.args ? ' ' + esc(c.args) : ''}`, esc(c.desc)]), 'cmd');
+          }
+          return teclado();
+        }
+
+        // /ajuda dinheiro: uma área (exemplos do que escrever + os comandos dela, uma linha cada)
+        const ar = AREAS.find(x => x.key === a || x.alias.includes(a) || strip(x.nome) === strip(a));
+        if (ar) {
+          term.print(`── ${ar.nome} ${'─'.repeat(10)}`, 'sep');
+          if (ar.ex.length) { term.print('escreva assim', 'tgrp'); exemplos(ar.ex); }
+          term.print('comandos', 'tgrp');
+          table(todos.filter(c => areaDe.get(c) === ar.key).map(c => [`<span class="${c.args?.startsWith('<') || c.exec ? 'c-act' : 'c-int'}">/${esc(c.name)}</span>`, curto(c.desc)]), 'cmd');
+          if (ar.key === 'sistema') teclado();
+          term.print(`<span class="dim">/ajuda &lt;comando&gt; mostra o uso completo · outras áreas:</span>${chips(AREAS.filter(x => x !== ar).map(x => chip(x.nome, '/ajuda ' + x.key)))}`);
+          return;
+        }
+
+        // /ajuda mes: um comando
+        const c = get(a);
+        if (!c) throw notFound(a);
         table([
-          ['tab', 'completa /comandos e #tags'],
-          ['↑ ↓', 'navega no histórico'],
-          ['ctrl+c', 'cancela a tarefa em andamento'],
-          ['ctrl+k', 'limpa a tela (o log continua)'],
-          ['ctrl+.', 'mostra/esconde o painel de contexto'],
-          ['alt+1..4', 'abas: ~ · tcc · weg · pessoal'],
-          ['esc', 'apaga a linha'],
+          ['uso', `<span class="c-act">/${c.name}</span> ${esc(c.args || '')}`],
+          ['faz', esc(c.desc)],
+          ['atalhos', c.alias?.length ? c.alias.map(x => '/' + esc(x)).join(' ') : '<span class="dim">—</span>'],
+          ['área', esc(AREAS.find(x => x.key === areaDe.get(c))?.nome || 'sistema')],
         ]);
       },
     },

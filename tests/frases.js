@@ -102,7 +102,10 @@ export const FRASES = [
   { frase: 'a poupança rendeu 12,50', esperado: { tipo: 'rendimento', campos: { valor: 1250, lugar: 'poupança' } } },
   { frase: 'paguei a fatura do nubank', records: [{ id: 'c1', kind: 'cartao', text: 'nubank', ts: 1, data: { fechamento: 3, vencimento: 10, padrao: true } }],
     esperado: { tipo: 'faturapaga', campos: { cartao: 'c1', mes: '2026-10' } } },
-  { frase: 'paguei a fatura 1.200', esperado: { tipo: 'gasto', campos: { valor: 120000 } } }, // sem cartão cadastrado: gasto, como antes
+  // v0.14: pagar a fatura nunca é gasto, mesmo sem cartão cadastrado (era 79% dos gastos do mês no uso real)
+  { frase: 'paguei a fatura 1.200', esperado: { tipo: 'faturapaga', campos: { valor: 120000 } } },
+  { frase: 'paguei cartão de crédito 1.680', esperado: { tipo: 'faturapaga', campos: { valor: 168000 } } },
+  { frase: 'paguei 1.680 no cartão', esperado: { tipo: 'gasto', campos: { valor: 168000, forma: 'credito' } } },
   { frase: 'tenho que pagar 200 de luz', esperado: { tipo: 'tarefa' } },
   { frase: 'tenho 2 provas amanhã', esperado: { tipo: 'nota' } }, // não é saldo (pode até perguntar se era tarefa)
   // pegadinhas

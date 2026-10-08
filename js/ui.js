@@ -9,7 +9,7 @@ import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary, is
 import { viewGroups } from './views.js';
 import { fmtDue, fmtDia } from './dates.js';
 import { fmtValor } from './valores.js';
-import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes, cartoesDe, proximasFaturas, resumoSaldos } from './financas.js';
+import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes, cartoesDe, proximasFaturas, resumoSaldos, ciclosCredito } from './financas.js';
 import { shortUrl, isAcervo, isLink, safeUrl } from './acervo.js';
 import { deriveState, describeState, readIntent, LISTEN_MS, FAULT_MS } from './state.js';
 import { pessoasDe } from './pessoas.js';
@@ -381,7 +381,7 @@ export function createUI(ctx) {
 
     // finanças: os três saldos (Fase 3d) + os gastos do mês · só dado real (sem dado → NA, mas o campo fica)
     // (o saldo do mês, entradas − gastos, continua no /mes)
-    const fin = hudFinancas(E, now, { cartoes: cartoesDe(S.records || [], { todos: true }) });
+    const fin = hudFinancas(E, now, { cartoes: ciclosCredito(S.records || []) });
     const sd = resumoSaldos(E, S.records || [], now);
     $('x-fin-sub').textContent = fmtMes(fin.mes, now);
     const na = '<span class="dim">NA</span>';
@@ -539,7 +539,7 @@ export function createUI(ctx) {
       `<div class="ov-bar"><i class="${p.atrasadas ? 'late' : ''}" style="width:${Math.round(p.abertas / max * 100)}%"></i></div></div>`).join('') || '<div class="ov-empty">nenhum projeto</div>';
 
     // finanças: saldos no topo, o mês e as categorias que mais pesaram, com barra
-    const cartoes = cartoesDe(S.records || [], { todos: true });
+    const cartoes = ciclosCredito(S.records || []);
     const fin = hudFinancas(E, now, { cartoes });
     const rm = resumoMes(E, fin.mes, { cartoes });
     const maxCat = Math.max(1, ...rm.porCategoria.map(([, v]) => v));

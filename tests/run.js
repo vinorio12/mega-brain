@@ -17,7 +17,7 @@ import { diffEvent, withHistory, eventsOf } from '../js/historico.js';
 import { criarRegistro, validarInterpretacao, REGISTRO } from '../js/tipos.js';
 import { comecaComVerbo } from '../js/tipos-base.js';
 import { lerMovimento } from '../js/tipos-financas.js';
-import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura, parcelasNoMes, proximasFaturas, recorrentesDe, desdeInicial, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, saldoConta, devoNoCartao, investimentosPorLugar, ancorasDe, chaveLugar, lerAjusteSaldo, lerRendimento, ehPagamentoFatura, resumoSaldos } from '../js/financas.js';
+import { lerFinanca, categoriasDe, acharCategoria, acharForma, categoriaSemente, CATEGORIAS_PADRAO, verbosAprendidos, acharEstornado, resumoMes, mesAnterior, variacao, barra, fmtMes, lancamentos, seedCategorias, hudFinancas, linhaContexto, cartoesDe, cartaoPadrao, parcelasDe, faturaDaCompra, mesDaFatura, vencimentoDa, proximaFatura, parcelasNoMes, proximasFaturas, recorrentesDe, desdeInicial, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, saldoConta, devoNoCartao, investimentosPorLugar, ancorasDe, chaveLugar, lerAjusteSaldo, lerRendimento, ehPagamentoFatura, resumoSaldos, creditoDe, ciclosCredito, faturaAPagar, resumoCredito, parcelasBoleto, CARTAO_CREDITO } from '../js/financas.js';
 import { lerDuracao, lerDistancia } from '../js/tipos-corpo.js';
 import { provedorRegras } from '../js/provedor-regras.js';
 import { FRASES, rodarFrases } from './frases.js';
@@ -1676,6 +1676,70 @@ describe('os três saldos · funções puras (etapa 1 · Fase 3d)', () => {
   });
 });
 
+describe('crédito como limite seu, pelo ciclo da fatura (v0.14 · etapa 4)', () => {
+  const at = (d, mo = 10, h = 10) => new Date(2026, mo - 1, d, h).getTime();
+  const credito = (valor = 150000, fechamento = 29, vencimento = 5) => ({ id: 'cr', kind: 'credito', text: 'crédito', ts: at(1), data: { valor, fechamento, vencimento } });
+  const gasto = (id, valor, data, extra = {}, ts = at(+data.slice(8, 10), +data.slice(5, 7))) => ({ id, kind: 'gasto', text: id, ts, day: data, data: { valor, data, forma: 'credito', categoria: 'outros', ...extra } });
+  const paga = (mes, data, valor = null, cartao = CARTAO_CREDITO) => ({ id: 'fp' + mes, kind: 'faturapaga', text: 'fatura', ts: at(+data.slice(8, 10), +data.slice(5, 7), 12), data: { cartao, mes, data, ...(valor ? { valor } : {}) } });
+  test('sem cartão, o /credito vira um "cartão" virtual com o ciclo (fecha 29, vence 5)', () => {
+    eq(creditoDe([credito()]), { valor: 150000, fechamento: 29, vencimento: 5 });
+    eq(ciclosCredito([credito()]).map(c => [c.id, c.fechamento, c.vencimento]), [[CARTAO_CREDITO, 29, 5]]);
+    eq(ciclosCredito([]), []);
+    eq(ciclosCredito([credito(), { id: 'c1', kind: 'cartao', text: 'nubank', ts: 1, data: { fechamento: 3, vencimento: 10 } }]).map(c => c.id), ['c1']); // cartão cadastrado manda
+  });
+  test('qual fatura o "paguei a fatura" paga: a que fechou por último (mesmo uns dias depois do vencimento)', () => {
+    const [c] = ciclosCredito([credito()]);
+    eq(faturaAPagar(c, [], new Date(2026, 9, 7)), '2026-10');  // vence 05/10 (fechou 29/09): pagou dia 7
+    eq(faturaAPagar(c, [], new Date(2026, 9, 3)), '2026-10');  // antes do vencimento
+    eq(faturaAPagar(c, [], new Date(2026, 9, 30)), '2026-11'); // fechou 29/10, vence 05/11
+    eq(faturaAPagar(c, [paga('2026-10', '2026-10-05')], new Date(2026, 9, 8)), '2026-11'); // a de outubro já foi paga: adiantando a próxima
+    eq(faturaAPagar(c, [], new Date(2026, 9, 25)), '2026-11'); // a de 05/10 venceu faz tempo (conta como paga): a aberta
+  });
+  test('usado = compras no crédito ainda não pagas; parcelado ocupa o total e vai liberando', () => {
+    const recs = [credito()];
+    const es = [gasto('ifood', 5490, '2026-10-02'), gasto('tenis', 30000, '2026-10-02', { parcelas: 3 })];
+    const r = resumoCredito(es, recs, new Date(2026, 9, 8));
+    eq([r.limite, r.usado, r.resta, r.fonte, r.ciclo], [150000, 35490, 114510, 'credito', true]);
+    eq(r.proxima, { nome: 'crédito', vence: '2026-11-05', total: 15490 });
+    // a fatura de novembro paga: volta a parte dela (ifood + 1ª parcela); ficam as 2 parcelas futuras
+    const depois = resumoCredito(es, [...recs, paga('2026-11', '2026-11-05')], new Date(2026, 10, 6));
+    eq([depois.usado, depois.resta], [20000, 130000]);
+  });
+  test('compra no dia do fechamento (29) vai pra fatura seguinte', () => {
+    const r = resumoCredito([gasto('x', 10000, '2026-10-29')], [credito()], new Date(2026, 9, 29));
+    eq([r.usado, r.proxima], [10000, null]); // a fatura de 05/11 está vazia: a compra foi pra de 05/12
+  });
+  test('sem /credito e sem cartão: limite NA, ciclo falso (a tela pede o /credito)', () => {
+    const r = resumoCredito([gasto('ifood', 5490, '2026-10-02')], [], new Date(2026, 9, 8));
+    eq([r.limite, r.resta, r.ciclo], [null, null, false]);
+  });
+  test('boleto parcelado: cada parcela vence num mês; ocupa o crédito até vencer', () => {
+    const e = gasto('geladeira', 30000, '2026-10-02', { forma: 'boleto', parcelas: 3 });
+    eq(parcelasBoleto(e), [{ valor: 10000, data: '2026-10-02' }, { valor: 10000, data: '2026-11-02' }, { valor: 10000, data: '2026-12-02' }]);
+    eq(resumoCredito([e], [credito()], new Date(2026, 9, 8)).usado, 20000);
+  });
+  test('conta: "paguei a fatura 1.680" sem cartão sai da conta (e não é gasto)', () => {
+    const anc = { id: 'a', kind: 'saldo', text: 'conta', ts: at(1, 10, 8), data: { onde: 'conta', valor: 200000, data: '2026-10-01' } };
+    const pg = { id: 'p', kind: 'faturapaga', text: 'fatura do cartão', ts: at(7), data: { cartao: null, mes: null, valor: 168000, data: '2026-10-07' } };
+    eq(saldoConta([], [anc, pg], new Date(2026, 9, 8)).valor, 32000);
+  });
+  test('conta: com ciclo, a fatura paga com valor sai pelo valor escrito (não pelo total das compras)', () => {
+    const anc = { id: 'a', kind: 'saldo', text: 'conta', ts: at(1, 9, 8), data: { onde: 'conta', valor: 200000, data: '2026-09-01' } };
+    const es = [gasto('ifood', 5490, '2026-09-10')]; // fatura que vence 05/10
+    const recs = [credito(), anc, paga('2026-10', '2026-10-07', 168000)];
+    eq(saldoConta(es, recs, new Date(2026, 9, 8)).valor, 32000);
+  });
+  test('conta: boleto parcelado sai parcela por parcela', () => {
+    const anc = { id: 'a', kind: 'saldo', text: 'conta', ts: at(1, 10, 8), data: { onde: 'conta', valor: 100000, data: '2026-10-01' } };
+    const e = gasto('geladeira', 30000, '2026-10-02', { forma: 'boleto', parcelas: 3 });
+    eq([saldoConta([e], [anc], new Date(2026, 9, 8)).valor, saldoConta([e], [anc], new Date(2026, 10, 3)).valor], [90000, 80000]);
+  });
+  test('"paguei cartão de crédito 1.680" é pagamento; "paguei 1.680 no cartão" é compra', () => {
+    eq(['paguei cartão de crédito 1.680', 'paguei o cartão 1.680', 'paguei a fatura 1.680', 'fatura 1.680 paga', 'paguei 1.680 no cartão', 'paguei o almoço no cartão'].map(ehPagamentoFatura),
+      [true, true, true, true, false, false]);
+  });
+});
+
 describe('frases dos saldos (etapa 2 · Fase 3d)', () => {
   test('lerAjusteSaldo: conta, lugar, e o que não é saldo', () => {
     eq([lerAjusteSaldo('tenho 2.500 na conta'), lerAjusteSaldo('saldo da conta 1.234,56'), lerAjusteSaldo('tenho R$ 300'), lerAjusteSaldo('tenho 8 mil no tesouro direto')],
@@ -1754,8 +1818,10 @@ describe('os três saldos no HUD e no contexto (etapa 4 · Fase 3d)', () => {
   ];
   const E = [{ id: 't', kind: 'gasto', text: 'tênis', ts: 200, day: '2026-10-06', data: { valor: 30000, data: '2026-10-06', forma: 'credito', parcelas: 3 } }];
   test('resumoSaldos: conta, investido, devo, livre · NA (null) sem dado', () => {
-    eq(resumoSaldos(E, R, now), { conta: 250000, investido: 500000, devo: 30000, livre: 470000 });
-    eq(resumoSaldos([], [], now), { conta: null, investido: null, devo: null, livre: null });
+    const semCredito = ({ credito, ...x }) => x; // o crédito (v0.14) tem teste próprio
+    eq(semCredito(resumoSaldos(E, R, now)), { conta: 250000, investido: 500000, devo: 30000, livre: 470000 });
+    eq([resumoSaldos(E, R, now).credito.limite, resumoSaldos(E, R, now).credito.usado], [500000, 30000]); // sem /credito: o limite dos cartões
+    eq(semCredito(resumoSaldos([], [], now)), { conta: null, investido: null, devo: null, livre: null });
   });
   test('linhaContexto cita os saldos (até num mês sem lançamento)', () => {
     const E2 = [...E, { id: 'pix', kind: 'gasto', text: 'pix', ts: 300, day: '2026-10-07', data: { valor: 4500, data: '2026-10-07', forma: 'pix' } }];

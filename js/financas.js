@@ -604,7 +604,8 @@ export function ancorasDe(records = []) {
   return out;
 }
 
-// "paguei a fatura do nubank": registros kind 'faturapaga' { data: { cartao, mes (o do vencimento), data } } → Map('cartao|mes' → data do pagamento)
+// "paguei a fatura do nubank": registros kind 'faturapaga' { data: { cartao, mes (o do vencimento), valor?, data } } → Map('cartao|mes' → data do pagamento)
+// (v0.14: valor = o que saiu da conta, quando você escreveu; sem cartão nem /credito, cartao e mes ficam vazios)
 export function faturasPagas(records = []) {
   const out = new Map();
   for (const r of records.filter(e => e.kind === 'faturapaga' && e.data?.cartao && e.data?.mes)) {
@@ -613,37 +614,65 @@ export function faturasPagas(records = []) {
   }
   return out;
 }
+// todos os pagamentos de fatura: [{ cartao, mes, valor (centavos | null), data, ts }]
+export function pagamentosFatura(records = []) {
+  return records.filter(e => e.kind === 'faturapaga').sort((a, b) => a.ts - b.ts).map(r => ({
+    cartao: r.data?.cartao || null, mes: r.data?.mes || null, valor: Number.isInteger(r.data?.valor) && r.data.valor > 0 ? r.data.valor : null,
+    data: r.data?.data || dayKey(new Date(r.ts)), ts: r.ts,
+  }));
+}
 // quando uma fatura sai da conta: no dia em que você disse que pagou, ou sozinha no vencimento
 const pagaEm = (pagas, cartao, mes, vence) => { const p = pagas.get(cartao.id + '|' + mes); return p && p < vence ? p : vence; };
 
+// compra parcelada no boleto (carnê, v0.14): cada parcela vence um mês depois da outra, a partir da data da compra
+//   → [{ valor, data }] · não parcelada → null
+const somaMesData = (data, k) => { const [y, m, d] = data.split('-').map(Number); return diaDe(...somaMes(y, m, k), d); };
+export function parcelasBoleto(e) {
+  if (e?.kind !== 'gasto' || e.data?.forma !== 'boleto' || !(e.data?.parcelas >= 2)) return null;
+  const data = e.data?.data || e.day, vals = parcelasDe(e.data?.valor || 0, e.data.parcelas);
+  return vals.map((valor, k) => ({ valor, data: somaMesData(data, k) }));
+}
+
 // 1. Conta: âncora + o que foi registrado DEPOIS dela (pela hora em que você escreveu) − faturas pagas depois da data da âncora.
 //    entradas + · gastos à vista − (crédito vai pra fatura) · guardar em investimento − · resgatar + · rendimento não mexe
+//    boleto parcelado: cada parcela sai no dia dela · fatura paga com valor ("paguei a fatura 1.680"): sai o valor que você disse
 //    → { valor, ancora } | null (sem âncora)
-export function saldoConta(entries = [], records = [], now = new Date(), cartoes = cartoesDe(records, { todos: true })) {
+export function saldoConta(entries = [], records = [], now = new Date(), cartoes = ciclosCredito(records)) {
   const a = ancorasDe(records).get('conta');
   if (!a) return null;
   const hoje = dayKey(now);
   let v = a.valor;
   for (const e of entries) {
-    if (!(e.ts >= a.ts) || !Number.isInteger(e.data?.valor)) continue;
+    if (!Number.isInteger(e.data?.valor)) continue;
+    const boleto = parcelasBoleto(e);
+    if (boleto) {
+      // a 1ª parcela conta como as outras compras (registrada depois da âncora); as seguintes, quando vencem
+      boleto.forEach((p, k) => { if (p.data <= hoje && (k === 0 ? e.ts >= a.ts : p.data > a.data)) v -= p.valor; });
+      continue;
+    }
+    if (!(e.ts >= a.ts)) continue;
     if (e.kind === 'entrada') v += e.data.valor;
     else if (e.kind === 'gasto' && !(e.data?.forma === 'credito' && cartaoDoGasto(e, cartoes))) v -= e.data.valor;
     else if (e.kind === 'transferencia') v += e.data?.sentido === 'de' ? e.data.valor : -e.data.valor;
   }
   // faturas: as que foram pagas entre a âncora (exclusive) e hoje (inclusive as de meses futuros pagas adiantado)
-  const pagas = faturasPagas(records);
+  const pagas = faturasPagas(records), pags = pagamentosFatura(records);
   const [ay, am] = a.data.split('-').map(Number);
   const [hy, hm] = hoje.split('-').map(Number);
   const ate = dayKey(new Date(hy, hm + 2, 1)).slice(0, 7);
   for (let d = new Date(ay, am - 2, 1); dayKey(d).slice(0, 7) <= ate; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
     const mes = dayKey(d).slice(0, 7);
     for (const c of cartoes) {
-      const total = parcelasNoMes(entries, mes, cartoes).filter(p => p.cartao.id === c.id).reduce((s, p) => s + p.valor, 0);
+      // com valor escrito ("paguei a fatura 1.680") sai o valor; sem, o total que o app calculou das compras
+      const escrito = pags.find(x => x.cartao === c.id && x.mes === mes && x.valor);
+      const total = escrito ? escrito.valor : parcelasNoMes(entries, mes, cartoes).filter(p => p.cartao.id === c.id).reduce((s, p) => s + p.valor, 0);
       if (!total) continue;
       const quando = pagaEm(pagas, c, mes, vencimentoDa(c, mes).vence);
       if (quando > a.data && quando <= hoje) v -= total;
     }
   }
+  // pagamento com valor sem ciclo conhecido (sem cartão nem /credito): sai da conta quando você registra
+  for (const x of pags) if (x.valor && !cartoes.some(c => c.id === x.cartao && x.mes) && x.ts >= a.ts) v -= x.valor;
   return { valor: v, ancora: a };
 }
 
@@ -668,7 +697,7 @@ export function investimentosPorLugar(entries = [], records = []) {
 
 // 3. Cartões: quanto ainda devo (toda parcela de fatura não paga: aberta, fechada antes do vencimento e as futuras) e o limite livre
 //    → [{ cartao, nome, devo, limite, livre }] (livre null sem limite cadastrado)
-export function devoNoCartao(entries = [], records = [], now = new Date(), cartoes = cartoesDe(records, { todos: true })) {
+export function devoNoCartao(entries = [], records = [], now = new Date(), cartoes = ciclosCredito(records)) {
   const hoje = dayKey(now), pagas = faturasPagas(records);
   const devo = new Map(cartoes.map(c => [c.id, 0]));
   for (const e of entries) {
@@ -716,7 +745,9 @@ export function lerAjusteSaldo(texto, extras = []) {
 }
 
 // "paguei a fatura", "paguei a fatura do nubank", "quitei o cartão", "fatura do inter paga" → true
-export const ehPagamentoFatura = texto => /(?<![a-z])(?:(?:paguei|pago|quitei|acertei)\s+(?:a\s+)?fatura|(?:paguei|quitei)\s+o\s+cartao|fatura\s+(?:do\s+\S+\s+)?(?:paga|quitada)(?![a-z]))/.test(strip(texto));
+// v0.14: "paguei cartão de crédito 1.680", "paguei o cartão 1.680", "fatura 1.680 paga" também (sem cartão cadastrado vale igual)
+// · "paguei 1.680 no cartão" NÃO: o valor antes do "no cartão" é compra no crédito
+export const ehPagamentoFatura = texto => /(?<![a-z])(?:(?:paguei|pago|quitei|acertei)\s+(?:a\s+|o\s+)?(?:fatura|cartao(?:\s+de\s+credito)?)(?![a-z])|fatura\s+(?:\S+\s+){0,3}(?:paga|quitada)(?![a-z]))/.test(strip(texto));
 
 // "rendeu 32 na poupança", "rendimento de 12 no cdb", "a poupança rendeu 32" → { valor, lugar } · senão null
 export function lerRendimento(texto, extras = []) {
@@ -741,5 +772,60 @@ export function resumoSaldos(entries = [], records = [], now = new Date()) {
     investido: inv.length ? inv.reduce((s, i) => s + i.valor, 0) : null,
     devo: cards.length ? cards.reduce((s, c) => s + c.devo, 0) : null,
     livre: livres.length ? livres.reduce((s, c) => s + c.livre, 0) : null,
+    credito: resumoCredito(entries, records, now), // v0.14: o seu crédito (limite, usado, resta)
+  };
+}
+
+/* ---------- crédito: um limite seu, pelo ciclo da fatura (v0.14) ---------- */
+
+// Registro escondido kind 'credito' (só cresce, o mais novo vale): { kind: 'credito', text: 'crédito', data: { valor, fechamento, vencimento } }
+// → { valor, fechamento, vencimento } | null
+export function creditoDe(records = []) {
+  const r = records.filter(e => e.kind === 'credito' && Number.isInteger(e.data?.valor)).sort((a, b) => a.ts - b.ts).pop();
+  if (!r) return null;
+  const dia = v => (v ? Math.min(31, Math.max(1, Math.round(Number(v)) || 1)) : null);
+  return { valor: r.data.valor, fechamento: dia(r.data.fechamento), vencimento: dia(r.data.vencimento) };
+}
+export const CARTAO_CREDITO = 'credito'; // o id do "cartão" virtual (sem cartão cadastrado)
+
+// Os ciclos de fatura que valem pras contas: os cartões cadastrados (os arquivados também, os gastos deles continuam)
+// · sem cartão, um "cartão" virtual com o ciclo do /credito (fecha 29, vence 5) · sem nenhum dos dois: []
+export function ciclosCredito(records = []) {
+  const cards = cartoesDe(records, { todos: true });
+  if (cards.length) return cards;
+  const c = creditoDe(records);
+  if (!c?.fechamento) return [];
+  return [{ id: CARTAO_CREDITO, nome: 'crédito', fechamento: c.fechamento, vencimento: c.vencimento || c.fechamento, padrao: true, arquivado: false, limite: null }];
+}
+
+// Qual fatura um "paguei a fatura" paga: a última que já FECHOU, se o vencimento dela foi há pouco (você paga uns dias depois)
+// e ainda não foi marcada paga · senão a que está aberta (pagar adiantado) → 'AAAA-MM' (o mês do vencimento)
+const FOLGA_DIAS = 15;
+export function faturaAPagar(cartao, records = [], now = new Date()) {
+  const hoje = dayKey(now), pagas = faturasPagas(records);
+  const limite = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - FOLGA_DIAS));
+  const [y, m] = hoje.split('-').map(Number);
+  const meses = [-1, 0, 1, 2].map(k => { const [yy, mm] = somaMes(y, m, k); return `${yy}-${pad(mm)}`; });
+  const fechadas = meses.map(mes => ({ mes, ...vencimentoDa(cartao, mes) })).filter(f => f.fecha <= hoje && f.vence >= limite && !pagas.has(cartao.id + '|' + f.mes));
+  if (fechadas.length) return fechadas[fechadas.length - 1].mes;
+  return meses.find(mes => vencimentoDa(cartao, mes).fecha > hoje) || proximaFatura(cartao, now);
+}
+
+// O crédito do momento: quanto você se deu (/credito, ou a soma dos limites dos cartões) e quanto já está usado
+//   usado = toda compra no crédito ainda não paga (fatura aberta, fechada que não venceu nem foi paga, parcelas futuras)
+//           + parcelas do boleto parcelado que ainda não venceram · uma fatura paga devolve a parte dela
+//   → { limite, usado, resta, frac, fonte: 'credito' | 'cartao' | null, ciclo: bool, proxima: { nome, vence, total } | null }
+export function resumoCredito(entries = [], records = [], now = new Date()) {
+  const c = creditoDe(records), ciclos = ciclosCredito(records), hoje = dayKey(now);
+  const cards = devoNoCartao(entries, records, now, ciclos);
+  const boleto = entries.reduce((s, e) => s + (parcelasBoleto(e) || []).filter(p => p.data > hoje).reduce((t, p) => t + p.valor, 0), 0);
+  const usado = cards.reduce((s, x) => s + x.devo, 0) + boleto;
+  const limCartoes = cartoesDe(records).reduce((s, k) => s + (k.limite || 0), 0);
+  const limite = c ? c.valor : limCartoes || null;
+  const prox = proximasFaturas(entries, ciclos, now)[0] || null;
+  return {
+    limite, usado, resta: limite == null ? null : limite - usado, frac: limite ? usado / limite : null,
+    fonte: c ? 'credito' : limCartoes ? 'cartao' : null, ciclo: ciclos.length > 0,
+    proxima: prox ? { nome: prox.nome, vence: prox.vence, total: prox.total } : null,
   };
 }

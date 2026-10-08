@@ -15,7 +15,7 @@ import { parseMonth } from '../views.js';
 import { seedId } from '../tasks.js';
 import { decidirCategoria } from '../tipos-financas.js';
 import { previa } from '../interpretar.js';
-import { saldoConta, investimentosPorLugar, devoNoCartao, chaveLugar, recorrentesDe, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, dataNoMes, eDaRecorrente, mesDe, cartoesDe, cartaoPadrao, cartaoDoGasto, vencimentoDa, proximaFatura, parcelasDe, parcelasNoMes, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from '../financas.js';
+import { saldoConta, investimentosPorLugar, devoNoCartao, chaveLugar, recorrentesDe, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, dataNoMes, eDaRecorrente, mesDe, cartoesDe, cartaoPadrao, cartaoDoGasto, vencimentoDa, proximaFatura, parcelasDe, parcelasNoMes, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos, ciclosCredito, creditoDe, resumoCredito, faturaAPagar, pagamentosFatura, CARTAO_CREDITO } from '../financas.js';
 
 export const KINDS_FINANCAS = ['gasto', 'entrada', 'transferencia', 'rendimento'];
 export const isFinanca = e => KINDS_FINANCAS.includes(e?.kind);
@@ -25,7 +25,8 @@ export function criarFinancas(h) {
   const cats = () => categoriasDe(S.records || []);
   const formaTxt = f => FORMA_ROTULO[f] || f;
   // as contas do mês precisam de todos os cartões (os arquivados também: os gastos deles continuam nas faturas)
-  const opts = () => ({ cartoes: cartoesDe(S.records || [], { todos: true }) });
+  // (v0.14: sem cartão cadastrado, o "cartão" virtual do /credito: o crédito cai na fatura pelo ciclo)
+  const opts = () => ({ cartoes: ciclosCredito(S.records || []), records: S.records || [] });
 
   /* ---------- números f1, f2... ---------- */
 

@@ -60,6 +60,12 @@
 
 ### Etapa 4 · Finanças: conta, crédito e a tela de finanças (seção 6) · detalhes logo abaixo
 
+### Etapa 4.5 · `/ajuda` enxuta (pedido do Vini, 08/10)
+Hoje o `/ajuda` despeja todos os comandos numa lista só. Vira um menu curto:
+- o que dá pra **escrever sem barra** (3–4 exemplos: tarefa, gasto, "t2 sexta", link);
+- as **áreas** como botões (tarefas · dinheiro · pessoas · notas e acervo · sistema): tocar numa área mostra só os comandos dela, curtos, com exemplo;
+- `/ajuda mes` continua detalhando um comando; a lista completa de antes fica em `/ajuda tudo`.
+
 ### Etapa 5 · Visual novo no computador (seção 4)
 Mesma estética (escuro, verde/ciano, mono, HUD), conteúdo trocado: a tela mostra a sua vida.
 - **Núcleo = anel do dia**: tarefas de hoje feitas/total (verde), vencidas como arco âmbar, número no meio ("3/5"). O núcleo continua reagindo (digitando, gravando), só que discreto.

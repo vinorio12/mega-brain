@@ -18,6 +18,7 @@ export function criarTarefas(kit) {
   const salvar = (...a) => kit.salvar(...a);
   const tagsNovas = (...a) => kit.tagsNovas(...a);
   const mostrarPergunta = (...a) => kit.mostrarPergunta(...a);
+  const resumo = (...a) => kit.resumo(...a);
 
   // a linha "↳ auto": o que o app escolheu sozinho, pra você conferir e corrigir
   function autoLine(values, auto, n, fonte = 'regra') {
@@ -145,8 +146,9 @@ export function criarTarefas(kit) {
     const r = previa(raw, ictx({ forcar: 'tarefa' }));
     if (!r || r.erro?.codigo === 'vazio') throw usage('t', 'revisar cap 2 #tcc @fazendo >sex !alta');
     if (r.erro) throw parseError({ error: r.erro.codigo, token: r.erro.token });
-    const { e, n } = await salvar(r, t);
-    autoLine(r.campos, r.auto, n.slice(1));
+    const { e, n, queued } = await salvar(r, t);
+    // resposta curta (padrão) ou a linha "↳ auto" de antes (/detalhes)
+    if (S.detalhes) autoLine(r.campos, r.auto, n.slice(1)); else resumo(r, e, n, { queued });
     S.perguntas = tagsNovas(r).map(tag => ({ tipo: 'projeto', tag, id: e.id }));
     mostrarPergunta();
   }

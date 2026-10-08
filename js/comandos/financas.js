@@ -91,20 +91,42 @@ export function criarFinancas(h) {
   }
 
   // perguntas logo depois de salvar: categoria (outros / dividida / conflito), forma (gasto sem forma), estorno ligado
+  // Os pedaços da resposta curta (v0.14, "✓ gasto f2 · R$ 46,00 · saúde · farmácia · hoje"): sem *, %, regra nem motivo
+  function resumoPartes(r) {
+    const c = r.campos;
+    const nomes = (r.pessoas || []).map(id => (S.records || []).find(x => x.id === id)?.text).filter(Boolean);
+    if (r.tipo === 'rendimento') return [`<span class="c-act">${esc(fmtValor(c.valor))}</span>`, `na ${esc(c.lugar)}`, '<span class="dim">soma no investimento</span>', esc(fmtDia(c.data))];
+    if (r.tipo === 'transferencia') return [`<span class="c-act">${esc(fmtValor(c.valor))}</span>`, c.conta ? `${c.sentido === 'de' ? 'da' : 'pra'} ${esc(c.conta)}` : '', '<span class="dim">não mexe no saldo</span>', esc(fmtDia(c.data))];
+    const lista = cartoesDe(S.records || []);
+    const cartao = c.cartao ? lista.find(x => x.id === c.cartao) : c.forma === 'credito' ? cartaoPadrao(lista) : null;
+    return [
+      `<span class="c-act">${esc(fmtValor(c.valor))}</span>` + (c.parcelas ? ` <span class="c-int">${esc(textoParcelas(c.valor, c.parcelas))}</span>` : ''),
+      c.categoria ? esc(c.categoria) : '<span class="c-warn">sem categoria</span>',
+      c.forma ? esc(formaTxt(c.forma)) + (cartao ? ' ' + esc(cartao.nome) : '') : '',
+      c.lugar ? esc(c.lugar) : '', ...nomes.map(esc),
+      esc(fmtDia(c.data)),
+    ];
+  }
+
+  // Cada pergunta aparece na hora, com botões, e entra na fila S.perguntas (devolvida aqui): assim "débito" ou "saúde"
+  // escritos sozinhos respondem (js/conversa.js → respostaPergunta). O /cat e o /forma tiram a pergunta da fila.
   function perguntar(r, e, n) {
     S.ultimaFin = e.id; // o /cat e o /forma sem número valem pra este
-    if (r.tipo === 'transferencia' || r.tipo === 'rendimento') return;
+    const fila = [];
+    if (r.tipo === 'transferencia' || r.tipo === 'rendimento') return fila;
     const mc = r.motivos?.categoria, lista = cats()[r.tipo] || [];
-    const sugestoes = lista.filter(x => x !== 'outros').slice(0, 6).map(x => `<span class="c-int">${esc(x)}</span>`).join(' · ');
+    const botaoCat = c => h.chip(c, `/cat ${c} ${n}`);
     if (mc?.tipo === 'padrao') {
-      term.print(`<span class="c-warn">↳ categoria?</span> <span class="dim">salvei em outros · qual é?</span> <span class="c-int">/cat</span> ${sugestoes}${lista.length > 7 ? ' <span class="dim">…</span>' : ''}`, 'auto');
+      term.print(`<span class="c-warn">↳ categoria?</span> <span class="dim">salvei em outros · qual é?</span>${h.chips(lista.filter(x => x !== 'outros').slice(0, 8).map(botaoCat))}`, 'auto');
     } else if (mc?.tipo === 'dividida') {
-      term.print(`<span class="c-warn">↳ categoria?</span> ${esc(mc.pista)} aparece em ${mc.porValor.map(([v, w]) => `<span class="c-act">${esc(v)}</span> ${w}`).join(' · ')} <span class="dim">· não chutei ·</span> <span class="c-int">/cat ${esc(mc.porValor[0]?.[0] || '')}</span>`, 'auto');
+      term.print(`<span class="c-warn">↳ categoria?</span> ${esc(mc.pista)} aparece em ${mc.porValor.map(([v, w]) => `<span class="c-act">${esc(v)}</span> ${w}`).join(' · ')} <span class="dim">· não chutei</span>${h.chips(mc.porValor.map(([v]) => botaoCat(v)))}`, 'auto');
     } else if (mc?.tipo === 'conflito') {
-      term.print(`<span class="c-warn">↳ categoria?</span> ${mc.pistas.map(p => `${esc(p.pista)} → <span class="c-act">${esc(p.valor)}</span>`).join(' · ')} <span class="dim">· não chutei ·</span> <span class="c-int">/cat ${esc(mc.pistas[0]?.valor || '')}</span>`, 'auto');
+      term.print(`<span class="c-warn">↳ categoria?</span> ${mc.pistas.map(p => `${esc(p.pista)} → <span class="c-act">${esc(p.valor)}</span>`).join(' · ')} <span class="dim">· não chutei</span>${h.chips([...new Set(mc.pistas.map(p => p.valor))].map(botaoCat))}`, 'auto');
     }
+    if (['padrao', 'dividida', 'conflito'].includes(mc?.tipo)) fila.push({ tipo: 'categoria', id: e.id, n, lista, mostrada: true });
     if (r.tipo === 'gasto' && !r.campos.forma) {
-      term.print(`<span class="c-warn">↳ forma?</span> <span class="c-int">/forma</span> ${FORMAS.map(f => `<span class="c-int">${esc(formaTxt(f))}</span>`).join(' · ')} <span class="dim">· eu aprendo pro próximo</span>`, 'auto');
+      term.print(`<span class="c-warn">↳ forma?</span>${h.chips(FORMAS.map(f => h.chip(formaTxt(f), `/forma ${f} ${n}`)))} <span class="dim">· eu aprendo pro próximo</span>`, 'auto');
+      fila.push({ tipo: 'forma', id: e.id, n, mostrada: true });
     }
     if (r.tipo === 'entrada' && /estorno|reembolso|devolu|cashback/i.test(r.texto)) {
       const g = r.campos.ref && S.entries.find(x => x.id === r.campos.ref);
@@ -112,6 +134,7 @@ export function criarFinancas(h) {
         ? `<span class="c-int">↳ devolve</span> o gasto de ${esc(fmtDia(g.data?.data || g.day))} · ${hl(g.text)} <span class="c-act">${esc(fmtValor(g.data?.valor))}</span>`
         : '<span class="dim">↳ não achei o gasto que ele devolve (mesma palavra, até 60 dias) · fica como entrada solta</span>', 'auto');
     }
+    return fila;
   }
 
   /* ---------- corrigir: categoria e forma ---------- */
@@ -796,6 +819,7 @@ export function criarFinancas(h) {
         if (!cat) throw new CmdError('E_404', 'fin', `categoria "${resto}" não existe em ${e.kind}`, `as de ${e.kind}: ${lista.map(esc).join(', ')}`);
         if (e.data?.categoria === cat && !(e.data?.auto?.campos || []).includes('categoria')) return term.say(`já está em ${esc(cat)}.`);
         await mudar(e, 'categoria', cat, t, 'categoria');
+        S.perguntas = (S.perguntas || []).filter(q => !(q.tipo === 'categoria' && q.id === e.id));
         term.ok('fin', `${esc(numero(e))} · <span class="c-act">${esc(cat)}</span>${e.data?.categoria && e.data.categoria !== cat ? ` <span class="dim">(era ${esc(e.data.categoria)})</span>` : ''} · ${hl(e.text)} <span class="c-meta">· aprendi · /desfazer volta · ${t.id}</span>`);
         ctx.ui.pulse('act');
         proximaCategoria(); // /categorizar: o próximo antigo sem categoria
@@ -861,11 +885,12 @@ export function criarFinancas(h) {
         if (!f) throw new CmdError('E_ARG', 'fin', `não conheço a forma "${resto}"`, `use ${FORMAS.map(formaTxt).join(', ')}`);
         if (e.data?.forma === f && !(e.data?.auto?.campos || []).includes('forma')) return term.say(`já está em ${esc(formaTxt(f))}.`);
         await mudar(e, 'forma', f, t, 'forma de pagamento');
+        S.perguntas = (S.perguntas || []).filter(q => !(q.tipo === 'forma' && q.id === e.id));
         term.ok('fin', `${esc(numero(e))} · <span class="c-act">${esc(formaTxt(f))}</span>${e.data?.forma && e.data.forma !== f ? ` <span class="dim">(era ${esc(formaTxt(e.data.forma))})</span>` : ''} · ${hl(e.text)} <span class="c-meta">· aprendi · /desfazer volta · ${t.id}</span>`);
         ctx.ui.pulse('act');
       },
     },
   ];
 
-  return { defs, entendi, perguntar, numero, pool, alvo, editar, apagar, mostrarMes, lancarRecorrentes, entendiRecorrente, entendiSaldo, entendiFatura };
+  return { defs, entendi, resumoPartes, perguntar, numero, pool, alvo, editar, apagar, mostrarMes, lancarRecorrentes, entendiRecorrente, entendiSaldo, entendiFatura };
 }

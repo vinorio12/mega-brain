@@ -11,7 +11,7 @@ const HIST_KEY = 'mb.hist.v1';
 const LEVEL_CLASS = { OK: 'ok', INF: 'inf', WRN: 'wrn', ERR: 'err', AI: 'ai' };
 const DEFAULT_HINT = 'tab completa · ↑↓ histórico · ctrl+k limpa';
 
-export function createTerminal({ out, input, form, hint, completions, privacy, onSubmit, onChange, histKey = HIST_KEY }) {
+export function createTerminal({ out, input, form, hint, completions, privacy, onSubmit, onChange, clicavel = null, compacto = null, histKey = HIST_KEY }) {
   const log = [];
   const tasks = new Map();
   let seq = 0;
@@ -25,11 +25,24 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
 
   const nearBottom = () => out.scrollHeight - out.scrollTop - out.clientHeight < 60;
 
+  // sugestão em ciano que só MOSTRA coisas ("/mes -1", "/tarefas tcc") vira clicável sozinha;
+  // as que gravam só viram botão quando o código cria de propósito (chip), pra um toque sem querer não criar dados
+  function linkify(d) {
+    if (!clicavel) return;
+    for (const s of d.querySelectorAll('span.c-int, span.c-hud')) {
+      const v = s.textContent.trim();
+      if (s.closest('[data-cmd], a, button') || !/^\/[a-zà-ú]/i.test(v) || /[<>[\]|…]/.test(v) || !clicavel(v)) continue;
+      s.dataset.cmd = v;
+      s.classList.add('cmdlink');
+    }
+  }
+
   function row(html, cls = '', force = false) {
     const stick = force || nearBottom(); // se você rolou pra cima pra ler, não puxa pra baixo
     const d = document.createElement('div');
     d.className = 'row ' + cls;
     d.innerHTML = html;
+    linkify(d);
     out.appendChild(d);
     if (stick) out.scrollTop = out.scrollHeight;
     return d;
@@ -47,10 +60,15 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
       `<span class="lv">${e.level}</span><span class="src">${esc(e.src)}</span><span class="m">${e.html}</span>`;
   }
 
+  // resposta curta (sem /detalhes): "✓ f2 · saúde · aprendi" no lugar de "16:48 OK fin f2 · saúde · aprendi · T0008"
+  // (o log guarda a linha inteira; os erros aparecem sempre completos, o código E_… ajuda a entender)
+  const MARCA = { OK: '✓', WRN: '!', INF: '·' };
+  const semTecnico = html => html.replace(/\s*·\s*T\d{4}(?:\s*·\s*\d+ms)?/g, '').replace(/<span class="c-meta">\s*<\/span>/g, '');
   function emit(level, src, html, { show = true } = {}) {
     const e = { ts: Date.now(), level, src, html, text: toText(html) };
     log.push(e);
-    if (show) row(fmt(e), 'lg lv-' + LEVEL_CLASS[level]);
+    if (show && compacto?.() && MARCA[level]) row(`<span class="mk">${MARCA[level]}</span> ${semTecnico(html)}`, 'lg-c lv-' + LEVEL_CLASS[level]);
+    else if (show) row(fmt(e), 'lg lv-' + LEVEL_CLASS[level]);
     onChange('log', e);
     return e;
   }
@@ -63,6 +81,8 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
   const print = (html, cls = '') => row(html, cls);
 
   function echo(text) {
+    // um "desfazer" de antes desfaria outra coisa: some quando você manda o próximo comando
+    out.querySelectorAll('.chip.is-undo:not(.is-used)').forEach(b => b.classList.add('is-used'));
     row(`<span class="ps-caret">›</span>${esc(text)}`, 'echo', true);
   }
 
@@ -228,6 +248,18 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
     onSubmit(v);
   });
 
+  // Botões tocáveis: <button data-cmd="/forma pix f3"> roda o comando como se você tivesse digitado.
+  // Um botão de uma pergunta respondida apaga os irmãos dela (não dá pra responder duas vezes).
+  out.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-cmd]');
+    if (!b || !out.contains(b)) return;
+    ev.preventDefault();
+    const v = b.dataset.cmd;
+    b.closest('.chips')?.classList.add('is-used');
+    echo(v);
+    onSubmit(v);
+  });
+
   input.addEventListener('keydown', e => {
     if (e.key === 'ArrowUp') {
       if (!hist.length) return;
@@ -285,9 +317,10 @@ export function createTerminal({ out, input, form, hint, completions, privacy, o
     log, tasks,
     emit, say, print, echo, error, clear, task,
     replay: e => row(fmt(e), 'lg lv-' + LEVEL_CLASS[e.level]),
-    ok: (src, html) => emit('OK', src, html),
-    info: (src, html) => emit('INF', src, html),
-    warn: (src, html) => emit('WRN', src, html),
+    // { show: false } = só vai pro log (/log mostra), sem linha na tela (a resposta curta já disse o que importa)
+    ok: (src, html, o) => emit('OK', src, html, o),
+    info: (src, html, o) => emit('INF', src, html, o),
+    warn: (src, html, o) => emit('WRN', src, html, o),
     history: () => hist,
     renderHint,
     placeCursor,

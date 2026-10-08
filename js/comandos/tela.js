@@ -102,6 +102,10 @@ export function criarTela(kit) {
 
   const table = (rows, cls = '') => rows.forEach(([k, v]) => term.print(`<span class="k">${k}</span><span>${v}</span>`, 'tbl ' + cls));
 
+  // botão tocável: executa o comando na hora (no celular é o jeito principal de responder) · chips() agrupa os de uma pergunta
+  const chip = (label, cmd, cls = '') => `<button type="button" class="chip${cls ? ' ' + cls : ''}" data-cmd="${esc(cmd)}">${esc(label)}</button>`;
+  const chips = list => (list.length ? ` <span class="chips">${list.join('')}</span>` : '');
+
   // uma linha de tarefa:  t3  [~]  revisar cap 2  #tcc !alta @fazendo        sex 02.10
   //   caixa: [ ] primeiro status · [~] em andamento (outros abertos) · [x] concluída
   //   opts.hide: campos que a visão já mostra no título do grupo (ex: 'projeto' na lista por projeto)
@@ -139,5 +143,5 @@ export function criarTela(kit) {
   }
 
   const defs = [];
-  return { defs, isNote, notesPool, acervoPool, nums, noteRows, acervoCards, list, showByType, linkHtml, showSearch, table, taskLine, showTaskGroups };
+  return { defs, isNote, notesPool, acervoPool, nums, noteRows, acervoCards, list, showByType, linkHtml, showSearch, table, chip, chips, taskLine, showTaskGroups };
 }

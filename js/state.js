@@ -79,6 +79,14 @@ export function readIntent(text, { mode = null, ctx = null, catalog = [], reg = 
     return { type: 'task', text: c.texto, tags: c.tags || [], projeto: c.projeto, status: c.status, prazo: c.prazo || null, prioridade: c.prioridade, auto: t.auto, ...(nomes(t).length ? { pessoas: nomes(t) } : {}) };
   }
 
+  // v0.14: dúvida com palpite "tarefa" vira tarefa direto no Enter (o palpite acertou 6 de 6 no uso real)
+  if (r.pergunta && r.palpite === 'tarefa') {
+    const t = previa(v, { ...ictx, forcar: 'tarefa' });
+    if (t.tipo === 'tarefa' && !t.erro) {
+      const c = t.campos;
+      return { type: 'task', text: c.texto, tags: c.tags || [], projeto: c.projeto, status: c.status, prazo: c.prazo || null, prioridade: c.prioridade, auto: t.auto, inferido: true, confianca: r.confianca, ...(nomes(t).length ? { pessoas: nomes(t) } : {}) };
+    }
+  }
   // tarefa deduzida do texto livre ("ligar pro dentista amanhã")
   if (r.tipo === 'tarefa') {
     const c = r.campos;

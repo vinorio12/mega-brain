@@ -253,7 +253,11 @@ export function createUI(ctx) {
 
   // direita: o contexto do momento. Digitando → mostra o que o Enter vai fazer. Parado → tarefas relevantes.
   function renderCtx(E, now) {
-    const intent = readIntent(inputValue, { mode: S.mode, ctx: S.ctx, catalog: ctx.commands.catalog(), reg: ctx.reg(), entries: S.entries, records: S.records || [], pessoas: pessoasDe(S.records || []) });
+    // "t2 sexta", "débito" (respondendo), "ajuda": a prévia mostra o comando que o Enter vai rodar
+    const ic = !S.mode && ctx.store && inputValue.trim() && !inputValue.trim().startsWith('/') ? ctx.commands.interceptar(inputValue.trim()) : null;
+    const icCmd = ic && ctx.commands.get(ic.cmd.slice(1).split(/\s+/)[0]);
+    const intent = icCmd ? { type: 'command', cmd: icCmd, via: ic.cmd }
+      : readIntent(inputValue, { mode: S.mode, ctx: S.ctx, catalog: ctx.commands.catalog(), reg: ctx.reg(), entries: S.entries, records: S.records || [], pessoas: pessoasDe(S.records || []) });
     const body = $('x-body'), line = $('intent-line');
     let title = 'contexto', sub = '~' + (S.ctx ? '/' + S.ctx : ''), html = '', short = '';
 
@@ -270,8 +274,10 @@ export function createUI(ctx) {
     } else if (intent.type === 'command') {
       title = 'comando';
       sub = '/' + intent.cmd.name;
-      html = `<div class="ctx-cmd"><b>/${esc(intent.cmd.name)} <span>${esc(intent.cmd.args || '')}</span></b><span>${esc(intent.cmd.desc)}</span></div><div class="ctx-hint">enter executa</div>`;
-      short = `→ /${intent.cmd.name} · ${intent.cmd.desc}`;
+      html = intent.via
+        ? `<div class="ctx-cmd"><b>${esc(intent.via)}</b><span>${esc(intent.cmd.desc)}</span></div><div class="ctx-hint">enter roda · "nota:" antes guarda como nota</div>`
+        : `<div class="ctx-cmd"><b>/${esc(intent.cmd.name)} <span>${esc(intent.cmd.args || '')}</span></b><span>${esc(intent.cmd.desc)}</span></div><div class="ctx-hint">enter executa</div>`;
+      short = intent.via ? `→ ${intent.via}` : `→ /${intent.cmd.name} · ${intent.cmd.desc}`;
     } else if (intent.type === 'unknown') {
       title = 'comando';
       sub = 'desconhecido';

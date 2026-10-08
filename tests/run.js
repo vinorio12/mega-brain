@@ -83,7 +83,7 @@ function memStore(list) {
 }
 
 function setup(texts) {
-  const S = { entries: entries(texts), undo: [], startedAt: Date.now() };
+  const S = { entries: entries(texts), undo: [], startedAt: Date.now(), detalhes: true }; // /detalhes ligado: os testes antigos conferem as linhas técnicas
   const term = fakeTerm();
   S.records = [];
   const ctx = { S, term, reg: () => registry(S.records), ui: { pulse() {}, render() {}, state: () => 'ready', mem: () => ['local', 'warn'], stage: null, openStage(kind, o = {}) { this.stage = { kind, ...o }; }, closeStage() { this.stage = null; }, stageOpen() { return this.stage?.kind || null; } } };
@@ -236,6 +236,49 @@ describe('valores (valores.js · Fase 2)', () => {
   test('tirar o valor não cola o marcador na palavra de antes', () => eq(findValor('pagar 30 !alta').resto, 'pagar !alta'));
   test('fmtValor', () => eq([3000, 123456, 5, -500, 0, 100000000].map(fmtValor),
     ['R$ 30,00', 'R$ 1.234,56', 'R$ 0,05', '-R$ 5,00', 'R$ 0,00', 'R$ 1.000.000,00']));
+});
+
+describe('conversa na tela (v0.14 · resposta curta, botões, fila de perguntas)', () => {
+  const T = { id: 'T0001', elapsed: () => 1 };
+  test('resposta curta: uma linha ✓ com o que importa, sem T0001/ms/regra', async () => {
+    const s = setup([]);
+    s.S.detalhes = false;
+    await s.ctx.commands.capturar('gastei R$46 na farmácia no débito', T);
+    const txt = s.term.text();
+    ok(/✓.*gasto.*f1.*R\$ 46,00.*saúde.*débito.*farmácia.*hoje/.test(txt), txt);
+    ok(!/T0001|regra 9|\* auto/.test(txt.replace(/^OK .*$/gm, '')), txt);
+  });
+  test('gasto sem forma: a pergunta entra na fila e "débito" sozinho responde', async () => {
+    const s = setup([]);
+    s.S.detalhes = false;
+    await s.ctx.commands.capturar('gastei 45 no ifood', T);
+    eq(s.S.perguntas.map(q => q.tipo), ['forma']);
+    ok(/data-cmd="\/forma debito f1"/.test(s.term.text()), 'botão do débito');
+    const i = s.ctx.commands.interceptar('débito');
+    eq(i, { cmd: '/forma debito f1' });
+    await s.run(i.cmd);
+    eq([s.S.entries[0].data.forma, s.S.perguntas.length], ['debito', 0]);
+    eq(s.ctx.commands.interceptar('débito'), null); // respondida: "débito" agora seria captura
+  });
+  test('categoria perguntada: "saúde" responde; /sim só responde as de sim ou não', async () => {
+    const s = setup([]);
+    s.S.detalhes = false;
+    await s.ctx.commands.capturar('gastei 30 na xpto no pix', T);
+    eq(s.S.perguntas.map(q => q.tipo), ['categoria']);
+    eq(s.ctx.commands.interceptar('saúde'), { cmd: '/cat saúde f1' });
+    await s.run('/sim');
+    ok(/nada pra responder/.test(s.term.text()));
+  });
+  test('"t2 fazendo" e "hoje concluí t1" viram comando; nome de comando sozinho também', async () => {
+    const s = setup([]);
+    await s.run('/t primeira');
+    await s.run('/t segunda');
+    eq(s.ctx.commands.interceptar('t2 fazendo'), { cmd: '/mover t2 fazendo' });
+    eq(s.ctx.commands.interceptar('hoje concluí t1'), { cmd: '/feito t1' });
+    eq(s.ctx.commands.interceptar('ajuda').cmd, '/ajuda');
+    eq(s.ctx.commands.interceptar('sair'), null);
+    eq(s.ctx.commands.interceptar('comprar pão'), null);
+  });
 });
 
 describe('conversa com o terminal (v0.14 · conversa.js)', () => {
@@ -1028,7 +1071,7 @@ describe('captura de dinheiro na tela: f1, perguntas, /cat, /forma, verbo (etapa
     await s.ctx.commands.capturar('gastei 40 na xpto', T);
     const txt = plain(s);
     ok(/lançado f1/.test(txt) && /↳ entendi · gasto · R\$ 40,00 · outros\*/.test(txt), txt);
-    ok(/↳ categoria\? salvei em outros/.test(txt) && /↳ forma\? \/forma pix/.test(txt), txt);
+    ok(/↳ categoria\? salvei em outros/.test(txt) && /↳ forma\? pix/.test(txt) && /data-cmd="\/forma pix f1"/.test(s.term.text()), txt);
     await s.run('/cat lazer');
     await s.run('/forma pix');
     const [g] = fins(s.S);
@@ -1878,16 +1921,25 @@ describe('nome novo pergunta · /sim /nao (etapa 4 · Fase 2.5)', () => {
     eq(nomes(s).sort(), ['Bia', 'Carla']);
     eq(s.S.entries[0].data.pessoas.length, 2);
   });
-  test('"era tarefa?": /sim vira tarefa, /nao fica nota e aprende', async () => {
+  test('"era gasto?": /sim vira gasto, /nao fica nota e aprende', async () => {
     const s = setup([]);
-    await s.ctx.commands.capturar('comprar pão', T);
+    await s.ctx.commands.capturar('abasteci 200 no posto', T);
     await s.run('/sim');
-    eq(s.S.entries.map(e => e.kind), ['tarefa']);
-    await s.ctx.commands.capturar('comprar leite', T);
+    eq(s.S.entries.map(e => e.kind), ['gasto']);
+    await s.ctx.commands.capturar('abasteci 50 no posto', T);
     await s.run('/nao');
     await new Promise(r => setTimeout(r, 0));
-    eq(s.S.entries.map(e => e.kind), ['tarefa', 'nota']);
-    eq(resumoAprendizado(s.S.records).corrigidas.map(i => [i.texto, i.corrigido]).sort(), [['comprar leite', 'nota'], ['comprar pão', 'tarefa']]);
+    eq(s.S.entries.map(e => e.kind), ['gasto', 'nota']);
+    eq(resumoAprendizado(s.S.records).corrigidas.map(i => [i.texto, i.corrigido]).sort(), [['abasteci 200 no posto', 'gasto'], ['abasteci 50 no posto', 'nota']]);
+  });
+  test('v0.14: palpite "tarefa" cria a tarefa direto; o botão "era nota" volta', async () => {
+    const s = setup([]);
+    s.S.detalhes = false;
+    await s.ctx.commands.capturar('comprar pão', T);
+    eq(s.S.entries.map(e => [e.kind, e.text]), [['tarefa', 'comprar pão']]);
+    ok(/✓.*tarefa.*comprar pão/.test(s.term.text()) && /data-cmd="\/tipo nota t1"/.test(s.term.text()), s.term.text());
+    await s.run('/tipo nota t1');
+    eq(s.S.entries.map(e => e.kind), ['nota']);
   });
   test('sem pergunta pendente: avisa', async () => {
     const s = setup([]);
@@ -2144,13 +2196,13 @@ describe('texto livre + "↳ entendi" + /tipo (etapa 9b)', () => {
   });
   test('dúvida: salva como nota e pergunta; /tipo tarefa corrige; /desfazer volta', async () => {
     const s = setup([]);
-    await s.ctx.commands.capturar('comprar pão', T);
+    await s.ctx.commands.capturar('abasteci 200 no posto', T);
     eq(s.S.entries.map(e => e.kind), ['nota']);
-    ok(/salvei como nota/.test(out(s)) && /era tarefa\?/.test(out(s)) && /\/sim/.test(out(s)), out(s));
-    await s.run('/tipo tarefa');
-    eq(s.S.entries.map(e => [e.kind, e.text]), [['tarefa', 'comprar pão']]);
+    ok(/salvei como nota/.test(out(s)) && /era gasto\?/.test(out(s)) && /\/sim/.test(out(s)), out(s));
+    await s.run('/tipo gasto');
+    eq(s.S.entries.map(e => [e.kind, e.text]), [['gasto', 'abasteci 200 no posto']]);
     await s.run('/desfazer');
-    eq(s.S.entries.map(e => [e.kind, e.text]), [['nota', 'comprar pão']]);
+    eq(s.S.entries.map(e => [e.kind, e.text]), [['nota', 'abasteci 200 no posto']]);
   });
   test('/tipo com número e /tipo nota desfaz uma tarefa deduzida', async () => {
     const s = setup(['nota velha', 'uber 18']);
@@ -2162,7 +2214,7 @@ describe('texto livre + "↳ entendi" + /tipo (etapa 9b)', () => {
   });
   test('/tipo que não dá: erro com dica, nada muda', async () => {
     const s = setup([]);
-    await s.ctx.commands.capturar('comprar pão', T);
+    await s.ctx.commands.capturar('ideia solta', T);
     await throws(() => s.run('/tipo gasto'), 'E_TIPO');
     await throws(() => s.run('/tipo foguete'), 'E_ARG');
     eq(s.S.entries.map(e => e.kind), ['nota']);
@@ -2177,8 +2229,10 @@ describe('texto livre + "↳ entendi" + /tipo (etapa 9b)', () => {
     eq([readIntent('ligar pro banco amanhã', { now }).type, readIntent('ligar pro banco amanhã', { now }).inferido], ['task', true]);
     const g = readIntent('gastei 30 no almoço', { now });
     eq([g.type, g.tipo, g.campos.valor], ['registro', 'gasto', 3000]);
-    const d = readIntent('comprar pão', { now });
-    eq([d.type, d.pergunta, d.palpite], ['note', true, 'tarefa']);
+    // v0.14: o palpite "tarefa" vira tarefa no Enter, então a prévia já mostra tarefa · dúvida de outro tipo continua nota
+    eq([readIntent('comprar pão', { now }).type, readIntent('comprar pão', { now }).inferido], ['task', true]);
+    const d = readIntent('abasteci 200 no posto', { now });
+    eq([d.type, d.pergunta, d.palpite], ['note', true, 'gasto']);
   });
 });
 
@@ -2204,17 +2258,17 @@ describe('aprendizado (aprendizado.js · Fase 2)', () => {
   test('dúvida e /tipo gravam; /aprendizado mostra e exporta', async () => {
     const s = setup([]);
     const T = { id: 'T0001', elapsed: () => 1 };
-    await s.ctx.commands.capturar('comprar pão', T);
+    await s.ctx.commands.capturar('abasteci 200 no posto', T);
     await s.ctx.commands.capturar('xpto 18', T);
     await s.run('/tipo gasto');
     await new Promise(r => setTimeout(r, 0));
     const res = resumoAprendizado(s.S.records);
-    eq([res.corrigidas.map(i => i.texto), res.semResposta.map(i => i.texto)], [['xpto 18'], ['comprar pão']]);
+    eq([res.corrigidas.map(i => i.texto), res.semResposta.map(i => i.texto)], [['xpto 18'], ['abasteci 200 no posto']]);
     await s.run('/aprendizado');
     ok(/corrigidas/.test(s.term.text()) && /sem resposta/.test(s.term.text()));
     await s.run('/aprendizado exportar');
     ok(/frase: 'xpto 18', esperado: \{ tipo: 'gasto' \}/.test(s.term.text()), s.term.text());
-    eq(s.S.entries.filter(isNoteKind).map(e => e.text), ['comprar pão'], 'nada de aprendizado no /inbox');
+    eq(s.S.entries.filter(isNoteKind).map(e => e.text), ['abasteci 200 no posto'], 'nada de aprendizado no /inbox');
   });
 });
 

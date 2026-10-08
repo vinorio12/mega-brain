@@ -49,6 +49,7 @@ const S = {
   ctx: null,         // aba atual (projeto), ex: 'tcc' · null = inbox (~)
   taskList: null,    // ids na ordem dos números t1, t2... da última lista mostrada
   view: (() => { try { return localStorage.getItem('mb.view.v1'); } catch { return null; } })(), // visão das tarefas (/ver)
+  detalhes: (() => { try { return localStorage.getItem('mb.detalhes.v1') === '1'; } catch { return false; } })(), // /detalhes: linhas técnicas (T0005, ms, %, regra)
   lastLatency: null,
   weather: null,
   startedAt: Date.now(),
@@ -71,6 +72,13 @@ ctx.term = createTerminal({
   // (comandos com "/" aparecem normais mesmo no modo senha)
   privacy: v => (v?.startsWith('/') ? null : S.mode === 'code' || S.mode === 'password' ? 'mask' : S.mode === 'email' ? 'nohist' : null),
   onSubmit: text => run(text),
+  // sem /detalhes: as linhas de log viram "✓ …" (sem hora, nível, origem e T0005)
+  compacto: () => !S.detalhes && !S.booting,
+  // comando em ciano que só mostra coisas vira clicável sozinho (os que gravam, só como botão criado de propósito)
+  clicavel: v => {
+    const c = ctx.commands?.get(v.slice(1).split(/\s+/)[0]);
+    return !!c && !c.exec && !['sair', 'entrar', 'codigo', 'boot', 'migrar', 'importar', 'exportar', 'limpar', 'sync'].includes(c.name);
+  },
   // sinais do terminal viram reações do núcleo
   onChange: (kind, value) => {
     if (!ctx.ui) return;

@@ -43,7 +43,7 @@ export { pickTargets, prepareImport } from './comandos/dados.js';
 const ORDEM = ['ajuda', 'inbox', 'hoje', 'overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'reabrir', 'adiar', 'editar', 'mover', 'status',
   'feitas', 'mudancas', 'palavras', 'memoria', 'sim', 'nao', 'pessoas', 'pessoa', 'tipo', 'contexto', 'aprendizado', 'projeto', 'ir',
   'buscar', 'acervo', 'guardar', 'apagar', 'desfazer', 'condition', 'clima', 'log', 'historico', 'exportar', 'entrar', 'codigo', 'sair',
-  'sync', 'migrar', 'instalar', 'importar', 'boot', 'roadmap', 'painel', 'foco', 'limpar'];
+  'sync', 'migrar', 'instalar', 'importar', 'boot', 'roadmap', 'detalhes', 'painel', 'foco', 'limpar'];
 
 export function createCommands(ctx) {
   const { S, term } = ctx;
@@ -69,7 +69,7 @@ export function createCommands(ctx) {
   const juntar = criar => { const { defs, ...fns } = criar(kit); Object.assign(kit, fns); return defs; };
   const porArea = [juntar(criarTela)];
   // finanças: números f1…, linha "↳ entendi" de dinheiro, perguntas, /cat, /forma (nasce antes: as outras usam kit.fin)
-  kit.fin = criarFinancas({ S, term, ctx, usage: kit.usage, mem: kit.mem, ictx: kit.ictx, table: (...a) => kit.table(...a) });
+  kit.fin = criarFinancas({ S, term, ctx, usage: kit.usage, mem: kit.mem, ictx: kit.ictx, table: (...a) => kit.table(...a), chip: (...a) => kit.chip(...a), chips: (...a) => kit.chips(...a), detalhes: () => !!S.detalhes });
   porArea.push(...[criarInterprete, criarTarefas, criarPessoas, criarNotas, criarDados, criarSistema].map(juntar));
 
   const todos = porArea.flat();

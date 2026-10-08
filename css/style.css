@@ -419,6 +419,26 @@ a.acard:hover { border-color: color-mix(in srgb, var(--int) 50%, transparent); }
 .fin .v { text-align: right; white-space: nowrap; }
 .fin .tmeta { font-size: .92em; }
 .auto { color: var(--meta); padding-left: 6.4ch; }
+/* resposta curta (v0.14): "✓ gasto f2 · R$ 46,00 · saúde · hoje" + botões */
+.res { margin: 4px 0 2px; }
+.lg-c { margin: 2px 0; }
+.lg-c .mk { display: inline-block; width: 1.4ch; color: var(--act); }
+.lg-c.lv-wrn .mk, .lg-c.lv-wrn { color: var(--warn); }
+.lg-c.lv-inf .mk { color: var(--meta); }
+.res > .c-act:first-child { display: inline-block; width: 1.4ch; }
+/* botões tocáveis: respondem perguntas e executam sugestões (no celular é o jeito principal) */
+.chips { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 1ch; vertical-align: middle; }
+.chip {
+  font: inherit; font-size: 11.5px; line-height: 1; color: var(--int); background: color-mix(in srgb, var(--int) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--int) 35%, transparent); border-radius: 999px; padding: 5px 10px; cursor: pointer;
+  white-space: nowrap; transition: background .15s, border-color .15s;
+}
+.chip:hover, .chip:focus-visible { background: color-mix(in srgb, var(--int) 18%, transparent); border-color: var(--int); outline: none; }
+.chip.is-undo { color: var(--meta); background: none; border-color: var(--line-2); }
+.chips.is-used .chip, .chip.is-used { opacity: .35; pointer-events: none; }
+/* sugestão em ciano que só mostra coisas: clicável */
+.cmdlink { cursor: pointer; text-decoration: underline dotted color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 3px; }
+.cmdlink:hover { text-decoration-style: solid; }
 .auto-tag { font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--int); border: 1px solid color-mix(in srgb, var(--int) 40%, transparent); padding: 0 4px; border-radius: var(--r); margin-left: 4px; }
 .tgrp { margin-top: 8px; color: var(--int); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; }
 
@@ -610,6 +630,8 @@ a.acard:hover { border-color: color-mix(in srgb, var(--int) 50%, transparent); }
   .ent { grid-template-columns: 4ch 11ch minmax(0, 1fr); gap: 0 1ch; }
   .tbl { grid-template-columns: 11ch minmax(0, 1fr); gap: 0 1.2ch; }
   .auto { padding-left: 4.5ch; }
+  .chip { font-size: 13px; padding: 8px 13px; }
+  .chips { gap: 8px; margin: 6px 0 2px; display: flex; }
   .note { grid-template-columns: 5ch minmax(0, 1fr) auto; gap: 0 1ch; }
   .acv { grid-template-columns: minmax(0, 1fr); }
   .cal-wide { display: none !important; }

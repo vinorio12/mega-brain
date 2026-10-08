@@ -5,7 +5,7 @@
 
 import { esc, hl, dayKey, ddmm, CmdError } from '../util.js';
 import { fmtDue, fmtDia } from '../dates.js';
-import { projName, groupTasks } from '../tasks.js';
+import { projName, groupTasks, firstStatus } from '../tasks.js';
 import { verboCandidato, categoriasDe, acharCategoria, acharForma, cartoesDe, FORMA_ROTULO } from '../financas.js';
 import { isFinanca } from './financas.js';
 import { REGISTRO } from '../tipos.js';
@@ -24,7 +24,15 @@ export function criarInterprete(kit) {
   const addTask = (...a) => kit.addTask(...a);
   const get = (...a) => kit.get(...a);
 
-  // Grava o que o intérprete entendeu (qualquer tipo registrado) e mostra a confirmação. Tudo entra no /desfazer.
+  const chip = (...a) => kit.chip(...a);
+  const chips = (...a) => kit.chips(...a);
+  // /detalhes ligado: as linhas técnicas de antes (T0005 · 1ms · regra 90% · * auto) · desligado (padrão): uma linha "✓" legível
+  const det = () => !!S.detalhes;
+  // perguntas de sim ou não (/sim e /nao respondem a primeira delas); forma e categoria têm o /forma e o /cat
+  const SIM_NAO = ['tipo', 'pessoa', 'projeto', 'verbo'];
+
+  // Grava o que o intérprete entendeu (qualquer tipo registrado). Tudo entra no /desfazer.
+  // A linha técnica ("OK fin gasto lançado f1 · T0005 · 1ms") só aparece com /detalhes; sem ele vai só pro /log.
   async function salvar(interp, t) {
     const tipo = REGISTRO.get(interp.tipo);
     const doc = tipo.montar(interp, ictx());
@@ -34,6 +42,7 @@ export function criarInterprete(kit) {
     S.lastLatency = t.elapsed();
     const queued = ctx.store.pending() > 0;
     const meta = `<span class="c-meta">· ${t.id} · ${S.lastLatency}ms</span>`;
+    const log = (lvl, src, html) => term[lvl](src, html, { show: det() });
     let n = null;
     if (interp.tipo === 'tarefa') {
       S.undo.push({ label: 'tarefa criada', items: [], created: [e.id] });
@@ -41,59 +50,71 @@ export function criarInterprete(kit) {
       if (!S.taskList?.length) S.taskList = groupTasks(S.entries, { proj: S.ctx, projects: ctx.reg().projects }).list;
       else if (!S.taskList.includes(e.id)) S.taskList.push(e.id);
       n = 't' + (S.taskList.indexOf(e.id) + 1);
-      term[queued ? 'warn' : 'ok']('task', `tarefa${queued ? ' na fila' : ''} <span class="c-meta">${n}</span> · ${hl(e.text)} ${meta}`);
+      log(queued ? 'warn' : 'ok', 'task', `tarefa${queued ? ' na fila' : ''} <span class="c-meta">${n}</span> · ${hl(e.text)} ${meta}`);
     } else if (interp.tipo === 'link') {
       S.undo.push({ label: 'link guardado', items: [], created: [e.id] });
       n = nums().get(e.id) || '';
-      term.ok('acervo', `link guardado <span class="c-meta">${n}</span> · ${linkHtml(e)} <span class="c-meta">· ${t.id} · /acervo lista</span>`);
+      log('ok', 'acervo', `link guardado <span class="c-meta">${n}</span> · ${linkHtml(e)} <span class="c-meta">· ${t.id} · /acervo lista</span>`);
     } else if (interp.tipo === 'trecho') {
       S.undo.push({ label: 'texto guardado', items: [], created: [e.id] });
       n = nums().get(e.id) || '';
-      term.ok('acervo', `texto guardado <span class="c-meta">${n}</span> · ${hl(e.text)} <span class="c-meta">· ${t.id} · /acervo lista</span>`);
+      log('ok', 'acervo', `texto guardado <span class="c-meta">${n}</span> · ${hl(e.text)} <span class="c-meta">· ${t.id} · /acervo lista</span>`);
     } else if (interp.tipo === 'nota') {
       S.undo.push({ label: 'nota capturada', items: [], created: [e.id] });
       n = nums().get(e.id) || '';
       const tagHtml = e.tags?.length ? ' · ' + e.tags.map(x => `<span class="c-act">#${esc(x)}</span>`).join(' ') : '';
-      term[queued ? 'warn' : 'ok']('store', `${queued ? 'capturado · na fila, sobe quando a rede voltar' : 'capturado'} <span class="c-meta">${esc(n)}</span>${tagHtml} ${meta}`);
+      log(queued ? 'warn' : 'ok', 'store', `${queued ? 'capturado · na fila, sobe quando a rede voltar' : 'capturado'} <span class="c-meta">${esc(n)}</span>${tagHtml} ${meta}`);
     } else if (e.kind === 'saldo' || e.kind === 'faturapaga') {
       // Fase 3d: âncora do saldo ("tenho 2.500 na conta") e fatura paga: registros, com /desfazer
       S.undo.push({ label: e.kind === 'saldo' ? 'saldo' : 'fatura paga', items: [], created: [e.id] });
-      term[queued ? 'warn' : 'ok']('fin', `${e.kind === 'saldo' ? 'saldo anotado' : 'fatura paga'}${queued ? ' na fila' : ''} · ${hl(e.text)} ${meta}`);
+      log(queued ? 'warn' : 'ok', 'fin', `${e.kind === 'saldo' ? 'saldo anotado' : 'fatura paga'}${queued ? ' na fila' : ''} · ${hl(e.text)} ${meta}`);
     } else if (e.kind === 'recorrente') {
       // o cadastro (Fase 3c): os gastos de cada mês quem lança é o lançador
       S.undo.push({ label: 'recorrente cadastrada', items: [], created: [e.id] });
-      term[queued ? 'warn' : 'ok']('fin', `recorrente cadastrada${queued ? ' na fila' : ''} · ${hl(e.text)} ${meta}`);
+      log(queued ? 'warn' : 'ok', 'fin', `recorrente cadastrada${queued ? ' na fila' : ''} · ${hl(e.text)} ${meta}`);
     } else if (isFinanca(e)) {
       // gasto, entrada, transferência: número f1, f2...
       S.undo.push({ label: `${tipo.rotulo} lançado`, items: [], created: [e.id] });
       n = fin.numero(e);
-      term[queued ? 'warn' : 'ok']('fin', `${esc(tipo.rotulo)} ${/a$/.test(tipo.rotulo) ? 'lançada' : 'lançado'}${queued ? ' na fila' : ''} <span class="c-meta">${n}</span> · ${hl(e.text)} ${meta}`);
+      log(queued ? 'warn' : 'ok', 'fin', `${esc(tipo.rotulo)} ${/a$/.test(tipo.rotulo) ? 'lançada' : 'lançado'}${queued ? ' na fila' : ''} <span class="c-meta">${n}</span> · ${hl(e.text)} ${meta}`);
     } else {
       // treino...: só o dado bruto por enquanto
       S.undo.push({ label: `${tipo.rotulo} guardado`, items: [], created: [e.id] });
-      term[queued ? 'warn' : 'ok']('store', `${esc(tipo.rotulo)} ${/a$/.test(tipo.rotulo) ? 'guardada' : 'guardado'}${queued ? ' na fila' : ''} · ${hl(e.text)} ${meta}`);
+      log(queued ? 'warn' : 'ok', 'store', `${esc(tipo.rotulo)} ${/a$/.test(tipo.rotulo) ? 'guardada' : 'guardado'}${queued ? ' na fila' : ''} · ${hl(e.text)} ${meta}`);
     }
     ctx.ui.pulse(queued ? 'warn' : 'act');
-    return { e, n };
+    return { e, n, queued };
   }
 
   // Texto livre digitado no terminal (sem "/"): o intérprete decide o que é.
   //   "- " = tarefa, sempre · o resto: interpretar() (regras → IA, se ligada → nota com pergunta)
   async function capturar(text, t) {
     if (/^-\s+\S/.test(text)) return addTask(text.replace(/^-\s+/, ''), t);
-    const r = await interpretar(text, ictx());
-    const { e, n } = await salvar(r, t);
+    let r = await interpretar(text, ictx());
+    // v0.14: no uso real o palpite "tarefa" acertou 6 de 6 → cria a tarefa direto, com "era nota" pra voltar atrás
+    let inferida = false;
+    if (r.pergunta && r.palpite === 'tarefa') {
+      const rt = previa(text, ictx({ forcar: 'tarefa' }));
+      if (rt?.tipo === 'tarefa' && !rt.erro) {
+        aprender({ texto: text, palpite: 'tarefa', confianca: r.confianca, origem: r.origem, era: 'tarefa' });
+        r = { ...rt, confianca: r.confianca };
+        inferida = true;
+      }
+    }
+    const { e, n, queued } = await salvar(r, t);
     S.ultima = { id: e.id, texto: text }; // o /tipo sem alvo corrige esta
-    entendiLine(r, e, n);
-    if (isFinanca(e)) fin.perguntar(r, e, n);
+    if (det()) entendiLine(r, e, n); else resumo(r, e, n, { queued, inferida });
+    const finQ = isFinanca(e) ? fin.perguntar(r, e, n) : [];
     // recorrente nova com o dia de hoje: já lança (e o /desfazer do cadastro leva o lançamento junto)
     if (e.kind === 'recorrente') {
       const ids = await fin.lancarRecorrentes({ lembretes: false });
       if (ids.length && S.undo.at(-1)?.created?.includes(e.id)) S.undo.at(-1).created.push(...ids);
     }
     if (r.pergunta) aprender({ texto: text, palpite: r.palpite, confianca: r.confianca, origem: r.origem, era: 'nota' });
-    // perguntas pendentes (/sim, /nao respondem a primeira) · escrever outra coisa troca a fila
+    // a fila de perguntas (escrever outra coisa troca a fila): forma e categoria (respondem com "débito", "saúde"),
+    // e as de sim ou não (/sim, /nao, ou "sim", "não" sozinhos)
     S.perguntas = [
+      ...finQ,
       ...(r.pergunta && r.palpite ? [{ tipo: 'tipo', palpite: r.palpite, id: e.id, texto: text, mostrada: true }] : []),
       ...tagsNovas(r).map(tag => ({ tipo: 'projeto', tag, id: e.id })),
       ...(r.pessoasNovas || []).map(nome => ({ tipo: 'pessoa', nome, id: e.id, texto: text })),
@@ -105,26 +126,27 @@ export function criarInterprete(kit) {
   // tarefa com #tag que não é projeto ("#faculdade"): a tag saiu do título e o app pergunta se cria o projeto
   const tagsNovas = r => (r?.tipo === 'tarefa' && r.motivos?.projeto?.tipo === 'tagnova' ? r.motivos.projeto.tags : []);
 
-  // mostra a primeira pergunta da fila (se ainda não apareceu)
+  // mostra a próxima pergunta de sim ou não que ainda não apareceu (uma de cada vez), com botões
   function mostrarPergunta() {
-    const q = S.perguntas?.[0];
-    if (!q || q.mostrada) return;
+    const q = (S.perguntas || []).find(x => !x.mostrada);
+    if (!q) return;
     q.mostrada = true;
-    const mais = S.perguntas.length > 1 ? ` <span class="dim">· depois tem mais ${S.perguntas.length - 1}</span>` : '';
+    const resto = S.perguntas.filter(x => !x.mostrada).length;
+    const mais = resto ? ` <span class="dim">· depois tem mais ${resto}</span>` : '';
     if (q.tipo === 'projeto') {
-      term.print(`<span class="c-warn">↳ #${esc(q.tag)} não é projeto</span> <span class="dim">· a tarefa ficou sem projeto ·</span> <span class="c-int">/sim</span> <span class="dim">cria #${esc(q.tag)} e move ·</span> <span class="c-int">/nao</span> <span class="dim">deixa assim</span>${mais}`, 'auto');
+      term.print(`<span class="c-warn">↳ #${esc(q.tag)} não é projeto</span> <span class="dim">· a tarefa ficou sem projeto</span>${chips([chip(`criar #${q.tag}`, '/sim'), chip('deixa sem', '/nao')])}${mais}`, 'auto');
     } else if (q.tipo === 'pessoa') {
-      term.print(`<span class="c-int">↳ ${esc(q.nome)} é uma pessoa?</span> <span class="c-int">/sim</span> <span class="dim">cadastra e liga ·</span> <span class="c-int">/nao</span> <span class="dim">não pergunto mais</span>${mais}`, 'auto');
+      term.print(`<span class="c-int">↳ ${esc(q.nome)} é uma pessoa?</span>${chips([chip('sim, cadastra', '/sim'), chip('não', '/nao')])}${mais}`, 'auto');
     } else if (q.tipo === 'verbo') {
-      term.print(`<span class="c-int">↳ aprender "${esc(q.palavra)}" como ${esc(q.valor)}?</span> <span class="c-int">/sim</span> <span class="dim">da próxima vez já entendo ·</span> <span class="c-int">/nao</span>${mais}`, 'auto');
+      term.print(`<span class="c-int">↳ aprender "${esc(q.palavra)}" como ${esc(q.valor)}?</span>${chips([chip('sim, aprende', '/sim'), chip('não', '/nao')])} <span class="dim">· da próxima vez já entendo</span>${mais}`, 'auto');
     }
   }
 
-  // /sim e /nao: respondem a pergunta mais antiga da fila
+  // /sim e /nao: respondem a primeira pergunta de sim ou não da fila
   async function responder(sim, t) {
-    const q = S.perguntas?.[0];
-    if (!q) return term.say('nada pra responder agora.');
-    S.perguntas.shift();
+    const i = (S.perguntas || []).findIndex(q => SIM_NAO.includes(q.tipo));
+    if (i < 0) return term.say('nada pra responder agora.');
+    const [q] = S.perguntas.splice(i, 1);
     if (q.tipo === 'tipo') {
       if (sim) {
         S.ultima = { id: q.id, texto: q.texto };
@@ -176,15 +198,62 @@ export function criarInterprete(kit) {
   const rotuloCaptura = text => (/^-\s+\S/.test(text) ? 'nova tarefa'
     : { link: 'guardar link', trecho: 'guardar texto', tarefa: 'nova tarefa', gasto: 'novo gasto', entrada: 'nova entrada', transferencia: 'transferência', recorrente: 'nova recorrente', saldo: 'saldo', faturapaga: 'fatura paga', rendimento: 'rendimento', treino: 'novo treino' }[previa(text, ictx())?.tipo] || 'captura');
 
-  // A linha curta "↳ entendi": o que o app concluiu sozinho, pra conferir e corrigir.
+  // A resposta curta (padrão, v0.14): uma linha legível com o que foi salvo + botões.
+  //   ✓ gasto f2 · R$ 46,00 · saúde · farmácia · hoje        [desfazer]
+  //   ✓ tarefa t3 · trabalhar no tcc · #tcc · amanhã · !alta  [era nota] [desfazer]
+  function resumo(r, e, n, { queued = false, inferida = false } = {}) {
+    if (r.pergunta) { duvida(r); return ambiguas(r); }
+    if (r.tipo === 'recorrente') return fin.entendiRecorrente(r, e);
+    if (r.tipo === 'saldo') return fin.entendiSaldo(r, e);
+    if (r.tipo === 'faturapaga') return fin.entendiFatura(r, e);
+    const c = r.campos || {};
+    let partes = [];
+    const botoes = [];
+    if (r.tipo === 'tarefa') {
+      partes = [hl(e.text), c.projeto ? `<span class="c-act">#${esc(c.projeto)}</span>` : '<span class="c-warn">sem projeto</span>',
+        c.prazo ? `<span class="c-int">${esc(fmtDue(c.prazo))}</span>` : '',
+        c.prioridade && c.prioridade !== 'média' ? `<span class="${c.prioridade === 'alta' ? 'c-warn' : 'dim'}">!${esc(c.prioridade)}</span>` : '',
+        c.status && c.status !== firstStatus(ctx.reg()) ? `<span class="c-int">@${esc(c.status)}</span>` : ''];
+      if (inferida) botoes.push(chip('era nota', `/tipo nota ${n}`));
+    } else if (isFinanca(e)) {
+      partes = fin.resumoPartes(r);
+    } else if (r.tipo === 'nota') {
+      partes = (e.tags || []).map(x => `<span class="c-act">#${esc(x)}</span>`);
+    } else if (r.tipo === 'link') {
+      partes = [linkHtml(e)];
+    } else if (r.tipo === 'treino') {
+      partes = [c.duracao_min ? c.duracao_min + 'min' : '', c.distancia_km ? c.distancia_km + 'km' : '', esc(fmtDia(c.data))];
+    }
+    botoes.push(chip('desfazer', '/desfazer', 'is-undo'));
+    const rot = REGISTRO.get(r.tipo)?.rotulo || r.tipo;
+    const fila = queued ? ' <span class="c-warn">· na fila, sobe quando a rede voltar</span>' : '';
+    term.print(`<span class="c-act">✓</span> ${esc(rot)}${n ? ` <span class="c-meta">${esc(n)}</span>` : ''}${partes.filter(Boolean).length ? ' · ' + partes.filter(Boolean).join(' · ') : ''}${fila}${chips(botoes)}`, 'res');
+    if (r.tipo === 'tarefa') perguntaProjeto(r, n);
+    ambiguas(r);
+  }
+
+  // salvou como nota porque ficou em dúvida: "era gasto?" com botões
+  function duvida(r) {
+    const outros = ['tarefa', 'gasto', 'entrada', 'treino'].filter(x => x !== r.palpite);
+    term.print(`<span class="c-warn">↳ salvei como nota</span> <span class="dim">· não tive certeza ·</span> era ${esc(r.palpite || 'outra coisa')}?` +
+      `${chips([chip(`sim, é ${r.palpite || 'isso'}`, '/sim'), chip('é nota', '/nao')])} <span class="dim">· ou /tipo ${outros.map(esc).join(', ')}</span>`, 'auto');
+  }
+
+  // a memória não chutou o projeto da tarefa: mostra as pistas, com um botão pra cada projeto
+  function perguntaProjeto(r, n) {
+    const mp = r.motivos?.projeto;
+    if (r.campos?.projeto || !mp || !['dividida', 'conflito'].includes(mp.tipo)) return;
+    const det2 = mp.tipo === 'dividida'
+      ? `${esc(mp.pista)} aparece em ${mp.porProjeto.map(([p, w]) => `<span class="c-act">#${esc(p)}</span> ${w}`).join(' · ')}`
+      : mp.pistas.map(x => `${esc(x.pista)} → <span class="c-act">#${esc(x.projeto)}</span>`).join(' · ');
+    const projs = [...new Set(mp.tipo === 'dividida' ? mp.porProjeto.map(([p]) => p) : mp.pistas.map(x => x.projeto))];
+    term.print(`<span class="c-warn">↳ projeto?</span> ${det2} <span class="dim">· não chutei</span>${chips(projs.map(p => chip('#' + p, `/editar ${n} #${p}`)))}`, 'auto');
+  }
+
+  // A linha técnica "↳ entendi" (com /detalhes): o que o app concluiu sozinho, com * auto, regra e %.
   // Só aparece quando o tipo foi deduzido (tarefa, gasto...) ou quando ficou em dúvida. Nota comum não ganha linha.
   function entendiLine(r, e, n) {
-    if (r.pergunta) {
-      const outros = ['tarefa', 'gasto', 'entrada', 'treino'].filter(x => x !== r.palpite);
-      term.print(`<span class="c-warn">↳ salvei como nota</span> <span class="dim">· não tive certeza ·</span> era ${esc(r.palpite || 'outra coisa')}? ` +
-        `<span class="c-int">/sim</span> <span class="dim">·</span> <span class="c-int">/nao</span> <span class="dim">(é nota) · ou /tipo ${outros.map(esc).join(', ')}</span>`, 'auto');
-      return;
-    }
+    if (r.pergunta) { duvida(r); return; }
     if (['nota', 'link', 'trecho'].includes(r.tipo)) return ambiguas(r);
     if (isFinanca({ kind: r.tipo })) { fin.entendi(r, e, n); return ambiguas(r); }
     if (r.tipo === 'recorrente') return fin.entendiRecorrente(r, e);
@@ -202,14 +271,7 @@ export function criarInterprete(kit) {
     const corrigir = r.tipo === 'tarefa' ? `/editar ${n}` : '/tipo nota';
     term.print(`<span class="c-int">↳ entendi</span> · ${esc(REGISTRO.get(r.tipo)?.rotulo || r.tipo)} · ${campos.join(' · ')}` +
       ` <span class="dim">· ${r.auto.length ? '* auto · ' : ''}${esc(r.origem)} ${Math.round(r.confianca * 100)}% · /desfazer ou ${corrigir}</span>`, 'auto');
-    // a memória não chutou o projeto: mostra as pistas e como resolver
-    if (r.tipo === 'tarefa' && !c.projeto && mp && ['dividida', 'conflito'].includes(mp.tipo)) {
-      const det = mp.tipo === 'dividida'
-        ? `${esc(mp.pista)} aparece em ${mp.porProjeto.map(([p, w]) => `<span class="c-act">#${esc(p)}</span> ${w}`).join(' · ')}`
-        : mp.pistas.map(x => `${esc(x.pista)} → <span class="c-act">#${esc(x.projeto)}</span>`).join(' · ');
-      const sug = mp.tipo === 'dividida' ? mp.porProjeto[0]?.[0] : mp.pistas[0]?.projeto;
-      term.print(`<span class="c-warn">↳ projeto?</span> ${det} <span class="dim">· não chutei ·</span> <span class="c-int">/editar ${esc(n)} #${esc(sug || 'projeto')}</span>`, 'auto');
-    }
+    if (r.tipo === 'tarefa') perguntaProjeto(r, n);
     ambiguas(r);
   }
   // "joão" com dois cadastros e sem como decidir: avisa (o texto fica salvo, só não liga a ninguém)
@@ -223,12 +285,14 @@ export function criarInterprete(kit) {
   async function addLink(line, t) {
     const r = previa(String(line).trim(), ictx());
     if (r?.tipo !== 'link') throw new CmdError('E_LINK', 'acervo', 'link inválido', 'só http:// e https://');
-    await salvar(r, t);
+    const { e, n, queued } = await salvar(r, t);
+    if (!det()) resumo(r, e, n, { queued });
   }
   async function addSnippet(text, t) {
     const r = previa('"' + String(text).trim().replace(/^["“”]/, ''), ictx());
     if (r?.tipo !== 'trecho') throw usage('guardar', 'texto curto pra guardar');
-    await salvar(r, t);
+    const { e, n, queued } = await salvar(r, t);
+    if (!det()) resumo(r, e, n, { queued });
   }
 
   const defs = [
@@ -400,8 +464,8 @@ export function criarInterprete(kit) {
         // perguntas que falavam da versão antiga passam a falar da nova; a do tipo já foi respondida
         S.perguntas = (S.perguntas || []).filter(q => !(q.tipo === 'tipo' && q.id === e.id)).map(q => (q.id === e.id ? { ...q, id: novo.id } : q));
         aprender({ texto, era: e.kind, corrigido: tipo });
-        entendiLine({ ...r, pergunta: false }, novo, n);
-        if (isFinanca(novo)) fin.perguntar(r, novo, n);
+        (det() ? entendiLine : resumo)({ ...r, pergunta: false }, novo, n);
+        if (isFinanca(novo)) S.perguntas = [...(S.perguntas || []), ...fin.perguntar(r, novo, n)];
       },
     },
     {
@@ -441,5 +505,5 @@ export function criarInterprete(kit) {
       },
     },
   ];
-  return { defs, salvar, capturar, tagsNovas, mostrarPergunta, responder, aprender, rotuloCaptura, entendiLine, ambiguas, addLink, addSnippet };
+  return { defs, resumo, salvar, capturar, tagsNovas, mostrarPergunta, responder, aprender, rotuloCaptura, entendiLine, ambiguas, addLink, addSnippet };
 }

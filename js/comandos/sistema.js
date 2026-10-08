@@ -50,7 +50,7 @@ export function criarSistema(kit) {
           ['acervo', c => ['acervo', 'guardar', 'buscar'].includes(c.name)],
           ['memória', c => c.data],
           ['conta', c => ['entrar', 'codigo', 'sair'].includes(c.name)],
-          ['tela', c => ['painel', 'foco', 'limpar', 'log', 'historico', 'boot'].includes(c.name)],
+          ['tela', c => ['detalhes', 'painel', 'foco', 'limpar', 'log', 'historico', 'boot'].includes(c.name)],
         ];
         const used = new Set();
         const section = (title, pick) => {
@@ -189,6 +189,14 @@ export function criarSistema(kit) {
           const mark = s === 'ok' ? '<span class="c-act">[ok]</span>' : s === 'wip' ? '<span class="c-hud">[..]</span>' : '<span class="dim">[  ]</span>';
           term.print(`${mark} <span class="${s ? 'c-tx' : 'dim'}">fase ${n.padEnd(3)}</span> ${esc(t)}`);
         });
+      },
+    },
+    {
+      name: 'detalhes', alias: ['tecnico', 'técnico', 'verbose'], desc: 'liga/desliga as linhas técnicas (T0005, ms, regra 90%, * auto) depois de cada lançamento',
+      run() {
+        S.detalhes = !S.detalhes;
+        try { localStorage.setItem('mb.detalhes.v1', S.detalhes ? '1' : '0'); } catch {}
+        term.say(S.detalhes ? 'detalhes ligados · cada lançamento mostra a linha técnica e o "↳ entendi" com regra e %.' : 'detalhes desligados · cada lançamento vira uma linha só (✓). <span class="c-hud">/detalhes</span> liga de novo.');
       },
     },
     {

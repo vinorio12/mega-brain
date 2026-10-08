@@ -80,6 +80,10 @@ export function criarDados(kit) {
   const chips = (...a) => kit.chips(...a);
   const ictx = (...a) => kit.ictx(...a);
 
+  // muitas gravações de uma vez: todas entram na fila na hora, na ordem, e a nuvem manda em lote (js/cloud.js).
+  // Antes era uma por vez, esperando a nuvem responder cada uma (14 itens ≈ 28 envios em fila).
+  const emLote = (lista, fn) => Promise.all(lista.map(fn));
+
   /* ---------- /limpeza (v0.14): você escolhe o que apagar; a tela (palco "limpeza") marca, este comando apaga ---------- */
 
   // apaga o que está marcado em S.limpeza.sel (só o que está nos grupos: nunca aprendizado, pessoas, projetos, categorias…)
@@ -91,8 +95,8 @@ export function criarDados(kit) {
     const { remover, recorrentes } = planoLimpeza(sel, S.entries, S.records || []);
     const antigas = recorrentes.map(r => (S.records || []).find(x => x.id === r.id)).filter(Boolean);
     S.undo.push({ label: 'limpeza', items: [...remover, ...antigas] });
-    for (const e of remover) await ctx.store.remove(e.id);
-    for (const r of recorrentes) await ctx.store.restore(r);
+    await emLote(remover, e => ctx.store.remove(e.id));
+    await emLote(recorrentes, r => ctx.store.restore(r));
     S.limpeza = { sel: new Set(), abertos: S.limpeza.abertos, confirmar: false };
     S.lastLatency = t.elapsed();
     term.ok('store', `apagado · ${porGrupo.map(([nome, n]) => `${esc(nome.split(' (')[0])} ${n}`).join(' · ')}${recorrentes.length ? ' <span class="dim">· as recorrentes pulam esses meses</span>' : ''} <span class="c-meta">· ${t.id}</span>${chips([chip('desfazer', '/desfazer', 'is-undo')])}`);
@@ -202,7 +206,7 @@ export function criarDados(kit) {
         if (/^t\d/i.test(raw)) {
           const targets = resolveTasks(raw, 'apagar', 't1');
           if (!targets) return;
-          for (const { e } of targets) await ctx.store.remove(e.id);
+          await emLote(targets, ({ e }) => ctx.store.remove(e.id));
           S.undo.push({ label: targets.length === 1 ? 'tarefa apagada' : `${targets.length} tarefas apagadas`, items: targets.map(x => x.e) });
           S.lastLatency = t.elapsed();
           term.warn('task', `apagada${targets.length > 1 ? 's ' + targets.length : ''} · ${targets.map(x => `t${x.n} ${hl(x.e.text)}`).join(' · ')} <span class="c-meta">· ${t.id} · /desfazer recupera</span>`);
@@ -239,7 +243,7 @@ export function criarDados(kit) {
           }
         }
 
-        for (const { e } of targets) await ctx.store.remove(e.id);
+        await emLote(targets, ({ e }) => ctx.store.remove(e.id));
         S.undo.push({ label: targets.length === 1 ? 'apagado' : `${targets.length} apagados`, items: targets.map(x => x.e) }); // o lote inteiro volta com /desfazer
         S.lastLatency = t.elapsed();
         const meta = `<span class="c-meta">· ${t.id} · ${S.lastLatency}ms · /desfazer recupera</span>`;
@@ -258,8 +262,8 @@ export function criarDados(kit) {
         // desfazer = restaurar as versões antigas e apagar o que foi criado
         const step = S.undo.pop();
         if (!step) return term.say('nada pra desfazer.');
-        for (const id of step.created || []) await ctx.store.remove(id, { origem: 'desfazer' });
-        for (const e of step.items) await ctx.store.restore(e, { origem: 'desfazer' });
+        await emLote(step.created || [], id => ctx.store.remove(id, { origem: 'desfazer' }));
+        await emLote(step.items, e => ctx.store.restore(e, { origem: 'desfazer' }));
         S.lastLatency = t.elapsed();
         const n = step.items.length + (step.created?.length || 0);
         const what = step.items.length === 1 && !step.created?.length ? hl(step.items[0].text) : `${n} ${n === 1 ? 'item' : 'itens'}`;
@@ -295,7 +299,7 @@ export function criarDados(kit) {
             catch { throw new CmdError('E_IMPORT', 'store', 'o arquivo não é um JSON válido', 'use o arquivo gerado pelo <span class="c-hud">/exportar</span>'); }
             const plan = prepareImport(json, [...S.entries, ...(S.records || [])]);
             if (!plan) throw new CmdError('E_IMPORT', 'store', 'não achei uma lista de entradas no arquivo', 'use o arquivo gerado pelo <span class="c-hud">/exportar</span>');
-            for (const e of plan.toAdd) await ctx.store.restore(e, { origem: 'importar' });
+            await emLote(plan.toAdd, e => ctx.store.restore(e, { origem: 'importar' }));
             S.lastLatency = t.elapsed();
             term.ok('store', `importadas ${plan.toAdd.length} · já existiam ${plan.skipped}` +
               (plan.invalid ? ` · <span class="c-warn">ignoradas ${plan.invalid} inválidas</span>` : '') +

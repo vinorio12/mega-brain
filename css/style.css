@@ -240,6 +240,8 @@ ul, ol, dl, dd { margin: 0; padding: 0; list-style: none; }
 .lz-txt .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lz-txt b { font-weight: 400; white-space: nowrap; }
 .lz-mais { color: var(--meta); font-size: 11px; }
+/* "sim, apagar": a linha fica vermelhinha enquanto desliza e fecha (a animação em si é do ui.js, apagarComAnimacao) */
+.lz-lista li.is-saindo, .lz-g.is-saindo { background: color-mix(in srgb, var(--err) 14%, transparent); }
 .lz-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 0 2px; border-top: 1px solid var(--line-2); font-size: 12.5px; }
 .chip.is-danger { color: var(--tx); background: color-mix(in srgb, var(--err) 30%, transparent); border-color: var(--err); }
 .chip.is-danger:hover { background: color-mix(in srgb, var(--err) 45%, transparent); }

@@ -5,7 +5,7 @@
 import { esc, tagsOf, hl, dayKey, dur, lev, kb, CmdError } from '../js/util.js';
 import { pickTargets, prepareImport, createCommands } from '../js/commands.js';
 import { createLocalStore } from '../js/store.js';
-import { createCloudStore } from '../js/cloud.js';
+import { createCloudStore, loteDaFila } from '../js/cloud.js';
 import { createTerminal } from '../js/terminal.js';
 import { parseDue, fmtDue, findDate } from '../js/dates.js';
 import { parseValor, findValor, fmtValor } from '../js/valores.js';
@@ -112,8 +112,11 @@ function fakeSb() {
   // o "banco" carimba updated_at em todo insert/update (como o gatilho da 003)
   api.gravar = row => rows.set(row.id, { ...row, ...(api.semColuna ? {} : { updated_at: 't' + String(++clock).padStart(8, '0') }) });
   api.from = () => ({
-    upsert: async row => { api.calls.push('upsert'); if (api.fail) return err(); api.gravar(row); return { error: null }; },
-    delete: () => ({ eq: async (_, id) => { api.calls.push('delete'); if (api.fail) return err(); rows.delete(id); return { error: null }; } }),
+    upsert: async row => { api.calls.push('upsert'); if (api.fail) return err(); [].concat(row).forEach(api.gravar); return { error: null }; },
+    delete: () => ({
+      eq: async (_, id) => { api.calls.push('delete'); if (api.fail) return err(); rows.delete(id); return { error: null }; },
+      in: async (_, ids) => { api.calls.push('delete'); if (api.fail) return err(); ids.forEach(id => rows.delete(id)); return { error: null }; },
+    }),
     select: () => {
       let min = null;
       const b = {
@@ -2864,6 +2867,31 @@ describe('memória na nuvem (Supabase falso)', () => {
   const user = { id: 'test-' + Date.now() };
   const clean = () => Object.keys(localStorage).filter(k => k.includes(user.id)).forEach(k => localStorage.removeItem(k));
 
+  test('loteDaFila: iguais em sequência viram um envio; ordem, campos e id repetido fecham o lote', () => {
+    const put = (id, extra = {}) => ({ op: 'put', entry: { id, text: id, ...extra } });
+    const del = id => ({ op: 'del', id });
+    eq(loteDaFila([]), []);
+    eq(loteDaFila([del('a'), del('b'), put('c'), del('d')]).map(o => o.id), ['a', 'b']);
+    eq(loteDaFila([put('a'), put('b'), del('c')]).map(o => o.entry.id), ['a', 'b']);
+    eq(loteDaFila([put('a'), put('b', { data: {} }), put('c')]).length, 1, 'campos diferentes');
+    eq(loteDaFila([put('a'), put('b'), put('a')]).length, 2, 'mesmo id duas vezes');
+    eq(loteDaFila([del('a'), del('b'), del('c')], 2).length, 2, 'máximo');
+  });
+  test('apagar e desfazer em lote: poucos envios, mesmo resultado', async () => {
+    clean();
+    const sb = fakeSb();
+    const st = createCloudStore(sb, user);
+    await st.connect();
+    const ids = [];
+    for (let i = 0; i < 5; i++) ids.push((await st.add({ text: 'x' + i, tags: [], ts: i, day: 'x' })).id);
+    sb.calls.length = 0;
+    await Promise.all(ids.map(id => st.remove(id)));
+    eq([sb.rows.size, sb.calls.filter(c => c === 'delete').length, st.pending()], [0, 1, 0], '5 apagados num envio');
+    sb.calls.length = 0;
+    await Promise.all(ids.map((id, i) => st.restore({ id, text: 'x' + i, tags: [], ts: i, day: 'x' })));
+    eq([sb.rows.size, sb.calls.filter(c => c === 'upsert').length], [5, 1], '5 de volta num envio');
+    st.forget();
+  });
   test('captura sobe pra nuvem', async () => {
     clean();
     const sb = fakeSb();

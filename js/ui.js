@@ -1,7 +1,7 @@
 // Tudo ao redor do terminal: cabeçalho, núcleo + satélites, rail cognitivo (esquerda),
 // rail de contexto (direita) e rodapé. Regra: só dados reais; sem dado → NA, mas o campo fica.
 
-import { esc, hl, pad, dayKey, hhmm, ddmm, dur, DOW, VERSION } from './util.js';
+import { esc, hl, pad, dayKey, hhmm, ddmm, dur, DOW, VERSION, motionOK } from './util.js';
 import { createCore } from './core.js';
 import { describe } from './weather.js';
 import { PHASES } from './commands.js';
@@ -588,6 +588,33 @@ export function createUI(ctx) {
     return `<div class="kb"><nav class="kb-tabs">${tabs}</nav><div class="kb-cols">${cols}</div>` +
       `<div class="st-foot">/feito t1 · /mover t1 fazendo · /editar t1 >sex · esc fecha</div></div>`;
   }
+  // "sim, apagar" na limpeza: as linhas marcadas deslizam pro lado e fecham em cascata, e só depois o /limpeza apagar roda.
+  // O passo entre uma e outra encolhe com a quantidade: 5 ou 300 itens, a animação dura no máximo ~1,5s.
+  function apagarComAnimacao(L) {
+    L.apagando = true;
+    const corpo = $('st-body'), alvos = [];
+    for (const g of corpo.querySelectorAll('.lz-g')) {
+      if (g.classList.contains('is-open')) alvos.push(...g.querySelectorAll('.lz-lista li.is-sel'));
+      if (g.querySelector('header .lz-ck.is-on')) alvos.push(g); // grupo marcado inteiro: o bloco todo sai no fim
+    }
+    const bar = corpo.querySelector('.lz-bar');
+    if (bar) bar.innerHTML = `<span class="c-warn">apagando ${L.sel.size}…</span>`;
+    const anima = motionOK() && alvos.length && typeof Element.prototype.animate === 'function';
+    const DUR = 360, passo = Math.min(70, 1100 / Math.max(1, alvos.length));
+    if (anima) alvos.forEach((el, i) => {
+      const h = el.offsetHeight;
+      el.classList.add('is-saindo');
+      el.style.overflow = 'hidden';
+      el.animate([
+        { opacity: 1, transform: 'translateX(0)', maxHeight: h + 'px' },
+        { opacity: 0, transform: 'translateX(32px)', maxHeight: h + 'px', offset: 0.55 },
+        { opacity: 0, transform: 'translateX(32px)', maxHeight: '0px', paddingTop: '0px', paddingBottom: '0px', marginTop: '0px', marginBottom: '0px', borderTopWidth: '0px', borderBottomWidth: '0px' },
+      ], { duration: DUR, delay: i * passo, easing: 'cubic-bezier(.4, 0, .6, 1)', fill: 'forwards' });
+    });
+    const espera = anima ? (alvos.length - 1) * passo + DUR : 0;
+    setTimeout(() => { L.apagando = false; rodar('/limpeza apagar'); }, espera + 30);
+  }
+
   // abas do kanban: toque no nome ou deslize o dedo pro lado
   const kbGo = i => { const n = document.querySelectorAll('#st-body .kb-tab').length; if (!n) return; kbTab = (i + n) % n; stageHtml = ''; rolagemNova = true; renderNow(); };
   const rodar = cmd => { const i = $('cmd'); i.value = cmd; $('form').requestSubmit(); };
@@ -603,7 +630,9 @@ export function createUI(ctx) {
     const L = S.limpeza, lz = e.target.closest('[data-lz]');
     if (L && lz) {
       e.preventDefault();
+      if (L.apagando) return; // a animação está rodando: nada muda até apagar
       const [acao, val] = lz.dataset.lz.split(':');
+      if (acao === 'confirmar') return apagarComAnimacao(L);
       const grupo = val && gruposLimpeza(S.entries, S.records || []).find(g => g.key === val);
       if (acao === 'item') { L.sel.has(val) ? L.sel.delete(val) : L.sel.add(val); }
       else if (acao === 'grupo' && grupo) { const todos = grupo.itens.every(i => L.sel.has(i.id)); grupo.itens.forEach(i => (todos ? L.sel.delete(i.id) : L.sel.add(i.id))); }
@@ -656,7 +685,7 @@ export function createUI(ctx) {
       ? '<span class="dim">marque um grupo inteiro (caixinha) ou abra e escolha item por item</span>'
       : L.confirmar
         ? `<span class="c-warn">apagar ${total} ${total > 1 ? 'itens' : 'item'}?</span> <span class="dim">dá pra voltar com /desfazer</span>` +
-          `<button type="button" class="chip is-danger" data-cmd="/limpeza apagar">sim, apagar</button><button type="button" class="chip" data-lz="cancelar">cancelar</button>`
+          `<button type="button" class="chip is-danger" data-lz="confirmar">sim, apagar</button><button type="button" class="chip" data-lz="cancelar">cancelar</button>`
         : `<b>${total} marcad${total > 1 ? 'os' : 'o'}</b><button type="button" class="chip is-danger" data-lz="apagar">apagar ${total}</button><button type="button" class="chip" data-lz="nada">desmarcar tudo</button>`;
     return `<div class="lz"><p class="lz-info">Escolha o que apagar. <span class="dim">Ficam sempre: o aprendizado, a memória, as pessoas, os projetos, as categorias, os cartões, as recorrentes, o seu crédito e o histórico.</span></p>` +
       (grupos.length ? `<div class="lz-grupos">${secoes}</div>` : '<div class="ov-empty">nada pra apagar</div>') +

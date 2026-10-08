@@ -14,6 +14,25 @@ import { uid, CmdError } from './util.js';
 const CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 const COLS = '*'; // tudo o que existir; clean() escolhe o que o app usa
 
+// O próximo lote da fila (função pura, testada em tests/): as operações IGUAIS em sequência, no máximo `max`.
+//   apagar várias seguidas → um envio só (delete … in ids)
+//   gravar várias seguidas → um envio só, se têm os mesmos campos (no upsert em lote, campo que falta vira vazio)
+//   e sem o mesmo id duas vezes (o banco recusa mexer na mesma linha duas vezes num envio)
+// A ordem da fila nunca muda: um "apagar" no meio de "gravar" fecha o lote.
+export function loteDaFila(outbox, max = 200) {
+  const [primeira] = outbox;
+  if (!primeira) return [];
+  const campos = o => Object.keys(o.entry).sort().join(',');
+  const lote = [primeira], ids = new Set([primeira.op === 'put' ? primeira.entry.id : primeira.id]);
+  for (const o of outbox.slice(1)) {
+    if (lote.length >= max || o.op !== primeira.op) break;
+    if (o.op === 'put' && (campos(o) !== campos(primeira) || ids.has(o.entry.id))) break;
+    lote.push(o);
+    ids.add(o.op === 'put' ? o.entry.id : o.id);
+  }
+  return lote;
+}
+
 /* ---------------- login ---------------- */
 
 function authError(e) {
@@ -177,24 +196,28 @@ export function createCloudStore(sb, user, { onSync } = {}) {
     return server.length;
   }
 
-  // envia a fila, na ordem. Se falhar (ex: sem rede), para e tenta de novo depois.
+  // envia a fila, na ordem, em lotes (v0.14.12: apagar 14 itens era 14 envios em fila, ~1s cada no celular).
+  // Se falhar (ex: sem rede), para e tenta de novo depois; o lote inteiro fica na fila.
   function flush() {
     if (flushing) return flushing;
     flushing = (async () => {
+      await null; // espera o resto do mesmo instante: várias gravações seguidas (Promise.all) entram no mesmo lote
       while (outbox.length && navigator.onLine) {
-        const op = outbox[0];
+        const lote = loteDaFila(outbox);
         const t0 = performance.now();
-        const { error } = op.op === 'put'
-          ? await sb.from('entries').upsert(op.entry)
-          : await sb.from('entries').delete().eq('id', op.id);
+        const { error } = lote[0].op === 'put'
+          ? await sb.from('entries').upsert(lote.length > 1 ? lote.map(o => o.entry) : lote[0].entry)
+          : lote.length > 1
+            ? await sb.from('entries').delete().in('id', lote.map(o => o.id))
+            : await sb.from('entries').delete().eq('id', lote[0].id);
         if (error) {
           setStatus({ state: 'pending', lastError: error.message || 'falha ao enviar' });
           return false;
         }
-        outbox.shift();
+        outbox.splice(0, lote.length);
         write(OUTBOX, outbox);
-        if (op.op === 'put') server = [...server.filter(e => e.id !== op.entry.id), op.entry];
-        else server = server.filter(e => e.id !== op.id);
+        const ids = new Set(lote.map(o => (o.op === 'put' ? o.entry.id : o.id)));
+        server = [...server.filter(e => !ids.has(e.id)), ...lote.filter(o => o.op === 'put').map(o => o.entry)];
         write(CACHE, server);
         setStatus({ latency: Math.round(performance.now() - t0), lastSync: Date.now(), lastError: null });
       }

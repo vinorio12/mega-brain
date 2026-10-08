@@ -101,6 +101,12 @@ async function run(text) {
     if (S.mode === 'password') return submitPassword(text);
     if (S.mode === 'code') return submitCode(text);
     if (!ctx.store) return lockedError();
+    // resposta sem barra ("débito"), atalho de tarefa ("t2 sexta") ou comando sozinho ("ajuda"): vira o comando
+    const i = ctx.commands.interceptar(text);
+    if (i) {
+      if (i.aviso) term.print(i.aviso);
+      return run(i.cmd);
+    }
     // texto livre: o intérprete decide o que é (link, texto, tarefa, nota...) · veja js/interpretar.js
     return term.task(ctx.commands.rotuloCaptura(text), (signal, t) => ctx.commands.capturar(text, t), { kind: 'exec' });
   }

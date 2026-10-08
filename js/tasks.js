@@ -214,8 +214,9 @@ export function fillByRules(parsed, { entries = [], reg = registry([]), now = ne
   }
   if (!v.status) { v.status = firstStatus(reg); auto.push('status'); }
   if (!v.prioridade) { v.prioridade = 'média'; auto.push('prioridade'); }
-  if (v.prazo === null || v.prazo === undefined) { v.prazo = dueFor(v.prioridade, now); auto.push('prazo'); }
-  if (v.prazo === '') v.prazo = null; // ">sem" = sem prazo, de propósito
+  // v0.14 (decisão do Vini): prazo só quando você escreve. O prazo automático pela prioridade criava falsa urgência
+  // (tarefas vencendo sozinhas e adiadas em lote). dueFor continua aí pra quem quiser sugerir, sem gravar.
+  if (v.prazo === '' || v.prazo === undefined) v.prazo = null; // ">sem" = sem prazo, de propósito
   return { values: v, auto, motivos };
 }
 

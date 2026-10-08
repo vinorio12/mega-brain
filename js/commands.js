@@ -26,6 +26,7 @@
 import { esc, lev, dayKey, CmdError } from './util.js';
 import { pessoasDe } from './pessoas.js';
 import { memoriaDe } from './memoria.js';
+import { lerAtalhoTarefa, respostaPergunta, comandoSozinho } from './conversa.js';
 import { criarTela } from './comandos/tela.js';
 import { criarInterprete } from './comandos/interprete.js';
 import { criarTarefas } from './comandos/tarefas.js';
@@ -101,9 +102,28 @@ export function createCommands(ctx) {
   kit.get = get;
   kit.notFound = notFound;
 
+  // Antes de virar captura, a frase sem "/" pode ser (nesta ordem):
+  //   resposta a uma pergunta pendente ("débito", "sim") · atalho de tarefa ("t2 sexta", "hoje concluí t1, t2")
+  //   · o nome de um comando sozinho ("ajuda", "mês")  → { cmd, aviso? } · null = captura normal (js/conversa.js)
+  function interceptar(text) {
+    const resp = respostaPergunta(text, S.perguntas || []);
+    if (resp) return { cmd: resp };
+    const a = lerAtalhoTarefa(text, { statuses: ctx.reg().statuses });
+    if (a) {
+      const data = d => { const [y, m, dd] = d.split('-'); return `${dd}/${m}/${y}`; };
+      const cmd = { feito: () => `/feito ${a.alvos}`, status: () => `/mover ${a.alvos} ${a.status}`, editar: () => `/editar ${a.alvos} ${a.marcadores}`,
+        prazo: () => `/adiar ${a.alvos} ${a.prazo ? data(a.prazo) : 'sem'}` }[a.acao]();
+      return { cmd };
+    }
+    const c = comandoSozinho(text, get);
+    if (c) return { cmd: '/' + c, aviso: `<span class="dim">rodei /${esc(c)} · pra guardar como nota use</span> <span class="c-int">nota: ${esc(text)}</span>` };
+    return null;
+  }
+
   return {
     get,
     notFound,
+    interceptar,
     addTask: kit.addTask,
     capturar: kit.capturar,
     rotuloCaptura: kit.rotuloCaptura,

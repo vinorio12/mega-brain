@@ -23,14 +23,14 @@ export const FRASES = [
   // tarefa explícita (- ) e com marcadores
   { frase: '- revisar cap 2 #tcc >sex !alta', esperado: { tipo: 'tarefa', minConfianca: 1, campos: { texto: 'revisar cap 2', projeto: 'tcc', prazo: '2026-10-02', prioridade: 'alta' } } },
   { frase: 'revisar slides @fazendo', esperado: { tipo: 'tarefa', campos: { texto: 'revisar slides', status: 'fazendo' } } },
-  { frase: '- comprar café', esperado: { tipo: 'tarefa', campos: { texto: 'comprar café', prazo: '2026-10-04', prioridade: 'média', status: 'a fazer' } } },
+  { frase: '- comprar café', esperado: { tipo: 'tarefa', campos: { texto: 'comprar café', prazo: undefined, prioridade: 'média', status: 'a fazer' } } }, // v0.14: sem data = sem prazo
 
   // tarefa em texto livre
   { frase: 'ligar pro dentista amanhã', esperado: { tipo: 'tarefa', minConfianca: 0.8, campos: { texto: 'ligar pro dentista', prazo: '2026-10-02' } } },
   { frase: 'Ligar pro banco na sexta', esperado: { tipo: 'tarefa', campos: { texto: 'Ligar pro banco', prazo: '2026-10-02' } } },
   { frase: 'preciso comprar presente da mãe até sábado', esperado: { tipo: 'tarefa', campos: { texto: 'comprar presente da mãe', prazo: '2026-10-03' } } },
   { frase: 'tenho que entregar o relatório da weg dia 15', esperado: { tipo: 'tarefa', campos: { texto: 'entregar o relatório da weg', projeto: 'weg', prazo: '2026-10-15' } } },
-  { frase: 'lembrar de pagar o boleto', esperado: { tipo: 'tarefa', campos: { texto: 'pagar o boleto', prazo: '2026-10-04' } } },
+  { frase: 'lembrar de pagar o boleto', esperado: { tipo: 'tarefa', campos: { texto: 'pagar o boleto', prazo: undefined } } },
   { frase: 'não esquecer de ligar pra vó', esperado: { tipo: 'tarefa', campos: { texto: 'ligar pra vó' } } },
   { frase: 'estudar estatística semana que vem', esperado: { tipo: 'tarefa', campos: { texto: 'estudar estatística', prazo: '2026-10-05' } } },
   { frase: 'revisar slides amanhã', aba: 'weg', esperado: { tipo: 'tarefa', campos: { projeto: 'weg', prazo: '2026-10-02' } } },

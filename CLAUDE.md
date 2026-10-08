@@ -72,6 +72,7 @@ Testar o app sem tocar na nuvem: http://localhost:5173/?local (modo local força
 - `js/boot.js` sequência de boot (usa o mesmo núcleo) · `js/weather.js` clima (Open-Meteo, padrão Jaraguá do Sul)
 - `js/views.js` visões das tarefas (`viewGroups`, `calendarModel`) · `js/tasks.js` modelo de tarefa, registros, regras automáticas, `briefing`
 - `js/dates.js` datas faladas → AAAA-MM-DD (`parseDue` pro marcador `>sex`, `findDate` pra data dentro de frase, `fmtDue`)
+- `js/conversa.js` o que uma frase curta quer dizer antes de virar captura (v0.14): `lerAtalhoTarefa` ("t2 sexta", "t2 fazendo", "hoje concluí t1, t2"), `respostaPergunta` ("débito", "sim" com pergunta pendente), `comandoSozinho` ("ajuda") · o índice dos comandos usa em `interceptar`
 - `js/valores.js` valores em reais → centavos inteiros (`parseValor`, `findValor`, `fmtValor`)
 - `js/historico.js` histórico de mudanças: `withHistory(store)` anota cada gravação de tarefa como `kind: evento` (origem: `store.restore(e, { origem })`); o que chega da nuvem não gera evento
 - `js/tipos.js` contrato do intérprete (`validarInterpretacao`) + registro de tipos (`registrarTipo`, `REGISTRO.schema()` pra IA)

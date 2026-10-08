@@ -28,6 +28,7 @@ import { registroAprendizado, resumoAprendizado, exportarFrases } from '../js/ap
 import { montarContexto, estimarTokens } from '../js/contexto.js';
 import { pessoasDe, findPessoas, candidatosPessoa, acharPessoa, editApelidos, juntarPessoas, resumoPessoa } from '../js/pessoas.js';
 import { criarMemoria, decidirProjeto, palavrasDe } from '../js/memoria.js';
+import { lerAtalhoTarefa, respostaPergunta, comandoSozinho } from '../js/conversa.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -237,6 +238,40 @@ describe('valores (valores.js · Fase 2)', () => {
     ['R$ 30,00', 'R$ 1.234,56', 'R$ 0,05', '-R$ 5,00', 'R$ 0,00', 'R$ 1.000.000,00']));
 });
 
+describe('conversa com o terminal (v0.14 · conversa.js)', () => {
+  const now = new Date(2026, 9, 8, 10, 0); // quinta 08/10/2026
+  const statuses = registry([]).statuses;
+  const A = s => lerAtalhoTarefa(s, { statuses, now });
+  test('"t2 sexta", "t2 05.10", "t2 amanhã", "t2 sem prazo" mudam o prazo', () => eq(
+    ['t2 sexta', 't2 05.10', 't2 amanhã', 't2 sem prazo', 't2 >sex', 't2 semana que vem'].map(A),
+    [{ alvos: 't2', acao: 'prazo', prazo: '2026-10-09' }, { alvos: 't2', acao: 'prazo', prazo: '2026-10-05' }, { alvos: 't2', acao: 'prazo', prazo: '2026-10-09' },
+      { alvos: 't2', acao: 'prazo', prazo: '' }, { alvos: 't2', acao: 'editar', marcadores: '>sex' }, { alvos: 't2', acao: 'prazo', prazo: '2026-10-12' }]));
+  test('"t2 feito", "t2 fazendo", "t2 esperando" mudam o status', () => eq(
+    ['t2 feito', 't2 fazendo', 't2 @esperando', 't1 t3 ok'].map(A),
+    [{ alvos: 't2', acao: 'feito' }, { alvos: 't2', acao: 'status', status: 'fazendo' }, { alvos: 't2', acao: 'editar', marcadores: '@esperando' }, { alvos: 't1 t3', acao: 'feito' }]));
+  test('"hoje concluí t1, t2, t3", "fiz t2", "terminei a t1 e a t4"', () => eq(
+    ['hoje concluí t1, t2, t3', 'fiz t2', 'terminei a t1 e a t4', 'Concluí t1-t3!'].map(A),
+    [{ alvos: 't1 t2 t3', acao: 'feito' }, { alvos: 't2', acao: 'feito' }, { alvos: 't1 t4', acao: 'feito' }, { alvos: 't1-t3', acao: 'feito' }]));
+  test('"t2 #weg !alta" vira edição', () => eq(A('t2 #weg !alta'), { alvos: 't2', acao: 'editar', marcadores: '#weg !alta' }));
+  test('frase normal que começa com t1 não é atalho', () => eq(
+    ['t1 do campeonato foi bom', 'fazendo', 'fiz uma torta', 'hoje foi um dia bom', 'tcc amanhã'].map(A), [null, null, null, null, null]));
+
+  const P = [{ tipo: 'categoria', n: 'f3', lista: ['alimentação', 'saúde', 'outros'] }, { tipo: 'forma', n: 'f3' }];
+  test('resposta sem barra: forma e categoria do lançamento perguntado', () => eq(
+    ['debito', 'débito', 'no pix', 'Crédito', 'saúde', 'saude'].map(x => respostaPergunta(x, P)),
+    ['/forma debito f3', '/forma debito f3', '/forma pix f3', '/forma credito f3', '/cat saúde f3', '/cat saúde f3']));
+  test('resposta sem barra: sim/não pras perguntas de sim ou não', () => eq(
+    ['sim', 's', 'isso', 'não', 'n', 'talvez'].map(x => respostaPergunta(x, [{ tipo: 'tipo' }])), ['/sim', '/sim', '/sim', '/nao', '/nao', null]));
+  test('sem pergunta pendente, nada é resposta', () => eq(['debito', 'sim', 'saúde'].map(x => respostaPergunta(x, [])), [null, null, null]));
+  test('frase comprida não é resposta (é captura)', () => eq(respostaPergunta('débito automático da academia', P), null));
+
+  const cmds = { ajuda: { name: 'ajuda' }, mes: { name: 'mes', args: '[mês]' }, 'mês': { name: 'mes' }, sair: { name: 'sair' }, feito: { name: 'feito', args: '<t1>' }, desfazer: { name: 'desfazer' } };
+  const get = w => cmds[w];
+  test('comando sozinho: ajuda, mês, desfazer rodam; sair e /feito sem alvo não', () => eq(
+    ['ajuda', 'mês', 'Desfazer', 'sair', 'feito', 'ajuda agora', 'nota: ajuda', 'ok'].map(x => comandoSozinho(x, get)),
+    ['ajuda', 'mes', 'desfazer', null, null, null, null, null]));
+});
+
 describe('tarefas · lógica (tasks.js)', () => {
   const now = new Date(2026, 8, 30, 15, 0); // quarta 30/09
   const T = (text, prazo = null, feito = null, i = 0) => ({ id: 'k' + i + text, text, tags: tagsOf(text), kind: 'tarefa', ts: 1000 + i, day: '2026-09-30', data: { prazo, feito } });
@@ -310,8 +345,8 @@ describe('tarefas · regras automáticas', () => {
   test('fillByRules: preenche só o que falta e diz o que foi automático', () => {
     const p = parseTaskInput('comprar pão !alta', { reg, now });
     const r = fillByRules(p, { reg, now });
-    eq(r.values, { projeto: 'pessoal', status: 'a fazer', prioridade: 'alta', prazo: '2026-10-01' });
-    eq(r.auto, ['projeto', 'status', 'prazo']);
+    eq(r.values, { projeto: 'pessoal', status: 'a fazer', prioridade: 'alta', prazo: null }); // v0.14: sem prazo automático
+    eq(r.auto, ['projeto', 'status']);
   });
   test('fillByRules: tudo informado → nada automático', () => {
     const p = parseTaskInput('x #weg @fazendo >sex !baixa', { reg, now });
@@ -599,7 +634,7 @@ describe('tarefas · comandos', () => {
     const { S, term, run } = setupTasks([]);
     await run('/t comprar pão');
     const d = S.entries[0].data;
-    eq([d.projeto, d.status, d.prioridade, d.auto.campos], ['pessoal', 'a fazer', 'média', ['projeto', 'status', 'prioridade', 'prazo']]);
+    eq([d.projeto, d.status, d.prioridade, d.auto.campos], ['pessoal', 'a fazer', 'média', ['projeto', 'status', 'prioridade']]);
     ok(term.out.some(x => x[0] === 'PRINT' && x[2] === 'auto'), 'mostrou a linha auto');
   });
   test('/desfazer depois de /t apaga a tarefa criada', async () => {
@@ -613,7 +648,7 @@ describe('tarefas · comandos', () => {
     await run('/t ligar pro joão');
     await run('/editar t1 #weg !alta');
     const d = S.entries[0].data;
-    eq([d.projeto, d.prioridade, d.status, d.auto.campos], ['weg', 'alta', 'a fazer', ['status', 'prazo']]);
+    eq([d.projeto, d.prioridade, d.status, d.auto.campos], ['weg', 'alta', 'a fazer', ['status']]);
     await run('/editar t1 ligar pro joão amanhã');
     eq(S.entries[0].text, 'ligar pro joão amanhã');
     await run('/desfazer');

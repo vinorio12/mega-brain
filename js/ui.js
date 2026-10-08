@@ -510,11 +510,12 @@ export function createUI(ctx) {
   // Ocupa o lugar do núcleo (e do rail esquerdo no PC); o terminal encolhe pra 3–4 linhas embaixo,
   // então dá pra fazer /feito t1 com o kanban aberto e ver o cartão mudar de coluna.
   // stage = { kind: 'overview' | 'kanban', proj, status } · null = fechado
-  let stage = null, stageHtml = '', kbTab = 0;
+  let stage = null, stageHtml = '', kbTab = 0, rolagemNova = false;
   function openStage(kind, opts = {}) {
     // html/titulo: conteúdo pronto de quem chamou (ex: a ajuda de uma área, montada em js/comandos/sistema.js)
     stage = { kind, proj: opts.proj ?? S.ctx, status: opts.status ?? null, html: opts.html ?? null, titulo: opts.titulo ?? null };
     stageHtml = '';
+    rolagemNova = true; // tela aberta agora começa do topo
     // a numeração t1, t2... da tela vale pros próximos comandos (/feito t1) e não muda enquanto ela está aberta
     if (kind === 'overview') S.taskList = briefing(S.entries, { reg: ctx.reg(), proj: stage.proj, limit: 8 }).items.map(e => e.id);
     if (kind === 'kanban') S.taskList = viewGroups(S.entries, 'kanban', { reg: ctx.reg(), proj: stage.proj, status: stage.status }).list.slice();
@@ -545,7 +546,24 @@ export function createUI(ctx) {
     $('st-meta').textContent = stage.kind === 'kanban' ? `${stage.proj ? '#' + stage.proj : 'todas'}${stage.status ? ' · @' + stage.status : ''} · ${hhmm(now)}` : meta;
     const html = stage.html ?? (stage.kind === 'kanban' ? kanbanHtml(E, now) : stage.kind === 'financas' ? financasHtml(E, now) : stage.kind === 'hoje' ? hojeHtml(E, now) : stage.kind === 'limpeza' ? limpezaHtml(E) : overviewHtml(E, now));
     // só troca o HTML quando muda: digitar não reinicia a rolagem nem a aba do kanban
-    if (html !== stageHtml) { $('st-body').innerHTML = html; stageHtml = html; }
+    if (html !== stageHtml) {
+      // a mesma tela redesenhada (marcou um item na limpeza, concluiu uma tarefa na tela Hoje) fica onde estava rolada
+      const corpo = $('st-body'), rol = rolagemNova ? [] : guardarRolagem(corpo);
+      corpo.innerHTML = html; stageHtml = html; rolagemNova = false;
+      voltarRolagem(corpo, rol);
+    }
+  }
+  // cada parte rolada é achada de novo pela etiqueta + 1ª classe e pela posição entre as iguais (ex: a 1ª .lz-grupos)
+  const iguais = (raiz, el) => (el === raiz ? [raiz] : [...raiz.querySelectorAll(el.tagName + (el.classList[0] ? '.' + CSS.escape(el.classList[0]) : ''))]);
+  function guardarRolagem(raiz) {
+    return [raiz, ...raiz.querySelectorAll('*')].filter(el => el.scrollTop || el.scrollLeft)
+      .map(el => ({ raiz: el === raiz, sel: el === raiz ? null : el.tagName + (el.classList[0] ? '.' + CSS.escape(el.classList[0]) : ''), i: iguais(raiz, el).indexOf(el), top: el.scrollTop, left: el.scrollLeft }));
+  }
+  function voltarRolagem(raiz, rol) {
+    for (const r of rol) {
+      const el = r.raiz ? raiz : raiz.querySelectorAll(r.sel)[r.i];
+      if (el) { el.scrollTop = r.top; el.scrollLeft = r.left; }
+    }
   }
 
   // número estável de uma tarefa na tela (as novas entram no fim)
@@ -571,7 +589,7 @@ export function createUI(ctx) {
       `<div class="st-foot">/feito t1 · /mover t1 fazendo · /editar t1 >sex · esc fecha</div></div>`;
   }
   // abas do kanban: toque no nome ou deslize o dedo pro lado
-  const kbGo = i => { const n = document.querySelectorAll('#st-body .kb-tab').length; if (!n) return; kbTab = (i + n) % n; stageHtml = ''; renderNow(); };
+  const kbGo = i => { const n = document.querySelectorAll('#st-body .kb-tab').length; if (!n) return; kbTab = (i + n) % n; stageHtml = ''; rolagemNova = true; renderNow(); };
   const rodar = cmd => { const i = $('cmd'); i.value = cmd; $('form').requestSubmit(); };
   $('st-body').addEventListener('click', e => {
     const b = e.target.closest('.kb-tab');

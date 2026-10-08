@@ -136,7 +136,8 @@ ul, ol, dl, dd { margin: 0; padding: 0; list-style: none; }
 }
 .cog { grid-area: cog; border-right: 1px solid var(--line); }
 .ctx { grid-area: ctx; border-left: 1px solid var(--line); }
-.rail .grow { flex: 1; min-height: 120px; display: flex; flex-direction: column; }
+.rail > section { flex-shrink: 0; } /* encolher fazia a lista passar por cima do bloco de baixo (o rail rola) */
+.rail .grow { flex: 1 0 120px; min-height: 120px; display: flex; flex-direction: column; }
 
 /* estado cognitivo: a palavra do estado é o elemento mais forte da periferia */
 .state-word {
@@ -232,31 +233,59 @@ ul, ol, dl, dd { margin: 0; padding: 0; list-style: none; }
 .sat[data-side="top"]    { transform: translate3d(var(--dx), var(--dy), 0) translate(-50%, calc(-100% - 8px)); text-align: center; }
 .sat[hidden] { display: none; }
 
-/* OVERVIEW: o geral, no lugar do núcleo enquanto aberto */
-.overview { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 12px 18px 10px; overflow: hidden; }
-.overview[hidden] { display: none; }
-.app.ov-open .field-slot { height: clamp(300px, 54vh, 560px); transition: height .35s var(--ease); }
-.app.ov-open .field { visibility: hidden; }
-.ov-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line-2); font-size: 11px; color: var(--meta); }
-.ov-h b { color: var(--int); font-weight: 500; letter-spacing: .3em; margin-right: 1.5ch; }
-.ov-close { background: none; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--meta); font: inherit; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; padding: 1px 8px; cursor: pointer; }
-.ov-close:hover { color: var(--tx); border-color: var(--meta); }
-.ov-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.4fr 1fr 1fr .8fr .9fr; gap: 0 22px; padding-top: 10px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-.ov-b { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.ov-b h3 { margin: 0 0 4px; display: flex; justify-content: space-between; font-size: 10px; font-weight: 400; letter-spacing: .2em; text-transform: uppercase; color: var(--meta); }
-.ov-b h3 span { letter-spacing: .04em; text-transform: none; }
-.ov-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1ch; font-size: 12px; align-items: baseline; }
-.ov-row > :nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ov-row .n { color: var(--meta-2); }
+/* PALCO: telas grandes (overview, kanban) no lugar do núcleo · no PC também no lugar do rail esquerdo
+   o terminal encolhe pra 3–4 linhas embaixo (a resposta dos comandos continua aparecendo) */
+.stage { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 14px 20px 8px; }
+.stage[hidden] { display: none; }
+.app.stage-open .field-slot { display: none; }
+.app.stage-open .term { flex: 0 0 auto; }
+.app.stage-open .term-h { display: none; }
+.app.stage-open .out { flex: 0 0 auto; max-height: 6.2em; padding-top: 8px; padding-bottom: 6px; }
+.st-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line-2); font-size: 11px; color: var(--meta); }
+.st-h b { color: var(--int); font-weight: 500; letter-spacing: .3em; margin-right: 1.5ch; }
+.st-close { background: none; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--meta); font: inherit; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; padding: 3px 10px; cursor: pointer; }
+.st-close:hover { color: var(--tx); border-color: var(--meta); }
+.st-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-top: 14px; }
+.st-foot { color: var(--meta-2); font-size: 11px; padding-top: 8px; }
+
+/* overview: blocos que se reorganizam pela largura (5 → 3 → 2 → 1), sem espremer */
+.ov-grid {
+  flex: 1; min-height: 0; overflow-y: auto; align-content: start;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 22px 26px;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+.ov-b { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ov-b h3 { margin: 0 0 4px; padding-bottom: 5px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; font-size: 10px; font-weight: 400; letter-spacing: .2em; text-transform: uppercase; color: var(--meta); }
+.ov-b h3 span { letter-spacing: .04em; text-transform: none; text-align: right; }
+.ov-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1.2ch; font-size: 12.5px; align-items: baseline; line-height: 1.4; }
+/* título em até 2 linhas (corta só na 3ª) */
+.ov-row .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: break-word; }
+.ov-row .n { color: var(--meta-2); font-size: 11px; }
 .ov-row .r { font-size: 11px; white-space: nowrap; }
 .ov-empty { color: var(--meta-2); font-size: 12px; }
-.ov-proj { display: grid; gap: 2px; font-size: 12px; }
-.ov-proj .top { display: flex; justify-content: space-between; gap: 8px; }
-.ov-bar { height: 2px; background: var(--line); }
+/* rótulo à esquerda, valor à direita: o VALOR nunca corta (quem encolhe é o rótulo) */
+.ov-kv { display: flex; align-items: baseline; gap: 1.2ch; font-size: 12.5px; }
+.ov-kv span { color: var(--meta); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-kv b { font-weight: 400; margin-left: auto; white-space: nowrap; flex-shrink: 0; }
+.ov-kv i { font-style: normal; color: var(--meta); font-size: 11px; white-space: nowrap; flex-shrink: 0; }
+.ov-bar-row { display: grid; gap: 3px; font-size: 12.5px; }
+.ov-bar-row .top { display: flex; align-items: baseline; gap: 1.2ch; }
+.ov-bar-row .top span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-bar-row .top b { font-weight: 400; margin-left: auto; white-space: nowrap; flex-shrink: 0; }
+.ov-bar { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
 .ov-bar i { display: block; height: 100%; background: var(--act); }
 .ov-bar i.late { background: var(--warn); }
 .ov-b a { color: var(--int); text-decoration: none; }
 .ov-b a:hover { text-decoration: underline; }
+
+/* kanban no palco: uma coluna por status · no celular, abas */
+.kb { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.kb-tabs { display: none; }
+.kb-cols {
+  flex: 1; min-height: 0; overflow-y: auto; align-content: start;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 14px;
+  scrollbar-width: thin; scrollbar-color: var(--line-2) transparent;
+}
 
 /* faixa do celular: estado ao lado do núcleo pequeno */
 .field-strip { display: none; }
@@ -355,15 +384,14 @@ a.acard:hover { border-color: color-mix(in srgb, var(--int) 50%, transparent); }
 /* blocos (kanban, calendário): ocupam a largura do terminal */
 .row.block { white-space: normal; margin: 6px 0 4px; }
 
-/* kanban: colunas lado a lado no PC; empilhadas no celular */
-.kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(190px, 1fr); gap: 10px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+/* colunas do kanban (o kanban fica no palco: veja .kb) */
 .kcol { display: grid; align-content: start; gap: 6px; min-width: 0; }
 .kcol header { display: flex; justify-content: space-between; padding-bottom: 4px; border-bottom: 1px solid var(--line-2); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--int); }
 .kcol header b { font-weight: 400; color: var(--meta); letter-spacing: 0; }
 .kcol.is-final header { color: var(--act); }
-.kcard { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 1ch; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg-2); }
+.kcard { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 1ch; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg-2); }
 .kcard .n { color: var(--meta); }
-.kcard .kt { overflow-wrap: anywhere; }
+.kcard .kt { overflow-wrap: break-word; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
 .kcard .km { grid-column: 2; font-size: 11px; color: var(--meta); }
 .kcard.is-done .kt { color: var(--meta); text-decoration: line-through; }
 .kempty { color: var(--meta-2); padding: 4px 8px; }
@@ -527,6 +555,17 @@ a.acard:hover { border-color: color-mix(in srgb, var(--int) 50%, transparent); }
   .intent-line.has-intent { display: block; }
 }
 
+/* palco aberto no PC: some o rail esquerdo (o centro ganha a largura) */
+@media (min-width: 1101px) {
+  .app.stage-open:not(.no-tele):not(.focus) { grid-template-columns: minmax(0, 1fr) 276px; grid-template-areas: "head head" "center ctx" "foot foot"; }
+  .app.stage-open.no-tele, .app.stage-open.focus { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "center" "foot"; }
+  .app.stage-open .cog { display: none; }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .app.stage-open { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "center" "foot"; }
+  .app.stage-open .cog { display: none; }
+}
+
 /* ------------------------------------------------------------
    Celular: cabeçalho, faixa do núcleo, terminal, rodapé
    ------------------------------------------------------------ */
@@ -549,9 +588,19 @@ a.acard:hover { border-color: color-mix(in srgb, var(--int) 50%, transparent); }
   .field-strip b { font-weight: 300; font-size: 16px; letter-spacing: .18em; color: var(--tone, var(--tx)); }
   .field-strip span { color: var(--meta); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .field.is-boot .field-strip { display: none; }
-  .app.ov-open .field-slot { height: 62vh; }
-  .overview { padding: 10px 12px 8px; }
-  .ov-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .stage { padding: 10px 12px 6px; }
+  .st-body { padding-top: 10px; }
+  .app.stage-open .out { max-height: 4.4em; }
+  .ov-grid { gap: 18px; }
+  /* kanban no celular: abas por status (toque ou deslize) e uma coluna por vez */
+  .kb-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none; }
+  .kb-tab { flex: 0 0 auto; background: none; border: 1px solid var(--line-2); border-radius: 999px; color: var(--meta); font: inherit; font-size: 12px; padding: 6px 12px; cursor: pointer; }
+  .kb-tab b { font-weight: 400; color: var(--meta-2); margin-left: 4px; }
+  .kb-tab.is-on { color: var(--int); border-color: var(--int); }
+  .kb-tab.is-on.is-final { color: var(--act); border-color: var(--act); }
+  .kb-cols { grid-template-columns: minmax(0, 1fr); }
+  .kcol:not(.is-tab) { display: none; }
+  .kcol header { display: none; }
 
   .term { border-top: 0; }
   .term-h { display: none; }
@@ -563,7 +612,6 @@ a.acard:hover { border-color: color-mix(in srgb, var(--int) 50%, transparent); }
   .auto { padding-left: 4.5ch; }
   .note { grid-template-columns: 5ch minmax(0, 1fr) auto; gap: 0 1ch; }
   .acv { grid-template-columns: minmax(0, 1fr); }
-  .kanban { grid-auto-flow: row; grid-auto-columns: auto; overflow-x: visible; gap: 14px; }
   .cal-wide { display: none !important; }
   .cal-narrow { display: grid !important; }
   .tgrp.cal-narrow { display: block !important; }

@@ -88,12 +88,13 @@
         <div class="sat" data-sat="input"><b>INPUT</b><span id="s-input">aguardando</span><small id="s-input-2"></small></div>
         <div class="field-strip" aria-hidden="true"><b id="f-state">INITIALIZING</b><span id="f-desc"></span></div>
       </div>
-      <!-- /overview: o geral de tudo, no lugar do núcleo enquanto aberto -->
-      <section class="overview" id="overview" hidden aria-label="Overview">
-        <header class="ov-h"><span><b>OVERVIEW</b><span id="ov-meta"></span></span><button type="button" class="ov-close" id="ov-close">esc fecha</button></header>
-        <div class="ov-grid" id="ov-grid"></div>
-      </section>
     </div>
+
+    <!-- palco: telas grandes (overview, kanban) no lugar do núcleo; o terminal encolhe pra 3–4 linhas embaixo -->
+    <section class="stage" id="stage" hidden aria-live="polite">
+      <header class="st-h"><span><b id="st-title">OVERVIEW</b><span id="st-meta"></span></span><button type="button" class="st-close" id="st-close">esc fecha</button></header>
+      <div class="st-body" id="st-body"></div>
+    </section>
 
     <!-- camada do terminal -->
     <section class="term" aria-label="Terminal">

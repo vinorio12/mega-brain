@@ -89,9 +89,13 @@ const { term, ui } = ctx;
 
 /* ================= executar o que foi digitado ================= */
 
+// comandos que não fecham o palco (o /ver e o /tarefas decidem sozinhos: kanban abre, as outras visões fecham)
+const STAGE_FICA = /^\/(overview|ov|geral|tudo|ver|v|visao|tarefas|ts|feito|ok|x|done|reabrir|reopen|mover|mv|editar|ed|e|adiar|prazo|desfazer|undo|apagar|rm|sim|s|yes|nao|não|n|no|t)(\s|$)/i;
+
 async function run(text) {
-  // com o overview aberto, qualquer outro comando fecha ele (o núcleo volta)
-  if (ui.overviewOpen() && !/^\/(overview|ov|geral|tudo)\b/i.test(text)) ui.toggleOverview(false);
+  // com o palco aberto (overview, kanban): texto livre e comandos de tarefa deixam ele aberto (a tela se atualiza
+  // e a resposta aparece no terminal encolhido) · qualquer outro comando fecha (o núcleo volta)
+  if (ui.stageOpen() && text.startsWith('/') && !STAGE_FICA.test(text)) ui.closeStage();
   if (!text.startsWith('/')) {
     if (S.mode === 'email') return submitEmail(text);
     if (S.mode === 'password') return submitPassword(text);
@@ -180,7 +184,7 @@ async function openSession(session) {
   attachStore(store);
   const n = await store.connect();
   term.ok('auth', `sessão · ${esc(S.user.email)}`);
-  term.ok('store', `memória aberta · ${n} entradas no cache deste aparelho`);
+  term.ok('store', `memória aberta · ${S.entries.length} entradas no cache deste aparelho`);
 
   // sincroniza em segundo plano
   term.task('sync', (signal, t) => sync(t));
@@ -219,6 +223,8 @@ function dbError(e) {
 }
 
 async function sync(t) {
+  // modo local não tem nuvem (antes dava E_SYNC "ctx.store.sync is not a function")
+  if (typeof ctx.store?.sync !== 'function') return term.say('modo local · os dados ficam só neste navegador, nada pra sincronizar.');
   let n;
   try { n = await ctx.store.sync(); }
   catch (e) { throw dbError(e); }
@@ -227,7 +233,7 @@ async function sync(t) {
   S.lastLatency = st.latency;
   const p = ctx.store.pending();
   if (p) term.warn('sync', `${p} na fila · ${esc(st.lastError || 'sem rede')} · envia sozinho quando der`);
-  else term.ok('sync', `sincronizado · ${n} entradas na nuvem <span class="c-meta">· ${t.id} · ${t.elapsed()}ms</span>`);
+  else term.ok('sync', `sincronizado · ${S.entries.length} entradas na nuvem <span class="c-meta">· ${t.id} · ${t.elapsed()}ms</span>`);
   ui.pulse(p ? 'warn' : 'act');
 }
 
@@ -497,8 +503,8 @@ async function boot() {
 
   let needLogin = false;
   if (!CLOUD) {
-    const n = await openLocal();
-    seq.step('memory', `local · ${n} entradas`, 'warn');
+    await openLocal();
+    seq.step('memory', `local · ${S.entries.length} entradas`, 'warn');
   } else {
     try {
       ctx.cloud = await createCloud(SUPABASE_URL, SUPABASE_KEY);
@@ -525,8 +531,8 @@ async function boot() {
       S.degraded = true;
       term.error(new CmdError('E_CLOUD_LOAD', 'cloud', 'não consegui carregar a nuvem', 'confira a internet e recarregue · usando memória local por enquanto'));
       seq.step('memory net', 'falhou · modo local', 'err');
-      const n = await openLocal();
-      seq.step('memory', `local · ${n} entradas`, 'warn');
+      await openLocal();
+      seq.step('memory', `local · ${S.entries.length} entradas`, 'warn');
     }
   }
 

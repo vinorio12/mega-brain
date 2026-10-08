@@ -85,7 +85,7 @@ function setup(texts) {
   const S = { entries: entries(texts), undo: [], startedAt: Date.now() };
   const term = fakeTerm();
   S.records = [];
-  const ctx = { S, term, reg: () => registry(S.records), ui: { pulse() {}, render() {}, state: () => 'ready', mem: () => ['local', 'warn'] } };
+  const ctx = { S, term, reg: () => registry(S.records), ui: { pulse() {}, render() {}, state: () => 'ready', mem: () => ['local', 'warn'], stage: null, openStage(kind, o = {}) { this.stage = { kind, ...o }; }, closeStage() { this.stage = null; }, stageOpen() { return this.stage?.kind || null; } } };
   ctx.store = memStore(S.entries);
   ctx.store.subscribe(l => { S.entries = l.filter(e => !isRecord(e)); S.records = l.filter(isRecord); });
   ctx.commands = createCommands(ctx);
@@ -2025,14 +2025,17 @@ describe('/ver por status (bug do kanban vazio)', () => {
     s.ctx.store.subscribe(() => {});
     await s.run('/t primeira >sex');
     await s.run('/t segunda @fazendo');
+    // v0.14: o kanban abre no palco (tela própria no centro); as outras visões fecham o palco e imprimem no terminal
     await s.run('/ver kanban');
-    const antes = s.term.out.length;
+    eq(s.ctx.ui.stage, { kind: 'kanban', proj: null, status: null });
     await s.run('/ver a fazer');
-    const novo = s.term.out.slice(antes).map(x => x.join(' ')).join('\n');
-    ok(/primeira/.test(novo) && !/segunda/.test(novo), novo);
-    await s.run('/ver fazendo');
-    ok(/segunda/.test(s.term.text()));
+    eq(s.ctx.ui.stage, { kind: 'kanban', proj: null, status: 'a fazer' });
     eq(s.S.view, 'kanban'); // filtrar por status não troca a visão salva
+    const antes = s.term.out.length;
+    await s.run('/ver lista');
+    eq(s.ctx.ui.stage, null);
+    const novo = s.term.out.slice(antes).map(x => x.join(' ')).join('\n');
+    ok(/primeira/.test(novo) && /segunda/.test(novo), novo);
     await throws(() => s.run('/ver xyz'), 'E_ARG');
   });
 });

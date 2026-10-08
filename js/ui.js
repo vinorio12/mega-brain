@@ -1,11 +1,12 @@
 // Tudo ao redor do terminal: cabeçalho, núcleo + satélites, rail cognitivo (esquerda),
 // rail de contexto (direita) e rodapé. Regra: só dados reais; sem dado → NA, mas o campo fica.
 
-import { esc, pad, dayKey, hhmm, ddmm, dur, DOW, VERSION } from './util.js';
+import { esc, hl, pad, dayKey, hhmm, ddmm, dur, DOW, VERSION } from './util.js';
 import { createCore } from './core.js';
 import { describe } from './weather.js';
 import { PHASES } from './commands.js';
-import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary, isNoteKind } from './tasks.js';
+import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary, isNoteKind, doneAt } from './tasks.js';
+import { viewGroups } from './views.js';
 import { fmtDue, fmtDia } from './dates.js';
 import { fmtValor } from './valores.js';
 import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes, cartoesDe, proximasFaturas, resumoSaldos } from './financas.js';
@@ -156,7 +157,7 @@ export function createUI(ctx) {
     renderSats(E, T, key);
     renderCtx(E, now);
     renderFoot();
-    if (ovOpen) renderOverview(E, now);
+    if (stage) renderStage(E, now);
     $('work-meta').textContent = ({ email: 'login · e-mail', password: 'login · senha', code: 'login · código' }[S.mode] || 'captura') + ' · ~' + (S.ctx ? '/' + S.ctx : '');
     $('f-state').textContent = st.label;
     $('f-desc').textContent = st.desc;
@@ -419,85 +420,144 @@ export function createUI(ctx) {
       `<span class="ff${tone ? ' is-' + tone : ''}"><i>${k}</i><b${id ? ` id="${id}"` : ''}>${esc(v)}</b></span>`).join('');
   }
 
-  /* ---------- /overview: o geral de tudo, no lugar do núcleo ---------- */
-  let ovOpen = false;
-  function toggleOverview(force) {
-    ovOpen = force ?? !ovOpen;
-    if (ovOpen) {
-      // a numeração t1, t2... do overview vale pros próximos comandos (/feito t1)
-      S.taskList = briefing(S.entries, { reg: ctx.reg(), proj: S.ctx, limit: 8 }).items.map(e => e.id);
-      core.pulse('int', 1);
-    }
-    app.classList.toggle('ov-open', ovOpen);
-    $('overview').hidden = !ovOpen;
+  /* ---------- palco: telas grandes no centro (overview, kanban) ---------- */
+  // Ocupa o lugar do núcleo (e do rail esquerdo no PC); o terminal encolhe pra 3–4 linhas embaixo,
+  // então dá pra fazer /feito t1 com o kanban aberto e ver o cartão mudar de coluna.
+  // stage = { kind: 'overview' | 'kanban', proj, status } · null = fechado
+  let stage = null, stageHtml = '', kbTab = 0;
+  function openStage(kind, opts = {}) {
+    stage = { kind, proj: opts.proj ?? S.ctx, status: opts.status ?? null };
+    stageHtml = '';
+    // a numeração t1, t2... da tela vale pros próximos comandos (/feito t1) e não muda enquanto ela está aberta
+    if (kind === 'overview') S.taskList = briefing(S.entries, { reg: ctx.reg(), proj: stage.proj, limit: 8 }).items.map(e => e.id);
+    if (kind === 'kanban') S.taskList = viewGroups(S.entries, 'kanban', { reg: ctx.reg(), proj: stage.proj, status: stage.status }).list.slice();
+    core.pulse('int', 1);
+    app.classList.add('stage-open');
+    $('stage').hidden = false;
     renderNow();
-    return ovOpen;
+    // o terminal encolheu: mostra as últimas linhas (a resposta do que você acabou de digitar)
+    setTimeout(() => { const o = $('out'); o.scrollTop = o.scrollHeight; }, 0);
+    return true;
   }
-  $('ov-close').addEventListener('click', () => toggleOverview(false));
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && ovOpen) toggleOverview(false); });
+  function closeStage() {
+    if (!stage) return false;
+    stage = null;
+    app.classList.remove('stage-open');
+    $('stage').hidden = true;
+    renderNow();
+    return false;
+  }
+  // /overview liga e desliga (o kanban abre pelo /ver kanban)
+  const toggleOverview = force => ((force ?? stage?.kind !== 'overview') ? openStage('overview') : closeStage());
+  $('st-close').addEventListener('click', closeStage);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && stage) closeStage(); });
 
-  function renderOverview(E, now) {
+  function renderStage(E, now) {
+    const meta = `${DOW[now.getDay()]} ${ddmm(now)} · ${hhmm(now)} · ~${stage.proj ? '/' + stage.proj : ''}`;
+    $('st-title').textContent = stage.kind === 'kanban' ? 'KANBAN' : 'OVERVIEW';
+    $('st-meta').textContent = stage.kind === 'kanban' ? `${stage.proj ? '#' + stage.proj : 'todas'}${stage.status ? ' · @' + stage.status : ''} · ${hhmm(now)}` : meta;
+    const html = stage.kind === 'kanban' ? kanbanHtml(E, now) : overviewHtml(E, now);
+    // só troca o HTML quando muda: digitar não reinicia a rolagem nem a aba do kanban
+    if (html !== stageHtml) { $('st-body').innerHTML = html; stageHtml = html; }
+  }
+
+  // número estável de uma tarefa na tela (as novas entram no fim)
+  const numDe = id => { if (!S.taskList) S.taskList = []; let i = S.taskList.indexOf(id); if (i < 0) { S.taskList.push(id); i = S.taskList.length - 1; } return i + 1; };
+
+  // KANBAN: uma coluna por status · no celular, abas (toque ou deslize pra trocar)
+  function kanbanHtml(E, now) {
+    const reg = ctx.reg();
+    const { groups } = viewGroups(E, 'kanban', { reg, proj: stage.proj, status: stage.status });
+    if (kbTab >= groups.length) kbTab = 0;
+    const card = e => {
+      const done = !!doneAt(e), proj = projectOf(e, reg.projects), pr = prioOf(e);
+      const due = e.data?.prazo ? fmtDue(e.data.prazo, now) : '';
+      const tone = done ? 'c-meta' : due.startsWith('atrasada') ? 'c-warn' : due === 'hoje' ? 'c-act' : 'c-meta';
+      const text = proj ? e.text.replace(new RegExp(`\\s*#${proj}(?![\\p{L}\\p{N}_-])`, 'giu'), '') : e.text;
+      const meta = [proj && !stage.proj ? `<span class="c-act">#${esc(proj)}</span>` : '', pr === 'alta' && !done ? '<span class="c-warn">!alta</span>' : '', due ? `<span class="${tone}">${esc(due)}</span>` : ''].filter(Boolean).join(' ');
+      return `<div class="kcard${done ? ' is-done' : ''}"><span class="n">t${numDe(e.id)}</span><span class="kt" title="${esc(e.text)}">${hl(text)}</span>${meta ? `<span class="km">${meta}</span>` : ''}</div>`;
+    };
+    const tabs = groups.map((g, i) => `<button type="button" class="kb-tab${i === kbTab ? ' is-on' : ''}${g.final ? ' is-final' : ''}" data-tab="${i}">${esc(g.title)} <b>${g.items.length}</b></button>`).join('');
+    const cols = groups.map((g, i) => `<section class="kcol${g.final ? ' is-final' : ''}${i === kbTab ? ' is-tab' : ''}"><header><span>${esc(g.title)}</span><b>${g.items.length}</b></header>` +
+      `${g.items.map(card).join('') || '<div class="kempty">nada aqui</div>'}</section>`).join('');
+    return `<div class="kb"><nav class="kb-tabs">${tabs}</nav><div class="kb-cols">${cols}</div>` +
+      `<div class="st-foot">/feito t1 · /mover t1 fazendo · /editar t1 >sex · esc fecha</div></div>`;
+  }
+  // abas do kanban: toque no nome ou deslize o dedo pro lado
+  const kbGo = i => { const n = document.querySelectorAll('#st-body .kb-tab').length; if (!n) return; kbTab = (i + n) % n; stageHtml = ''; renderNow(); };
+  $('st-body').addEventListener('click', e => { const b = e.target.closest('.kb-tab'); if (b) kbGo(+b.dataset.tab); });
+  let touchX = null;
+  $('st-body').addEventListener('touchstart', e => { touchX = e.touches[0].clientX; }, { passive: true });
+  $('st-body').addEventListener('touchend', e => {
+    if (touchX === null || stage?.kind !== 'kanban') return;
+    const dx = e.changedTouches[0].clientX - touchX; touchX = null;
+    if (Math.abs(dx) > 60) kbGo(kbTab + (dx < 0 ? 1 : -1));
+  }, { passive: true });
+
+  // OVERVIEW: blocos que se reorganizam pela largura (5 → 3 → 2 → 1) · título até 2 linhas · dinheiro nunca corta
+  function overviewHtml(E, now) {
     const reg = ctx.reg();
     const byId = new Map(E.map(e => [e.id, e]));
-    const b = briefing(E, { reg, now, proj: S.ctx, limit: 8 });
-    const isNote = isNoteKind;
-    const notes = E.filter(isNote), acv = E.filter(isAcervo);
+    const b = briefing(E, { reg, now, proj: stage.proj, limit: 8 });
+    const notes = E.filter(isNoteKind), acv = E.filter(isAcervo);
     const num = new Map();
     notes.forEach((e, i) => num.set(e.id, '#' + (i + 1)));
     acv.forEach((e, i) => num.set(e.id, 'a' + (i + 1)));
     const when = ts => { const d = new Date(ts); return dayKey(d) === dayKey(now) ? hhmm(d) : ddmm(d); };
+    const kv = (k, v, cls = '', extra = '') => `<div class="ov-kv"><span>${k}</span><b class="${cls}">${v}</b>${extra ? `<i>${extra}</i>` : ''}</div>`;
 
-    $('ov-meta').textContent = `${DOW[now.getDay()]} ${ddmm(now)} · ${hhmm(now)} · ~${S.ctx ? '/' + S.ctx : ''}`;
-
-    // tarefas: o essencial, na numeração aberta junto com o overview
+    // tarefas: as da numeração aberta junto com a tela (mais as novas)
     const tasks = (S.taskList || []).map(id => byId.get(id)).filter(e => e && e.kind === 'tarefa');
-    const taskHtml = tasks.length ? tasks.map((e, i) => {
+    const taskHtml = tasks.length ? tasks.map(e => {
       const due = e.data?.prazo ? fmtDue(e.data.prazo, now) : '';
-      const done = !!(e.data?.feito_em ?? e.data?.feito);
+      const done = !!doneAt(e);
       const tone = done ? 'c-meta' : due.startsWith('atrasada') ? 'c-warn' : due === 'hoje' ? 'c-act' : 'c-meta';
       const hi = prioOf(e) === 'alta' && !done ? '<span class="c-warn">!</span> ' : '';
-      return `<div class="ov-row"><span class="n">t${i + 1}</span><span class="${done ? 'dim' : ''}" title="${esc(e.text)}">${done ? '✓ ' : ''}${hi}${esc(e.text)}</span><span class="r ${tone}">${esc(due)}</span></div>`;
+      return `<div class="ov-row"><span class="n">t${numDe(e.id)}</span><span class="t ${done ? 'dim' : ''}" title="${esc(e.text)}">${done ? '✓ ' : ''}${hi}${hl(e.text)}</span><span class="r ${tone}">${esc(due)}</span></div>`;
     }).join('') : '<div class="ov-empty">nada atrasado nem urgente</div>';
 
     const noteHtml = notes.length ? notes.slice(-6).reverse().map(e =>
-      `<div class="ov-row"><span class="n">${when(e.ts)}</span><span title="${esc(e.text)}">${esc(e.text)}</span><span class="r dim">${num.get(e.id)}</span></div>`).join('')
+      `<div class="ov-row"><span class="n">${when(e.ts)}</span><span class="t" title="${esc(e.text)}">${hl(e.text)}</span><span class="r dim">${num.get(e.id)}</span></div>`).join('')
       : '<div class="ov-empty">nenhuma nota</div>';
 
     const acvHtml = acv.length ? acv.slice(-5).reverse().map(e => {
       const url = isLink(e) ? safeUrl(e.data?.url) : null;
-      const label = url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">↗ ${esc(shortUrl(url, 28))}</a>` : `<span class="dim">»</span> ${esc(e.text)}`;
-      return `<div class="ov-row"><span class="n">${num.get(e.id)}</span><span>${label}</span><span class="r dim">${when(e.ts)}</span></div>`;
-    }).join('') : '<div class="ov-empty">acervo vazio</div>';
+      const label = url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">↗ ${esc(shortUrl(url, 40))}</a>` : `<span class="dim">»</span> ${esc(e.text)}`;
+      return `<div class="ov-row"><span class="n">${num.get(e.id)}</span><span class="t">${label}</span><span class="r dim">${when(e.ts)}</span></div>`;
+    }).join('') : '<div class="ov-empty">acervo vazio · cole um link pra guardar</div>';
 
     const { projects } = projectsSummary(E, now, reg.projects);
     const max = Math.max(1, ...projects.map(p => p.abertas));
     const projHtml = projects.map(p =>
-      `<div class="ov-proj"><div class="top"><span class="c-act">#${esc(p.proj)}</span><span>${p.abertas}${p.atrasadas ? ` <span class="c-warn">· ${p.atrasadas}!</span>` : ''}</span></div>` +
-      `<div class="ov-bar"><i class="${p.atrasadas ? 'late' : ''}" style="width:${Math.round(p.abertas / max * 100)}%"></i></div></div>`).join('');
+      `<div class="ov-bar-row"><div class="top"><span class="c-act">#${esc(p.proj)}</span><b>${p.abertas}${p.atrasadas ? ` <span class="c-warn">· ${p.atrasadas} atrasada${p.atrasadas > 1 ? 's' : ''}</span>` : ''}</b></div>` +
+      `<div class="ov-bar"><i class="${p.atrasadas ? 'late' : ''}" style="width:${Math.round(p.abertas / max * 100)}%"></i></div></div>`).join('') || '<div class="ov-empty">nenhum projeto</div>';
 
-    // finanças do mês: saldo e as categorias que mais pesaram, com barra
-    const fin = hudFinancas(E, now, { cartoes: cartoesDe(S.records || [], { todos: true }) });
-    const rm = resumoMes(E, fin.mes, { cartoes: cartoesDe(S.records || [], { todos: true }) });
+    // finanças: saldos no topo, o mês e as categorias que mais pesaram, com barra
+    const cartoes = cartoesDe(S.records || [], { todos: true });
+    const fin = hudFinancas(E, now, { cartoes });
+    const rm = resumoMes(E, fin.mes, { cartoes });
     const maxCat = Math.max(1, ...rm.porCategoria.map(([, v]) => v));
-    // os três saldos (Fase 3d) no topo, mesmo num mês sem lançamento
     const sdo = resumoSaldos(E, S.records || [], now);
-    const saldosHtml = [['conta', sdo.conta], ['investido', sdo.investido], ['cartões', sdo.devo]].filter(([, v]) => v != null).map(([k, v]) =>
-      `<div class="ov-row"><span class="n">${k}</span><span class="${k === 'cartões' ? 'c-warn' : v < 0 ? 'c-warn' : 'c-act'}">${k === 'cartões' ? 'deve ' : ''}${esc(fmtValor(v))}</span><span class="r dim"></span></div>`).join('');
-    const finHtml = saldosHtml + (fin.vazio ? '<div class="ov-empty">nada lançado este mês</div>' :
-      `<div class="ov-row"><span class="n">mês</span><span class="${fin.saldo < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(fin.saldo))}</span><span class="r dim">entradas − gastos</span></div>` +
-      `<div class="ov-row"><span class="n">gastos</span><span>${esc(fmtValor(fin.gastos))}</span><span class="r dim">${fin.vs === null ? '' : `${fin.vs > 0 ? '+' : ''}${fin.vs}%`}</span></div>` +
-      // a próxima fatura de cada cartão (Fase 3b)
-      proximasFaturas(E, cartoesDe(S.records || [], { todos: true }), now).map(f =>
-        `<div class="ov-row"><span class="n">${esc(f.nome)}</span><span>${esc(fmtValor(f.total))}</span><span class="r dim">vence ${esc(ddmm(new Date(f.vence + 'T12:00')))}</span></div>`).join('') +
-      rm.porCategoria.slice(0, 5).map(([c, v]) =>
-        `<div class="ov-proj"><div class="top"><span>${esc(c)}</span><span>${esc(fmtValor(v))}</span></div><div class="ov-bar"><i style="width:${Math.round(v / maxCat * 100)}%"></i></div></div>`).join(''));
+    const finHtml = [
+      sdo.conta != null ? kv('conta', esc(fmtValor(sdo.conta)), sdo.conta < 0 ? 'c-warn' : 'c-act') : '',
+      sdo.investido != null ? kv('investido', esc(fmtValor(sdo.investido))) : '',
+      sdo.devo != null ? kv('cartões', 'deve ' + esc(fmtValor(sdo.devo)), 'c-warn') : '',
+      fin.vazio ? '<div class="ov-empty">nada lançado este mês · escreva <span class="c-int">gastei 30 no almoço</span></div>' : [
+        kv('sobra do mês', esc(fmtValor(fin.saldo)), fin.saldo < 0 ? 'c-warn' : 'c-act'),
+        kv('gastos', esc(fmtValor(fin.gastos)), '', fin.vs === null ? '' : `${fin.vs > 0 ? '+' : ''}${fin.vs}%`),
+        ...proximasFaturas(E, cartoes, now).map(f => kv(esc(f.nome), esc(fmtValor(f.total)), '', `vence ${esc(ddmm(new Date(f.vence + 'T12:00')))}`)),
+        ...rm.porCategoria.slice(0, 5).map(([c, v]) =>
+          `<div class="ov-bar-row"><div class="top"><span>${esc(c)}</span><b>${esc(fmtValor(v))}</b></div><div class="ov-bar"><i style="width:${Math.round(v / maxCat * 100)}%"></i></div></div>`),
+      ].join(''),
+    ].join('');
 
-    $('ov-grid').innerHTML =
-      `<div class="ov-b"><h3>tarefas <span>${b.abertas} abertas${b.atrasadas ? ` · <span class="c-warn">${b.atrasadas} atrasadas</span>` : ''}</span></h3>${taskHtml}</div>` +
+    return `<div class="ov-grid">` +
+      `<div class="ov-b ov-tasks"><h3>tarefas <span>${b.abertas} abertas${b.atrasadas ? ` · <span class="c-warn">${b.atrasadas} atrasadas</span>` : ''}</span></h3>${taskHtml}</div>` +
+      `<div class="ov-b"><h3>finanças <span>${esc(fmtMes(fin.mes, now))}</span></h3>${finHtml}</div>` +
+      `<div class="ov-b"><h3>projetos <span>${projects.length}</span></h3>${projHtml}</div>` +
       `<div class="ov-b"><h3>notas <span>${notes.length}</span></h3>${noteHtml}</div>` +
       `<div class="ov-b"><h3>acervo <span>${acv.length}</span></h3>${acvHtml}</div>` +
-      `<div class="ov-b"><h3>projetos <span>${projects.length}</span></h3>${projHtml}</div>` +
-      `<div class="ov-b"><h3>finanças <span>${esc(fmtMes(fin.mes, now))}</span></h3>${finHtml}</div>`;
+      `</div>`;
   }
 
   const fmtMs = ms => ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(1) + 's';
@@ -517,5 +577,5 @@ export function createUI(ctx) {
     if (d.getMinutes() !== lastMinute) { lastMinute = d.getMinutes(); renderNow(); }
   }
 
-  return { render, renderNow, tick, state, mem, toggle, pulse: core.pulse, core, onInput, onKey, onFault, onCtx, noteTasks, toggleOverview, overviewOpen: () => ovOpen };
+  return { render, renderNow, tick, state, mem, toggle, pulse: core.pulse, core, onInput, onKey, onFault, onCtx, noteTasks, toggleOverview, openStage, closeStage, stageOpen: () => stage?.kind || null, overviewOpen: () => !!stage };
 }

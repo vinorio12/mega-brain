@@ -507,6 +507,12 @@ export function createCommands(ctx) {
   const currentView = () => viewName(S.view) || 'prazo';
 
   function showView(view, proj = S.ctx, month = null, status = null) {
+    // kanban: tela própria no centro (o terminal encolhe embaixo) · as outras visões imprimem no terminal
+    if (view === 'kanban') {
+      ctx.ui.openStage('kanban', { proj, status });
+      return term.say(`kanban aberto${proj ? ' · #' + esc(proj) : ''}${status ? ' · @' + esc(status) : ''} · os números t1, t2... valem pro /feito · <span class="c-int">esc</span> fecha`);
+    }
+    ctx.ui.closeStage();
     if (view === 'calendario') return showCalendar(proj, month);
     const { groups, list } = viewGroups(S.entries, view, { reg: ctx.reg(), proj, status });
     if (!list.length && (view !== 'kanban' || status)) {
@@ -515,30 +521,8 @@ export function createCommands(ctx) {
       return term.say(`nenhuma tarefa em ${esc(projLabel(proj))}. crie com <span class="c-int">- revisar cap 2${proj ? ' #' + esc(proj) : ''} >sex</span>`);
     }
     term.print(`── ${view}${status ? ' · @' + esc(status) : ''} · ${esc(projLabel(proj))} ${'─'.repeat(10)}`, 'sep');
-    if (view === 'kanban') showKanban(groups, list);
-    else showTaskGroups(groups, list, g => g.title, view === 'lista' ? ['projeto'] : view === 'status' ? ['status'] : []);
+    showTaskGroups(groups, list, g => g.title, view === 'lista' ? ['projeto'] : view === 'status' ? ['status'] : []);
     term.print('<span class="dim">/feito t1 · /mover t1 fazendo · /editar t1 >sex · /ver muda a visão</span>');
-  }
-
-  // um cartão do kanban
-  function card(n, e, now) {
-    const reg = ctx.reg(), done = !!doneAt(e), proj = projectOf(e, reg.projects), pr = prioOf(e);
-    const due = e.data?.prazo ? fmtDue(e.data.prazo, now) : '';
-    const tone = done ? 'c-meta' : due.startsWith('atrasada') ? 'c-warn' : due === 'hoje' ? 'c-act' : 'c-meta';
-    const text = proj ? e.text.replace(new RegExp(`\\s*#${proj}(?![\\p{L}\\p{N}_-])`, 'giu'), '') : e.text;
-    const meta = [proj ? `<span class="c-act">#${esc(proj)}</span>` : '', pr === 'alta' && !done ? '<span class="c-warn">!alta</span>' : '', due ? `<span class="${tone}">${esc(due)}</span>` : ''].filter(Boolean).join(' ');
-    return `<div class="kcard${done ? ' is-done' : ''}"><span class="n">t${n}</span><span class="kt">${hl(text)}</span>${meta ? `<span class="km">${meta}</span>` : ''}</div>`;
-  }
-
-  function showKanban(groups, list) {
-    S.taskList = list;
-    const now = new Date();
-    let n = 0;
-    const cols = groups.map(g => {
-      const cards = g.items.map(e => card(++n, e, now)).join('') || '<div class="kempty">—</div>';
-      return `<section class="kcol${g.final ? ' is-final' : ''}"><header><span>${esc(g.title)}</span><b>${g.items.length}</b></header>${cards}</section>`;
-    }).join('');
-    term.print(`<div class="kanban">${cols}</div>`, 'block');
   }
 
   function showCalendar(proj, month) {
@@ -729,10 +713,10 @@ export function createCommands(ctx) {
     },
     {
       name: 'overview', alias: ['ov', 'geral', 'tudo'], data: true,
-      desc: 'o geral de tudo (tarefas, notas, acervo, projetos) no lugar do núcleo · esc fecha',
+      desc: 'o geral de tudo (tarefas, finanças, projetos, notas, acervo) numa tela própria · esc fecha',
       run() {
         const on = ctx.ui.toggleOverview();
-        term.say(on ? 'overview aberto no lugar do núcleo · os números t1, t2... valem pro /feito · <span class="c-int">esc</span> fecha' : 'overview fechado · núcleo de volta');
+        term.say(on ? 'overview aberto · os números t1, t2... valem pro /feito · <span class="c-int">esc</span> fecha' : 'overview fechado · núcleo de volta');
       },
     },
     {

@@ -109,7 +109,7 @@ export function criarSistema(kit) {
       },
     },
     {
-      name: 'condition', alias: ['sys', 'sistema'], desc: 'condição completa do sistema (estado, memória, rede, sessão)',
+      name: 'condition', alias: ['sys', 'diagnostico', 'diagnóstico'], desc: 'condição completa do sistema (estado, memória, rede, sessão)',
       run() {
         const k = dayKey(new Date());
         const state = ctx.ui.state();
@@ -223,6 +223,15 @@ export function criarSistema(kit) {
           const mark = s === 'ok' ? '<span class="c-act">[ok]</span>' : s === 'wip' ? '<span class="c-hud">[..]</span>' : '<span class="dim">[  ]</span>';
           term.print(`${mark} <span class="${s ? 'c-tx' : 'dim'}">fase ${n.padEnd(3)}</span> ${esc(t)}`);
         });
+      },
+    },
+    {
+      name: 'sistema', alias: ['telemetria', 'debug'], desc: 'liga/desliga a telemetria na tela (rede, processos, fluxo, módulos, rodapé de infra)',
+      run() {
+        S.sistema = !S.sistema;
+        try { localStorage.setItem('mb.sistema.v1', S.sistema ? '1' : '0'); } catch {}
+        ctx.ui.render();
+        term.say(S.sistema ? 'modo sistema ligado · rede, processos, fluxo, módulos e o rodapé de infra na tela.' : 'modo sistema desligado · a tela mostra só o que é seu. <span class="c-hud">/sistema</span> liga de novo · <span class="c-hud">/condition</span> mostra o diagnóstico completo.');
       },
     },
     {

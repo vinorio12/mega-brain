@@ -43,7 +43,7 @@ export { pickTargets, prepareImport } from './comandos/dados.js';
 const ORDEM = ['ajuda', 'inbox', 'hoje', 'overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'reabrir', 'adiar', 'editar', 'mover', 'status',
   'feitas', 'mudancas', 'palavras', 'memoria', 'sim', 'nao', 'pessoas', 'pessoa', 'tipo', 'contexto', 'aprendizado', 'projeto', 'ir',
   'buscar', 'acervo', 'guardar', 'apagar', 'desfazer', 'condition', 'clima', 'log', 'historico', 'exportar', 'entrar', 'codigo', 'sair',
-  'sync', 'migrar', 'instalar', 'importar', 'boot', 'roadmap', 'detalhes', 'painel', 'foco', 'limpar'];
+  'sync', 'migrar', 'instalar', 'importar', 'boot', 'roadmap', 'sistema', 'detalhes', 'painel', 'foco', 'limpar'];
 
 export function createCommands(ctx) {
   const { S, term } = ctx;

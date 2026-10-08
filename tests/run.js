@@ -238,6 +238,19 @@ describe('valores (valores.js · Fase 2)', () => {
     ['R$ 30,00', 'R$ 1.234,56', 'R$ 0,05', '-R$ 5,00', 'R$ 0,00', 'R$ 1.000.000,00']));
 });
 
+describe('rail "hoje" (v0.14 · etapa 5)', () => {
+  test('/feito id:<id> conclui a tarefa exata (o círculo do rail não depende da numeração)', async () => {
+    const s = setup([]);
+    await s.run('/t primeira');
+    await s.run('/t segunda');
+    const alvo = s.S.entries.find(e => e.text === 'segunda');
+    s.S.taskList = []; // numeração vazia: o id ainda acha
+    await s.run('/feito id:' + alvo.id);
+    eq(s.S.entries.filter(e => e.data?.feito_em).map(e => e.text), ['segunda']);
+    await throws(() => s.run('/feito id:nao-existe'), 'E_404');
+  });
+});
+
 describe('/ajuda enxuta (v0.14 · etapa 4.5)', () => {
   test('/ajuda sem nada: poucas linhas, exemplos e as áreas como botões', () => {
     const s = setup([]);

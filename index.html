@@ -44,8 +44,8 @@
     <div class="head-fields">
       <span class="hf hf-state" id="h-state" title="estado do núcleo"><i class="dot"></i><b>INITIALIZING</b></span>
       <span class="hf hf-user" id="h-user" title="operador"><span class="k">◈</span><b>—</b></span>
-      <span class="hf" id="h-net" title="rede"><span class="k">⇅</span><b>NA</b></span>
-      <span class="hf" id="h-mem" title="memória"><span class="k">◫</span><b>NA</b></span>
+      <span class="hf sys-only" id="h-net" title="rede"><span class="k">⇅</span><b>NA</b></span>
+      <span class="hf sys-only" id="h-mem" title="memória"><span class="k">◫</span><b>NA</b></span>
       <span class="hf" id="h-wx" title="clima"><span class="k">◌</span><b>NA</b></span>
       <span class="hf hf-clock"><b class="hf-date" id="h-date">--</b><b id="h-clock">--:--:--</b></span>
     </div>
@@ -58,19 +58,33 @@
       <div class="state-word" id="c-state">INITIALIZING</div>
       <div class="state-desc" id="c-desc">inicializando o núcleo</div>
     </section>
-    <section>
+    <section class="sys-only">
       <div class="lbl"><span>atenção</span></div>
       <div class="focus"><span class="focus-path" id="c-focus">~</span><span class="focus-mode" id="c-mode">captura</span></div>
     </section>
+    <!-- a sua vida (v0.14): o que vence hoje, projetos e status · tocar resolve ou abre -->
+    <section class="cog-hoje">
+      <div class="lbl"><span>hoje</span><span id="c-hoje-n"></span></div>
+      <ul class="hoje-list" id="c-hoje"></ul>
+    </section>
     <section>
+      <div class="lbl"><span>projetos</span><span id="c-proj-n"></span></div>
+      <div class="bars" id="c-proj"></div>
+    </section>
+    <section>
+      <div class="lbl"><span>status</span><span id="c-st-n"></span></div>
+      <div class="bars" id="c-st"></div>
+    </section>
+    <!-- telemetria: só com /sistema ligado -->
+    <section class="sys-only">
       <div class="lbl"><span>processos</span><span id="c-proc-n">0</span></div>
       <ul class="rows" id="c-procs"></ul>
     </section>
-    <section class="grow">
+    <section class="grow sys-only">
       <div class="lbl"><span>fluxo</span><span id="c-ev-n">0</span></div>
       <ul class="stream" id="c-stream"></ul>
     </section>
-    <section>
+    <section class="sys-only">
       <div class="lbl"><span>atividade · 30 min</span><span id="c-act">0</span></div>
       <div class="spark" id="c-spark"></div>
     </section>
@@ -124,13 +138,13 @@
       <div class="lbl"><span>finanças</span><span id="x-fin-sub"></span></div>
       <ul class="list" id="x-fin"></ul>
     </section>
-    <section>
+    <section class="sys-only">
       <div class="lbl"><span>módulos</span></div>
       <ul class="list mods" id="x-mods"></ul>
     </section>
   </aside>
 
-  <footer class="foot" id="foot"></footer>
+  <footer class="foot sys-only" id="foot"></footer>
 </div>
 </body>
 </html>

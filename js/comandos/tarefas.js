@@ -109,6 +109,15 @@ export function criarTarefas(kit) {
 
   // "t1 t3", "1-4" ou texto → [{ n, e }]. Texto ambíguo lista as opções e devolve null.
   function resolveTasks(raw, cmd, example) {
+    // "id:<id>": a tarefa exata (botões da tela, como o círculo do rail "hoje", não dependem da numeração t1, t2)
+    const porId = String(raw).trim().match(/^id:(\S+)$/);
+    if (porId) {
+      const e = S.entries.find(x => x.id === porId[1] && isTask(x));
+      if (!e) throw new CmdError('E_404', 'task', 'essa tarefa não existe mais', 'veja a lista com <span class="c-hud">/tarefas</span>');
+      if (!S.taskList) S.taskList = [];
+      if (!S.taskList.includes(e.id)) S.taskList.push(e.id);
+      return [{ n: S.taskList.indexOf(e.id) + 1, e }];
+    }
     const pool = taskPool();
     const nums = taskNumbers(raw);
     const pick = pickTargets(nums ?? raw, pool);

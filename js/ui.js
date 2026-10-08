@@ -5,7 +5,7 @@ import { esc, hl, pad, dayKey, hhmm, ddmm, dur, DOW, VERSION } from './util.js';
 import { createCore } from './core.js';
 import { describe } from './weather.js';
 import { PHASES } from './commands.js';
-import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary, isNoteKind, doneAt } from './tasks.js';
+import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary, isNoteKind, doneAt, statusOf } from './tasks.js';
 import { viewGroups } from './views.js';
 import { fmtDue, fmtDia } from './dates.js';
 import { fmtValor } from './valores.js';
@@ -145,6 +145,7 @@ export function createUI(ctx) {
     if (key !== stateKey) { stateKey = key; stateSince = Date.now(); }
     const st = describeState(key, { tasks: T, mode: S.mode });
     app.dataset.state = key;
+    app.classList.toggle('sys-on', !!S.sistema); // telemetria só com /sistema
     core.setState(key);
 
     // tom do estado nos lugares que mostram o estado
@@ -197,6 +198,8 @@ export function createUI(ctx) {
     if (pending) rows.push(`<li><span class="c-warn">SYNC</span><span>${pending} na fila · sobe quando der</span><span></span></li>`);
     $('c-procs').innerHTML = rows.length ? rows.join('') : '<li class="empty">— ocioso</li>';
 
+    renderHoje(new Date());
+
     const L = ctx.term.log;
     $('c-ev-n').textContent = L.length;
     $('c-stream').innerHTML = L.length
@@ -213,6 +216,46 @@ export function createUI(ctx) {
     $('c-act').textContent = bins.reduce((a, b) => a + b, 0);
   }
 
+  // RAIL "HOJE" (v0.14): o que vence hoje e o vencido (o círculo conclui), o que já foi feito hoje (riscado),
+  // projetos e status em barrinhas (tocar abre a lista) · só dado real; sem dado, diz como alimentar
+  function renderHoje(now) {
+    const reg = ctx.reg(), hoje = dayKey(now), E = S.entries;
+    const tasks = E.filter(e => e.kind === 'tarefa');
+    const abertas = tasks.filter(e => !doneAt(e));
+    const vencem = abertas.filter(e => e.data?.prazo && e.data.prazo <= hoje).sort((a, b) => a.data.prazo.localeCompare(b.data.prazo) || (prioOf(a) === 'alta' ? -1 : 0));
+    const feitasHoje = tasks.filter(e => doneAt(e) && dayKey(new Date(doneAt(e))) === hoje);
+    const atrasadas = vencem.filter(e => e.data.prazo < hoje).length;
+    core.setDayRing({ feitas: feitasHoje.length, atrasadas, total: vencem.length + feitasHoje.length }); // o anel do núcleo
+    $('c-hoje-n').innerHTML = vencem.length || feitasHoje.length ? `${feitasHoje.length}/${vencem.length + feitasHoje.length}${atrasadas ? ` · <span class="c-warn">${atrasadas} atrasada${atrasadas > 1 ? 's' : ''}</span>` : ''}` : '';
+    const linha = (e, feita) => {
+      const due = e.data?.prazo ? fmtDue(e.data.prazo, now) : '';
+      const tom = feita ? 'dim' : due.startsWith('atrasada') ? 'c-warn' : 'c-act';
+      const proj = projectOf(e, reg.projects);
+      return `<li class="${feita ? 'is-done' : ''}">${feita ? '<span class="ck is-done" aria-hidden="true">✓</span>' : `<button type="button" class="ck" data-cmd="/feito id:${esc(e.id)}" title="concluir">○</button>`}` +
+        `<span class="t" title="${esc(e.text)}">${prioOf(e) === 'alta' && !feita ? '<span class="c-warn">!</span> ' : ''}${esc(e.text)}${proj ? ` <span class="c-act">#${esc(proj)}</span>` : ''}</span><span class="due ${tom}">${feita ? 'feita' : esc(due)}</span></li>`;
+    };
+    $('c-hoje').innerHTML = vencem.length || feitasHoje.length
+      ? vencem.slice(0, 8).map(e => linha(e, false)).join('') + (vencem.length > 8 ? `<li class="more"><button type="button" class="lk" data-cmd="/tarefas">+${vencem.length - 8} · /tarefas</button></li>` : '') + feitasHoje.slice(0, 4).map(e => linha(e, true)).join('')
+      : `<li class="empty">nada vence hoje${abertas.length ? ` · ${abertas.length} abertas sem pressa` : ''}<br><span class="dim">escreva "- revisar cap 2 #tcc hoje"</span></li>`;
+
+    // projetos: abertas (com a parte atrasada em âmbar) · tocar lista o projeto
+    const { projects } = projectsSummary(E, now, reg.projects);
+    const maxP = Math.max(1, ...projects.map(p => p.abertas));
+    $('c-proj-n').textContent = projects.length ? `${abertas.length} abertas` : '';
+    $('c-proj').innerHTML = projects.length ? projects.map(p => {
+      const w = Math.round((p.abertas / maxP) * 100), wl = p.abertas ? Math.round((p.atrasadas / p.abertas) * w) : 0;
+      return `<button type="button" class="bar-row" data-cmd="/tarefas ${esc(p.proj)}" title="#${esc(p.proj)} · ${p.abertas} abertas${p.atrasadas ? ` · ${p.atrasadas} atrasadas` : ''}"><span class="c-act">#${esc(p.proj)}</span><b>${p.abertas}${p.atrasadas ? ` <span class="c-warn">${p.atrasadas}!</span>` : ''}</b><span class="bar"><i style="width:${w}%"></i><i class="late" style="width:${wl}%"></i></span></button>`;
+    }).join('') : '<div class="empty">nenhum projeto · /projeto novo nome</div>';
+
+    // status das abertas
+    const porStatus = reg.statuses.filter(st => !st.final).map(st => [st.name, abertas.filter(e => statusOf(e) === st.name).length]);
+    const maxS = Math.max(1, ...porStatus.map(([, n]) => n));
+    $('c-st-n').textContent = '';
+    $('c-st').innerHTML = abertas.length ? porStatus.map(([nome, n]) =>
+      `<button type="button" class="bar-row" data-cmd="/ver ${esc(nome)}" title="@${esc(nome)} · ${n}"><span class="c-int">@${esc(nome)}</span><b>${n}</b><span class="bar"><i style="width:${Math.round((n / maxS) * 100)}%"></i></span></button>`).join('')
+      : '<div class="empty">nenhuma tarefa aberta</div>';
+  }
+
   // satélites: valores reais + qual subsistema está ativo agora
   function renderSats(E, T, key) {
     const proc = T.filter(t => t.kind !== 'exec'), exec = T.filter(t => t.kind === 'exec');
@@ -222,25 +265,52 @@ export function createUI(ctx) {
     const st = ctx.store?.status;
     const intent = readIntent(inputValue, { mode: S.mode, ctx: S.ctx, catalog: ctx.commands.catalog(), reg: ctx.reg(), entries: S.entries, records: S.records || [], pessoas: pessoasDe(S.records || []) });
 
-    set('s-context', '~' + (S.ctx ? '/' + S.ctx : ''), `${ctxTasks.abertas} abertas${ctxTasks.atrasadas ? ` · ${ctxTasks.atrasadas} atrasadas` : ''}`);
-    set('s-memory', memText, `${E.length} entradas`);
-    set('s-network', navigator.onLine ? 'online' : 'offline',
-      [st?.realtime && st.realtime !== 'NA' ? 'rt ' + st.realtime : null, S.lastLatency != null ? S.lastLatency + 'ms' : null].filter(Boolean).join(' · ') || 'NA');
-    set('s-process', T.length ? T[T.length - 1].label : 'ocioso', `${T.length} ativos${pending ? ` · fila ${pending}` : ''}`);
-    set('s-input', intentWord(intent), key === 'listening' ? 'escutando' : '');
-
+    // v0.14: os satélites são as SUAS áreas (os 3 primeiros projetos + dinheiro); o INPUT segue mostrando o que você digita.
+    // Com /sistema, voltam a ser CONTEXT · MEMORY · NETWORK · PROCESS (a telemetria de antes).
     const now = Date.now();
     const listening = key === 'listening';
-    core.activate('input', listening);
-    core.activate('context', now - ctxChangedAt < 1500 || (listening && !!S.ctx));
-    core.activate('memory', exec.length > 0 || pending > 0);
-    core.activate('network', proc.length > 0);
-    core.activate('process', T.length > 0);
-    for (const k of Object.keys(satEls)) {
-      satEls[k].classList.toggle('is-active',
-        { input: listening, context: now - ctxChangedAt < 1500, memory: exec.length > 0, network: proc.length > 0, process: T.length > 0 }[k]);
+    if (S.sistema) {
+      rotulos({ context: 'CONTEXT', memory: 'MEMORY', network: 'NETWORK', process: 'PROCESS' });
+      set('s-context', '~' + (S.ctx ? '/' + S.ctx : ''), `${ctxTasks.abertas} abertas${ctxTasks.atrasadas ? ` · ${ctxTasks.atrasadas} atrasadas` : ''}`);
+      set('s-memory', memText, `${E.length} entradas`);
+      set('s-network', navigator.onLine ? 'online' : 'offline',
+        [st?.realtime && st.realtime !== 'NA' ? 'rt ' + st.realtime : null, S.lastLatency != null ? S.lastLatency + 'ms' : null].filter(Boolean).join(' · ') || 'NA');
+      set('s-process', T.length ? T[T.length - 1].label : 'ocioso', `${T.length} ativos${pending ? ` · fila ${pending}` : ''}`);
+      for (const k of ['context', 'memory', 'network', 'process']) delete satEls[k].dataset.cmd;
+      core.activate('context', now - ctxChangedAt < 1500 || (listening && !!S.ctx));
+      core.activate('memory', exec.length > 0 || pending > 0);
+      core.activate('network', proc.length > 0);
+      core.activate('process', T.length > 0);
+    } else {
+      const reg = ctx.reg(), hoje = dayKey(new Date());
+      const projs = reg.projects.slice(0, 3), lugares = ['context', 'memory', 'network'];
+      const alvo = intent.type === 'task' ? intent.projeto : null; // "- revisar #tcc" acende o TCC
+      lugares.forEach((k, i) => {
+        const p = projs[i], el = satEls[k];
+        if (!p) { el.querySelector('b').textContent = '—'; set('s-' + k, 'livre', '/projeto novo nome'); el.dataset.cmd = '/projeto'; core.activate(k, false); return; }
+        const ts = E.filter(e => e.kind === 'tarefa' && !doneAt(e) && projectOf(e, reg.projects) === p);
+        const atras = ts.filter(e => e.data?.prazo && e.data.prazo < hoje).length, deHoje = ts.filter(e => e.data?.prazo === hoje).length;
+        el.querySelector('b').textContent = p.toUpperCase();
+        set('s-' + k, ts.length ? `${ts.length} aberta${ts.length > 1 ? 's' : ''}` : 'em dia ✓', [atras ? `${atras} atrasada${atras > 1 ? 's' : ''}` : '', deHoje ? `${deHoje} hoje` : ''].filter(Boolean).join(' · '));
+        $('s-' + k + '-2').className = atras ? 'c-warn' : '';
+        el.dataset.cmd = '/tarefas ' + p;
+        core.activate(k, alvo === p);
+      });
+      // dinheiro: o que resta do crédito (ou a conta) · acende quando o que você digita é dinheiro
+      const sd = resumoSaldos(E, S.records || [], new Date()), rc = sd.credito;
+      satEls.process.querySelector('b').textContent = 'DINHEIRO';
+      set('s-process', rc.limite != null ? `resta ${fmtValor(rc.resta)}` : sd.conta != null ? fmtValor(sd.conta) : 'NA',
+        rc.limite != null ? (sd.conta != null ? `conta ${fmtValor(sd.conta)}` : `usado ${fmtValor(rc.usado)}`) : sd.conta != null ? 'conta' : '/credito · /saldo');
+      $('s-process-2').className = rc.limite != null && (rc.resta < 0 || rc.frac > 0.8) ? 'c-warn' : '';
+      satEls.process.dataset.cmd = '/financas';
+      core.activate('process', intent.type === 'registro' && ['gasto', 'entrada', 'transferencia', 'rendimento', 'saldo', 'faturapaga', 'recorrente'].includes(intent.tipo));
     }
+    set('s-input', intentWord(intent), listening ? 'escutando' : '');
+    core.activate('input', listening);
+    for (const k of Object.keys(satEls)) satEls[k].classList.toggle('is-active', !!core.isActive?.(k));
   }
+  // os nomes dos satélites (com /sistema voltam os de antes)
+  function rotulos(m) { for (const [k, v] of Object.entries(m)) satEls[k].querySelector('b').textContent = v; }
   function set(id, main, sub) {
     $(id).textContent = main;
     $(id + '-2').textContent = sub || '';
@@ -348,18 +418,19 @@ export function createUI(ctx) {
           : '<div class="ctx-hint">comece com "- " pra virar tarefa</div>');
       short = `→ nota${intent.pergunta ? ' (' + intent.palpite + '?)' : ''}${intent.tags.length ? ' · #' + intent.tags.join(' #') : ''}`;
     } else {
-      // parado: o essencial (mesma regra da tela inicial): atrasadas → !alta → vencem primeiro
-      const b = briefing(E, { reg: ctx.reg(), now, proj: S.ctx, limit: 7 });
-      const s = taskStats(S.ctx ? E.filter(e => inCtx(e)) : E, now);
-      sub = `${S.ctx ? '#' + S.ctx : 'todas'} · ${b.abertas} abertas`;
-      html = b.items.map(e => {
-        const due = e.data?.prazo ? fmtDue(e.data.prazo, now) : '';
-        const tone = due.startsWith('atrasada') ? 'c-warn' : due === 'hoje' ? 'c-act' : 'c-meta';
+      // parado (v0.14): os PRÓXIMOS dias (o que vence hoje e o atrasado já estão no rail "hoje", à esquerda)
+      const hojeK = dayKey(now), ate = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7));
+      const abertasCtx = E.filter(e => e.kind === 'tarefa' && !doneAt(e) && (!S.ctx || inCtx(e)));
+      const prox = abertasCtx.filter(e => e.data?.prazo && e.data.prazo > hojeK && e.data.prazo <= ate).sort((x, y) => x.data.prazo.localeCompare(y.data.prazo));
+      const semPrazo = abertasCtx.filter(e => !e.data?.prazo).length;
+      title = 'próximos 7 dias';
+      sub = `${S.ctx ? '#' + S.ctx + ' · ' : ''}${abertasCtx.length} abertas`;
+      html = prox.slice(0, 7).map(e => {
         const hi = prioOf(e) === 'alta' ? '<span class="c-warn">!</span> ' : '';
-        return `<div class="ctx-task"><span class="n">[ ]</span><span title="${esc(e.text)}">${hi}${esc(e.text)}</span><span class="due ${tone}">${esc(due)}</span></div>`;
+        return `<div class="ctx-task"><span class="n">[ ]</span><span title="${esc(e.text)}">${hi}${esc(e.text)}</span><span class="due c-meta">${esc(fmtDue(e.data.prazo, now))}</span></div>`;
       }).join('');
-      if (!html) html = `<div class="empty">${b.abertas ? 'nada atrasado nem urgente' : 'nenhuma tarefa aberta' + (S.ctx ? ' aqui' : '')}</div><div class="ctx-hint">- revisar cap 2 #tcc >sex</div>`;
-      else html += `<div class="ctx-hint">${b.atrasadas ? `<span class="c-warn">${b.atrasadas} atrasadas</span> · ` : ''}${s.feitasHoje ? `✓ ${s.feitasHoje} feitas hoje · ` : ''}/inicio · /tarefas</div>`;
+      if (!html) html = `<div class="empty">nada vence nos próximos dias</div>`;
+      html += `<div class="ctx-hint">${prox.length > 7 ? `+${prox.length - 7} · ` : ''}${semPrazo ? `${semPrazo} sem prazo · ` : ''}<span class="c-int">/tarefas</span> mostra tudo</div>`;
     }
 
     $('x-title').textContent = title;
@@ -371,12 +442,16 @@ export function createUI(ctx) {
     // ambiente
     const wx = S.weather;
     const st = ctx.store?.status;
+    // dia e clima sempre · rede, memória e capturas só com /sistema (offline aparece sempre: é atenção, não telemetria)
     $('x-env').innerHTML = [
       ['dia', `${DOW[now.getDay()]} ${ddmm(now)} · ${hhmm(now)}`],
-      ['local', wx ? `${esc(wx.place.name)} · ${describe(wx.code).icon} ${Math.round(wx.temp)}°` : 'NA'],
-      ['rede', navigator.onLine ? `online${S.lastLatency != null ? ' · ' + S.lastLatency + 'ms' : ''}` : '<span class="c-warn">offline</span>'],
-      ['memória', `${esc(mem()[0])} · ${E.length}${st?.lastSync ? ' · ' + hhmm(new Date(st.lastSync)) : ''}`],
-      ['hoje', `${E.filter(e => e.day === dayKey(now)).length} capturas`],
+      ['clima', wx ? `${esc(wx.place.name)} · ${describe(wx.code).icon} ${Math.round(wx.temp)}°` : 'NA'],
+      ...(!navigator.onLine ? [['rede', '<span class="c-warn">offline · salvo aqui e subo depois</span>']] : []),
+      ...(S.sistema ? [
+        ['rede', navigator.onLine ? `online${S.lastLatency != null ? ' · ' + S.lastLatency + 'ms' : ''}` : '<span class="c-warn">offline</span>'],
+        ['memória', `${esc(mem()[0])} · ${E.length}${st?.lastSync ? ' · ' + hhmm(new Date(st.lastSync)) : ''}`],
+        ['hoje', `${E.filter(e => e.day === dayKey(now)).length} capturas`],
+      ] : []),
     ].map(([k, v]) => `<li><span>${k}</span><b>${v}</b></li>`).join('');
 
     // finanças: os três saldos (Fase 3d) + os gastos do mês · só dado real (sem dado → NA, mas o campo fica)
@@ -505,6 +580,10 @@ export function createUI(ctx) {
     const f = e.target.closest('[data-fill]');
     if (f) { e.preventDefault(); const i = $('cmd'); i.value = f.dataset.fill; i.dispatchEvent(new Event('input', { bubbles: true })); i.focus(); }
   });
+  // tocar num satélite abre a área (/tarefas tcc, /financas)
+  $('field').addEventListener('click', e => { const c = e.target.closest('.sat[data-cmd]'); if (c) rodar(c.dataset.cmd); });
+  // botões dos rails (círculo do "hoje", barras de projeto e status) executam como se você tivesse digitado
+  for (const r of document.querySelectorAll('.rail')) r.addEventListener('click', e => { const c = e.target.closest('[data-cmd]'); if (c) { e.preventDefault(); e.stopPropagation(); rodar(c.dataset.cmd); } });
   // tocar no bloco de finanças do painel abre a tela de finanças
   document.querySelector('.ctx-fin')?.addEventListener('click', () => rodar('/financas'));
   let touchX = null;

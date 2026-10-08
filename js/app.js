@@ -49,6 +49,7 @@ const S = {
   ctx: null,         // aba atual (projeto), ex: 'tcc' · null = inbox (~)
   taskList: null,    // ids na ordem dos números t1, t2... da última lista mostrada
   view: (() => { try { return localStorage.getItem('mb.view.v1'); } catch { return null; } })(), // visão das tarefas (/ver)
+  sistema: (() => { try { return localStorage.getItem('mb.sistema.v1') === '1'; } catch { return false; } })(), // /sistema: telemetria na tela (rede, processos, fluxo, rodapé)
   detalhes: (() => { try { return localStorage.getItem('mb.detalhes.v1') === '1'; } catch { return false; } })(), // /detalhes: linhas técnicas (T0005, ms, %, regra)
   lastLatency: null,
   weather: null,

@@ -5,7 +5,7 @@
 //   satélites   → CONTEXT · MEMORY · NETWORK · INPUT · PROCESS: o conector acende quando o subsistema trabalha
 //   teclas      → cada tecla manda uma faísca do INPUT para o núcleo
 //   pulsos      → anéis que saem do centro quando algo acontece (captura, erro, sync)
-//   anel externo→ progresso do dia (hora atual)
+//   anel externo→ o dia (v0.14): tarefas de hoje feitas (verde) e atrasadas (âmbar), "hoje 1/5" · um ponto marca a hora
 //
 // Camadas, de dentro pra fora: nucleus · raios · anel do reator · rede neural · órbitas · anel HUD · conectores.
 // birth (0→1) controla o nascimento: cada camada aparece numa faixa desse valor.
@@ -90,7 +90,8 @@ export function createCore(canvas, satEls = {}) {
   let birth = 1;              // 0..1 no boot; 1 = núcleo completo
   let rot = 0, rotIn = 0, orb = 0, t = 0;
   let flash = 0;              // brilho extra do centro (teclas, eventos)
-  let dayP = 0;               // progresso do dia (0..1)
+  let dayP = 0;               // a hora do dia (0..1): o ponto no anel
+  let dayRing = { feitas: 0, atrasadas: 0, total: 0 }; // as tarefas de hoje (v0.14)
   const active = Object.fromEntries(SATS.map(k => [k, 0]));   // brilho atual de cada conector
   const target = Object.fromEntries(SATS.map(k => [k, false]));
   const shown = Object.fromEntries(SATS.map(k => [k, true]));  // satélite visível (o boot liga um a um)
@@ -260,8 +261,27 @@ export function createCore(canvas, satEls = {}) {
         ctx.stroke();
       }
       ctx.restore();
-      circle(R * 1.06, A, 0.55 * sHud, 1.5, dayP * sHud);
-      circle(R * 1.06, C.meta, 0.08 * sHud, 1.5, 1);
+      // o anel do dia: feitas (verde) e atrasadas (âmbar), em fração das tarefas de hoje · sem tarefa hoje, só o trilho
+      circle(R * 1.06, C.meta, 0.1 * sHud, 2, 1);
+      if (dayRing.total) {
+        const fF = dayRing.feitas / dayRing.total, fA = dayRing.atrasadas / dayRing.total, lw = G.mode === 'strip' ? 2 : 3;
+        if (fF > 0) circle(R * 1.06, C.act, 0.85 * sHud, lw, fF * sHud);
+        if (fA > 0) circle(R * 1.06, C.warn, 0.8 * sHud, lw, fA * sHud, -Math.PI / 2 + fF * TAU);
+        if (G.mode !== 'strip' && sHud > 0.9) {
+          ctx.save();
+          ctx.font = `${Math.round(Math.max(10, R * 0.11))}px "JetBrains Mono", monospace`;
+          ctx.textAlign = 'center';
+          ctx.fillStyle = rgba(C.tx, 0.75);
+          ctx.fillText(`hoje ${dayRing.feitas}/${dayRing.total}`, cx, cy + R * 0.8);
+          ctx.restore();
+        }
+      }
+      // a hora do dia: um ponto pequeno no trilho
+      const aH = -Math.PI / 2 + dayP * TAU;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(aH) * R * 1.06, cy + Math.sin(aH) * R * 1.06, G.mode === 'strip' ? 1.5 : 2.2, 0, TAU);
+      ctx.fillStyle = rgba(C.tx, 0.7 * sHud);
+      ctx.fill();
     }
 
     // órbitas inclinadas, com um nó viajando em cada
@@ -506,8 +526,11 @@ export function createCore(canvas, satEls = {}) {
     setBirth(b) { birth = clamp(b); redrawIfStill(); },
     get birth() { return birth; },
     setDay(p) { dayP = clamp(p); },
+    // as tarefas de hoje no anel: { feitas, atrasadas, total }
+    setDayRing(r) { dayRing = { feitas: r.feitas || 0, atrasadas: r.atrasadas || 0, total: r.total || 0 }; redrawIfStill(); },
     // liga/desliga o brilho do conector de um satélite
     activate(k, on) { if (k in target) target[k] = !!on; },
+    isActive: k => !!target[k],
     showSat(k, on) { if (k in shown) { shown[k] = !!on; satEls[k]?.classList.toggle('is-on', !!on); } },
     pulse(tone = 'int', d = 1.3) {
       if (!motionOK()) return;

@@ -99,7 +99,7 @@ const { term, ui } = ctx;
 /* ================= executar o que foi digitado ================= */
 
 // comandos que não fecham o palco (o /ver e o /tarefas decidem sozinhos: kanban abre, as outras visões fecham)
-const STAGE_FICA = /^\/(overview|ov|geral|tudo|ver|v|visao|tarefas|ts|feito|ok|x|done|reabrir|reopen|mover|mv|editar|ed|e|adiar|prazo|desfazer|undo|apagar|rm|sim|s|yes|nao|não|n|no|t|cat|forma|pagamento|credito|crédito|saldo|financas|finanças|fin|dinheiro|ajuda|help)(\s|$)/i;
+const STAGE_FICA = /^\/(overview|ov|geral|tudo|ver|v|visao|tarefas|ts|feito|ok|x|done|reabrir|reopen|mover|mv|editar|ed|e|adiar|prazo|desfazer|undo|apagar|rm|sim|s|yes|nao|não|n|no|t|cat|forma|pagamento|credito|crédito|saldo|financas|finanças|fin|dinheiro|ajuda|help|hoje)(\s|$)/i;
 
 async function run(text) {
   // com o palco aberto (overview, kanban): texto livre e comandos de tarefa deixam ele aberto (a tela se atualiza
@@ -271,6 +271,8 @@ async function migrate(t) {
 function showHome() {
   try { ctx.commands.get('inicio').run(''); }
   catch (e) { term.error(e); }
+  // celular: o app abre na tela Hoje (o dia, o dinheiro, os próximos dias), com o campo de escrever embaixo
+  if (matchMedia('(max-width: 760px)').matches) ui.openStage('hoje');
   term.print('<span class="dim">escreva do seu jeito · <span class="c-act">ligar pro dentista amanhã</span> · <span class="c-act">gastei 30 no almoço</span> · <span class="c-act">- texto</span> é sempre tarefa · <span class="c-act">/ajuda</span> mostra tudo</span>');
 }
 

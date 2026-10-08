@@ -9,7 +9,7 @@ import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary, is
 import { viewGroups } from './views.js';
 import { fmtDue, fmtDia } from './dates.js';
 import { fmtValor } from './valores.js';
-import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes, cartoesDe, proximasFaturas, resumoSaldos, ciclosCredito, parcelasNoMes, cartaoDoGasto, mesDe } from './financas.js';
+import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes, cartoesDe, proximasFaturas, resumoSaldos, ciclosCredito, parcelasNoMes, cartaoDoGasto, mesDe, resumoCredito } from './financas.js';
 import { shortUrl, isAcervo, isLink, safeUrl } from './acervo.js';
 import { deriveState, describeState, readIntent, LISTEN_MS, FAULT_MS } from './state.js';
 import { pessoasDe } from './pessoas.js';
@@ -160,8 +160,9 @@ export function createUI(ctx) {
     renderFoot();
     if (stage) renderStage(E, now);
     $('work-meta').textContent = ({ email: 'login · e-mail', password: 'login · senha', code: 'login · código' }[S.mode] || 'captura') + ' · ~' + (S.ctx ? '/' + S.ctx : '');
-    $('f-state').textContent = st.label;
-    $('f-desc').textContent = st.desc;
+    if (S.sistema || !ctx.store) { $('f-state').textContent = st.label; $('f-desc').textContent = st.desc; }
+    else { const r = resumoDia(E, now); $('f-state').textContent = r.titulo; $('f-desc').textContent = r.linha; }
+    renderQuick();
   }
 
   function field(id, value, tone) {
@@ -539,9 +540,9 @@ export function createUI(ctx) {
 
   function renderStage(E, now) {
     const meta = `${DOW[now.getDay()]} ${ddmm(now)} · ${hhmm(now)} · ~${stage.proj ? '/' + stage.proj : ''}`;
-    $('st-title').textContent = stage.titulo || { kanban: 'KANBAN', financas: 'FINANÇAS' }[stage.kind] || 'OVERVIEW';
+    $('st-title').textContent = stage.titulo || { kanban: 'KANBAN', financas: 'FINANÇAS', hoje: 'HOJE' }[stage.kind] || 'OVERVIEW';
     $('st-meta').textContent = stage.kind === 'kanban' ? `${stage.proj ? '#' + stage.proj : 'todas'}${stage.status ? ' · @' + stage.status : ''} · ${hhmm(now)}` : meta;
-    const html = stage.html ?? (stage.kind === 'kanban' ? kanbanHtml(E, now) : stage.kind === 'financas' ? financasHtml(E, now) : overviewHtml(E, now));
+    const html = stage.html ?? (stage.kind === 'kanban' ? kanbanHtml(E, now) : stage.kind === 'financas' ? financasHtml(E, now) : stage.kind === 'hoje' ? hojeHtml(E, now) : overviewHtml(E, now));
     // só troca o HTML quando muda: digitar não reinicia a rolagem nem a aba do kanban
     if (html !== stageHtml) { $('st-body').innerHTML = html; stageHtml = html; }
   }
@@ -581,7 +582,7 @@ export function createUI(ctx) {
     if (f) { e.preventDefault(); const i = $('cmd'); i.value = f.dataset.fill; i.dispatchEvent(new Event('input', { bubbles: true })); i.focus(); }
   });
   // tocar num satélite abre a área (/tarefas tcc, /financas)
-  $('field').addEventListener('click', e => { const c = e.target.closest('.sat[data-cmd]'); if (c) rodar(c.dataset.cmd); });
+  $('field').addEventListener('click', e => { const c = e.target.closest('.sat[data-cmd], .field-strip[data-cmd]'); if (c) rodar(c.dataset.cmd); });
   // botões dos rails (círculo do "hoje", barras de projeto e status) executam como se você tivesse digitado
   for (const r of document.querySelectorAll('.rail')) r.addEventListener('click', e => { const c = e.target.closest('[data-cmd]'); if (c) { e.preventDefault(); e.stopPropagation(); rodar(c.dataset.cmd); } });
   // tocar no bloco de finanças do painel abre a tela de finanças
@@ -593,6 +594,76 @@ export function createUI(ctx) {
     const dx = e.changedTouches[0].clientX - touchX; touchX = null;
     if (Math.abs(dx) > 60) kbGo(kbTab + (dx < 0 ? 1 : -1));
   }, { passive: true });
+
+  // O dia em poucas palavras (faixa do celular e tela Hoje): "hoje 1/5" · "2 atrasadas · crédito resta R$ 977,10"
+  function resumoDia(E, now) {
+    const hoje = dayKey(now), ts = E.filter(e => e.kind === 'tarefa');
+    const vencem = ts.filter(e => !doneAt(e) && e.data?.prazo && e.data.prazo <= hoje);
+    const feitas = ts.filter(e => doneAt(e) && dayKey(new Date(doneAt(e))) === hoje).length;
+    const atras = vencem.filter(e => e.data.prazo < hoje).length, total = vencem.length + feitas;
+    const rc = resumoCredito(E, S.records || [], now);
+    const partes = [atras ? `${atras} atrasada${atras > 1 ? 's' : ''}` : '', rc.limite != null ? `crédito resta ${fmtValor(rc.resta)}` : ''].filter(Boolean);
+    return { titulo: total ? `hoje ${feitas}/${total}` : 'hoje em dia ✓', linha: partes.join(' · ') || 'toque pra ver o dia' };
+  }
+
+  // HOJE (v0.14, o começo no celular): o que vence hoje e o atrasado (o círculo conclui), o que já foi feito, o dinheiro do mês,
+  // os próximos dias e as notas de hoje · escrever não fecha a tela (a lista se atualiza)
+  function hojeHtml(E, now) {
+    const reg = ctx.reg(), hoje = dayKey(now), ate = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7));
+    const ts = E.filter(e => e.kind === 'tarefa');
+    const abertas = ts.filter(e => !doneAt(e));
+    const vencem = abertas.filter(e => e.data?.prazo && e.data.prazo <= hoje).sort((a, b) => a.data.prazo.localeCompare(b.data.prazo));
+    const feitas = ts.filter(e => doneAt(e) && dayKey(new Date(doneAt(e))) === hoje);
+    const prox = abertas.filter(e => e.data?.prazo && e.data.prazo > hoje && e.data.prazo <= ate).sort((a, b) => a.data.prazo.localeCompare(b.data.prazo));
+    const item = (e, feita) => {
+      const due = e.data?.prazo ? fmtDue(e.data.prazo, now) : '';
+      const proj = projectOf(e, reg.projects);
+      return `<li class="${feita ? 'is-done' : ''}">${feita ? '<span class="ck is-done">✓</span>' : `<button type="button" class="ck" data-cmd="/feito id:${esc(e.id)}" title="concluir">○</button>`}` +
+        `<span class="t">${prioOf(e) === 'alta' && !feita ? '<span class="c-warn">!</span> ' : ''}${esc(e.text)}${proj ? ` <span class="c-act">#${esc(proj)}</span>` : ''}</span>` +
+        `<span class="due ${feita ? 'dim' : due.startsWith('atrasada') ? 'c-warn' : due === 'hoje' ? 'c-act' : 'c-meta'}">${feita ? 'feita' : esc(due)}</span></li>`;
+    };
+    const tarefas = vencem.length || feitas.length
+      ? `<ul class="hoje-list hoje-big">${vencem.map(e => item(e, false)).join('')}${feitas.map(e => item(e, true)).join('')}</ul>`
+      : `<div class="ov-empty">nada vence hoje ✓${abertas.length ? ` · ${abertas.length} abertas sem pressa` : ''}<br>escreva <span class="c-int">- revisar cap 2 #tcc hoje</span></div>`;
+    // dinheiro do mês: tocar abre a tela de finanças
+    const fin = hudFinancas(E, now, { cartoes: ciclosCredito(S.records || []) });
+    const sd = resumoSaldos(E, S.records || [], now), rc = sd.credito, pct = Math.min(100, Math.round((rc.frac || 0) * 100));
+    const din = `<button type="button" class="hoje-din" data-cmd="/financas">` +
+      `<span><span class="dim">gastos ${esc(fmtMes(fin.mes, now))}</span><b>${fin.vazio ? 'NA' : esc(fmtValor(fin.gastos))}</b></span>` +
+      `<span><span class="dim">crédito</span><b class="${rc.resta < 0 || rc.frac > 0.8 ? 'c-warn' : 'c-act'}">${rc.limite == null ? 'NA' : (rc.resta < 0 ? 'passou ' : 'resta ') + esc(fmtValor(Math.abs(rc.resta)))}</b></span>` +
+      `<span><span class="dim">conta</span><b>${sd.conta == null ? 'NA' : esc(fmtValor(sd.conta))}</b></span>` +
+      (rc.limite != null ? `<span class="fz-meter${rc.resta < 0 || rc.frac > 0.8 ? ' is-warn' : ''}"><i style="width:${pct}%"></i></span>` : '') + `</button>`;
+    const proxHtml = prox.length ? prox.slice(0, 6).map(e => `<div class="ov-row"><span class="n">${esc(fmtDue(e.data.prazo, now))}</span><span class="t">${esc(e.text)}</span><span class="r"></span></div>`).join('') : '<div class="ov-empty">nada nos próximos 7 dias</div>';
+    const notas = E.filter(e => isNoteKind(e) && e.day === hoje);
+    const notasHtml = notas.length ? notas.slice(-3).reverse().map(e => `<div class="ov-row"><span class="n">${hhmm(new Date(e.ts))}</span><span class="t">${hl(e.text)}</span><span class="r"></span></div>`).join('') : '';
+    const r = resumoDia(E, now);
+    return `<div class="ov-grid hoje-grid">` +
+      `<div class="ov-b"><h3>tarefas <span>${esc(r.titulo)}</span></h3>${tarefas}</div>` +
+      `<div class="ov-b"><h3>dinheiro <span>${esc(fmtMes(fin.mes, now))}</span></h3>${din}</div>` +
+      `<div class="ov-b"><h3>próximos 7 dias <span>${prox.length}</span></h3>${proxHtml}</div>` +
+      (notasHtml ? `<div class="ov-b"><h3>notas de hoje <span>${notas.length}</span></h3>${notasHtml}</div>` : '') +
+      `</div>`;
+  }
+
+  // CELULAR: botões logo acima do campo · hoje · mês · desfazer + as respostas da pergunta pendente (forma, categoria, sim/não)
+  function renderQuick() {
+    const el = $('quick');
+    if (!el) return;
+    const q = (S.perguntas || []);
+    const btn = (label, cmd, cls = '') => `<button type="button" class="chip${cls ? ' ' + cls : ''}" data-cmd="${esc(cmd)}">${esc(label)}</button>`;
+    const resp = [];
+    const f = q.find(x => x.tipo === 'forma');
+    if (f) resp.push(...['pix', 'credito', 'debito', 'dinheiro'].map(x => btn(FORMA_ROTULO[x] || x, `/forma ${x} ${f.n}`, 'is-q')));
+    const c = q.find(x => x.tipo === 'categoria');
+    if (c) resp.push(...(c.lista || []).filter(x => x !== 'outros').slice(0, 5).map(x => btn(x, `/cat ${x} ${c.n}`, 'is-q')));
+    if (q.some(x => ['tipo', 'pessoa', 'projeto', 'verbo'].includes(x.tipo))) resp.push(btn('sim', '/sim', 'is-q'), btn('não', '/nao', 'is-q'));
+    const html = (ctx.store ? [...resp, btn('hoje', '/hoje'), btn('mês', '/financas'), btn('desfazer', '/desfazer')] : []).join('');
+    // compara com a última versão desenhada (o innerHTML que o navegador devolve nunca é igual ao que foi escrito:
+    // redesenhar a cada atualização trocava o botão no meio do toque e o toque se perdia)
+    if (html !== quickHtml) { el.innerHTML = html; quickHtml = html; }
+  }
+  let quickHtml = '';
+  $('quick')?.addEventListener('click', e => { const c = e.target.closest('[data-cmd]'); if (c) { e.preventDefault(); rodar(c.dataset.cmd); $('cmd').focus({ preventScroll: true }); } });
 
   // FINANÇAS (v0.14): conta e crédito no topo, gastos por categoria (barras), gastos dia a dia e os últimos lançamentos.
   // Só dado real; sem dado, cada bloco diz como alimentar. Uma série por gráfico (uma cor só); âmbar = atenção, sempre com texto.

@@ -100,7 +100,7 @@
         <div class="sat" data-sat="network"><b>NETWORK</b><span id="s-network">NA</span><small id="s-network-2"></small></div>
         <div class="sat" data-sat="process"><b>PROCESS</b><span id="s-process">ocioso</span><small id="s-process-2"></small></div>
         <div class="sat" data-sat="input"><b>INPUT</b><span id="s-input">aguardando</span><small id="s-input-2"></small></div>
-        <div class="field-strip" aria-hidden="true"><b id="f-state">INITIALIZING</b><span id="f-desc"></span></div>
+        <div class="field-strip" data-cmd="/hoje" title="abre a tela Hoje"><b id="f-state">INITIALIZING</b><span id="f-desc"></span></div>
       </div>
     </div>
 
@@ -115,6 +115,8 @@
       <div class="term-h"><span>terminal</span><span class="term-meta" id="work-meta"></span></div>
       <div class="out" id="out" role="log" aria-live="polite"></div>
       <div class="intent-line" id="intent-line" aria-live="polite"></div>
+      <!-- celular: botões logo acima do campo (hoje · mês · desfazer + as respostas da pergunta pendente) -->
+      <div class="quick" id="quick" aria-label="atalhos"></div>
       <form class="prompt" id="form" autocomplete="off">
         <label for="cmd" class="ps"><span class="ps-who">vini@core</span><span class="ps-path">:~</span><span class="ps-caret">›</span></label>
         <input id="cmd" name="cmd" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" placeholder="escreva qualquer coisa · /ajuda">

@@ -29,8 +29,10 @@ export function criarNotas(kit) {
       },
     },
     {
-      name: 'hoje', data: true, desc: 'notas de hoje + tarefas de hoje e atrasadas',
+      name: 'hoje', data: true, desc: 'a tela Hoje: o que vence hoje e o atrasado, o dinheiro do mês, os próximos dias e as notas de hoje',
       run() {
+        // v0.14: uma tela (palco), a mesma que o celular abre ao entrar · sem tela (testes), o texto de antes
+        if (ctx.ui?.openStage) { ctx.ui.openStage('hoje'); return term.say('o seu dia · o círculo conclui · escreva normal que a lista se atualiza · <span class="c-int">esc</span> fecha'); }
         const k = dayKey(new Date());
         const notes = notesPool().filter(e => e.day === k);
         if (notes.length) { term.print(`── notas de hoje ${'─'.repeat(10)}`, 'sep'); noteRows(notes); }

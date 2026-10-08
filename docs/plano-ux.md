@@ -1,6 +1,6 @@
 # v0.14 · polimento com uso real (UX, bugs e dois saldos)
 
-> Status: **aprovado pelo Vini em 08/10/2026**, com as mudanças da seção "Decisões do Vini" · **feito até a etapa 5 (v0.14.8)** · próxima: etapa 6 (celular), 6 (celular), 7 (`/revisar` + `/arrumar`, que corrige o "paguei cartão de crédito 1.680" antigo), 8 (fechamento) · pedido completo em `docs/prompt-ux-uso-real.md`.
+> Status: **aprovado pelo Vini em 08/10/2026**, com as mudanças da seção "Decisões do Vini" · **feito até a etapa 6 (v0.14.9)** · próxima: etapa 7 (`/revisar` + `/arrumar`), 6 (celular), 7 (`/revisar` + `/arrumar`, que corrige o "paguei cartão de crédito 1.680" antigo), 8 (fechamento) · pedido completo em `docs/prompt-ux-uso-real.md`.
 > Nada de funcionalidade nova além do pedido. Ritual de cada etapa: explico antes → faço → `/tests/` verde → prints **antes e depois** em 1440×900, 1280×720 e 390×844 → como testar → `sw.js` (`CACHE`) → commit em português → `CLAUDE.md`.
 > Versão: cada etapa sobe um número (v0.14.1, v0.14.2…), porque a v0.14.0 já é a da 3d. No roadmap a rodada aparece como "v0.14 · polimento com uso real".
 
@@ -76,7 +76,7 @@ Mesma estética (escuro, verde/ciano, mono, HUD), conteúdo trocado: a tela most
 - **Gráficos só com dado real**; sem dado, o lugar fica com uma frase de como alimentar ("escreva `gastei 30 no almoço`").
 - `CLAUDE.md` seção Visual reescrita com a regra nova: o silêncio continua, mas o que aparece é dado da sua vida; telemetria é opcional.
 
-### Etapa 6 · Celular (seção 5)
+### Etapa 6 · Celular (seção 5) · **feita (v0.14.9)**
 - Some a faixa "READY · aguardando operador" e o rodapé de infra (o estado vira um pontinho no cabeçalho).
 - **Barra de chips acima do teclado**: `hoje` · `mês` · `desfazer` + os chips da última pergunta.
 - **Abrir cai na tela "Hoje"**: vence hoje + vencidas + gasto do mês (e crédito restante), com o campo de escrever embaixo.

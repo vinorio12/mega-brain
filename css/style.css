@@ -217,6 +217,18 @@ ul, ol, dl, dd { margin: 0; padding: 0; list-style: none; }
 .bar-row .bar { grid-column: 1 / -1; position: relative; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
 .bar-row .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--act); border-radius: 2px; }
 .bar-row .bar i.late { background: var(--warn); }
+/* barra de botões do celular: escondida no PC */
+.quick { display: none; }
+/* tela Hoje: o bloco de dinheiro é um botão (abre /financas) */
+.hoje-din { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--bg-1); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.hoje-din:hover { border-color: var(--line-2); }
+.hoje-din > span:not(.fz-meter) { display: grid; gap: 2px; font-size: 11px; min-width: 0; }
+.hoje-din b { font-size: 14px; font-weight: 500; white-space: nowrap; }
+.hoje-din .fz-meter { grid-column: 1 / -1; margin-top: 0; }
+/* o crédito numa linha (com a barra), gastos e conta lado a lado: três valores não cabem na coluna */
+.hoje-din > span:nth-child(2) { grid-column: 1 / -1; order: -2; }
+.hoje-din .fz-meter { order: -1; }
 
 .list { display: grid; gap: 5px; font-size: 11.5px; }
 .list li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
@@ -692,12 +704,21 @@ a.acard:hover { border-color: color-mix(in srgb, var(--int) 50%, transparent); }
   .hf-state b { letter-spacing: .06em; }
   .cog { display: none; }
 
-  .field-slot { height: 96px; border-bottom: 1px solid var(--line); }
-  .field-strip { display: grid; position: absolute; left: 108px; right: 12px; top: 50%; transform: translateY(-50%); gap: 2px; }
-  .field-strip b { font-weight: 300; font-size: 16px; letter-spacing: .18em; color: var(--tone, var(--tx)); }
+  /* v0.14: a faixa mostra o seu dia ("hoje 1/5 · 2 atrasadas · crédito resta R$ 977"), mais baixa; tocar abre a tela Hoje */
+  .field-slot { height: 72px; border-bottom: 1px solid var(--line); }
+  .field-strip { display: grid; position: absolute; left: 84px; right: 12px; top: 50%; transform: translateY(-50%); gap: 2px; cursor: pointer; }
+  .field-strip b { font-weight: 400; font-size: 15px; letter-spacing: .08em; color: var(--tx); }
+  .app.sys-on .field-strip b { font-weight: 300; font-size: 16px; letter-spacing: .18em; color: var(--tone, var(--tx)); }
   .field-strip span { color: var(--meta); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .field.is-boot .field-strip { display: none; }
   .stage { padding: 10px 12px 6px; }
+  /* barra de botões logo acima do campo: hoje · mês · desfazer + as respostas da pergunta pendente */
+  .quick { display: flex; gap: 6px; overflow-x: auto; padding: 6px 12px 2px; scrollbar-width: none; }
+  .quick:empty { display: none; }
+  .quick .chip { flex: 0 0 auto; margin: 0; font-size: 12.5px; padding: 7px 12px; }
+  .quick .chip.is-q { color: var(--bg); background: var(--int); border-color: var(--int); }
+  .hoje-big { font-size: 14px; gap: 10px; }
+  .hoje-big .ck { width: 24px; height: 24px; font-size: 12px; transform: translateY(5px); }
   /* finanças no celular: dois números por linha (o crédito ocupa a linha toda: tem a barra) */
   .fz-kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
   .fz-kpi { padding: 10px; }

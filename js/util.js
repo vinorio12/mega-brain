@@ -1,6 +1,6 @@
 // Pequenas ferramentas usadas em todo o app.
 
-export const VERSION = '0.14.8';
+export const VERSION = '0.14.9';
 
 export const DOW = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 

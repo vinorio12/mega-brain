@@ -239,6 +239,11 @@ describe('valores (valores.js · Fase 2)', () => {
 });
 
 describe('rail "hoje" (v0.14 · etapa 5)', () => {
+  test('/hoje abre a tela Hoje (a mesma que o celular abre ao entrar)', () => {
+    const s = setup([]);
+    s.ctx.commands.get('hoje').run('');
+    eq(s.ctx.ui.stage.kind, 'hoje');
+  });
   test('/feito id:<id> conclui a tarefa exata (o círculo do rail não depende da numeração)', async () => {
     const s = setup([]);
     await s.run('/t primeira');

@@ -466,7 +466,20 @@ a.acard:hover { border-color: color-mix(in srgb, var(--int) 50%, transparent); }
 }
 .cmdpill:hover, .cmdpill:focus-visible { background: color-mix(in srgb, var(--int) 24%, transparent); border-color: var(--int); outline: none; }
 .cmdpill.is-fill { background: none; border-style: dashed; }
-.cmdrow .cd { color: var(--tx); opacity: .9; } /* exemplos do /ajuda: "gastei 45 no ifood → gasto" */
+.cmdrow .cd { color: var(--tx); opacity: .9; }
+/* ajuda de uma área no palco: abas no topo, comandos em colunas (muitos visíveis sem rolar), botão e descrição lado a lado */
+.aj { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.aj > * { flex-shrink: 0; } /* as abas (com rolagem lateral no celular) não podem encolher */
+.aj-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip.is-on { color: var(--bg); background: var(--int); border-color: var(--int); }
+.aj-ex { display: flex; flex-wrap: wrap; gap: 4px 22px; font-size: 12.5px; }
+.aj-leg { font-size: 11px; color: var(--meta); }
+.aj-leg .cmdpill { font-size: 10.5px; padding: 1px 6px; cursor: default; pointer-events: none; }
+.aj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr)); gap: 2px 26px; align-content: start; }
+.aj-item { display: grid; grid-template-columns: 17.5ch minmax(0, 1fr); gap: 0 10px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.aj-item .cmdpill { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.aj-item .cd { font-size: 12px; color: var(--tx); opacity: .88; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.aj-sec h3 { margin: 4px 0 6px; padding-bottom: 5px; border-bottom: 1px solid var(--line-2); display: flex; justify-content: space-between; font-size: 10px; font-weight: 400; letter-spacing: .2em; text-transform: uppercase; color: var(--meta); } /* exemplos do /ajuda: "gastei 45 no ifood → gasto" */
 .lg-c { margin: 2px 0; }
 .lg-c .mk { display: inline-block; width: 1.4ch; color: var(--act); }
 .lg-c.lv-wrn .mk, .lg-c.lv-wrn { color: var(--warn); }
@@ -685,6 +698,16 @@ a.acard:hover { border-color: color-mix(in srgb, var(--int) 50%, transparent); }
   .chip { font-size: 13px; padding: 8px 13px; }
   .cmdrow { grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 7px 0; border-bottom: 1px solid var(--line); }
   .cmdpill { font-size: 14px; padding: 6px 12px; }
+  .aj-item { grid-template-columns: 16.5ch minmax(0, 1fr); padding: 6px 0; }
+  .aj-item .cmdpill { font-size: 12.5px; padding: 4px 8px; }
+  .aj { gap: 10px; }
+  .aj-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .aj-tabs .chip { flex: 0 0 auto; font-size: 12px; padding: 6px 11px; }
+  .aj-ex { flex-direction: column; gap: 2px; font-size: 11.5px; }
+  .aj-ex > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .aj-leg { display: none; }
+  .aj-item { padding: 4px 0; }
+  .aj-item .cd { font-size: 11.5px; }
   .chips { gap: 8px; margin: 6px 0 2px; display: flex; }
   .note { grid-template-columns: 5ch minmax(0, 1fr) auto; gap: 0 1ch; }
   .acv { grid-template-columns: minmax(0, 1fr); }

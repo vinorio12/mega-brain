@@ -435,7 +435,8 @@ export function createUI(ctx) {
   // stage = { kind: 'overview' | 'kanban', proj, status } · null = fechado
   let stage = null, stageHtml = '', kbTab = 0;
   function openStage(kind, opts = {}) {
-    stage = { kind, proj: opts.proj ?? S.ctx, status: opts.status ?? null };
+    // html/titulo: conteúdo pronto de quem chamou (ex: a ajuda de uma área, montada em js/comandos/sistema.js)
+    stage = { kind, proj: opts.proj ?? S.ctx, status: opts.status ?? null, html: opts.html ?? null, titulo: opts.titulo ?? null };
     stageHtml = '';
     // a numeração t1, t2... da tela vale pros próximos comandos (/feito t1) e não muda enquanto ela está aberta
     if (kind === 'overview') S.taskList = briefing(S.entries, { reg: ctx.reg(), proj: stage.proj, limit: 8 }).items.map(e => e.id);
@@ -463,9 +464,9 @@ export function createUI(ctx) {
 
   function renderStage(E, now) {
     const meta = `${DOW[now.getDay()]} ${ddmm(now)} · ${hhmm(now)} · ~${stage.proj ? '/' + stage.proj : ''}`;
-    $('st-title').textContent = { kanban: 'KANBAN', financas: 'FINANÇAS' }[stage.kind] || 'OVERVIEW';
+    $('st-title').textContent = stage.titulo || { kanban: 'KANBAN', financas: 'FINANÇAS' }[stage.kind] || 'OVERVIEW';
     $('st-meta').textContent = stage.kind === 'kanban' ? `${stage.proj ? '#' + stage.proj : 'todas'}${stage.status ? ' · @' + stage.status : ''} · ${hhmm(now)}` : meta;
-    const html = stage.kind === 'kanban' ? kanbanHtml(E, now) : stage.kind === 'financas' ? financasHtml(E, now) : overviewHtml(E, now);
+    const html = stage.html ?? (stage.kind === 'kanban' ? kanbanHtml(E, now) : stage.kind === 'financas' ? financasHtml(E, now) : overviewHtml(E, now));
     // só troca o HTML quando muda: digitar não reinicia a rolagem nem a aba do kanban
     if (html !== stageHtml) { $('st-body').innerHTML = html; stageHtml = html; }
   }
@@ -500,6 +501,9 @@ export function createUI(ctx) {
     if (b) return kbGo(+b.dataset.tab);
     const c = e.target.closest('[data-cmd]');
     if (c) { e.preventDefault(); rodar(c.dataset.cmd); }
+    // botão tracejado: escreve o comando no campo pra você completar (a tela continua aberta)
+    const f = e.target.closest('[data-fill]');
+    if (f) { e.preventDefault(); const i = $('cmd'); i.value = f.dataset.fill; i.dispatchEvent(new Event('input', { bubbles: true })); i.focus(); }
   });
   // tocar no bloco de finanças do painel abre a tela de finanças
   document.querySelector('.ctx-fin')?.addEventListener('click', () => rodar('/financas'));

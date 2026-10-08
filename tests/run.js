@@ -247,16 +247,18 @@ describe('/ajuda enxuta (v0.14 · etapa 4.5)', () => {
     ok(/gastei 45 no ifood/.test(txt) && /data-cmd="\/ajuda dinheiro"/.test(txt) && /data-cmd="\/ajuda tarefas"/.test(txt), txt);
     ok(!/\/recorrente nova/.test(txt), 'não despeja todos os comandos');
   });
-  test('/ajuda dinheiro: só os comandos de dinheiro, uma linha cada', () => {
+  test('/ajuda dinheiro: abre na tela grande, só os comandos de dinheiro, com as abas das áreas', () => {
     const s = setup([]);
     s.ctx.commands.get('ajuda').run('dinheiro');
-    const txt = s.term.text();
+    eq(s.ctx.ui.stage.kind, 'ajuda');
+    const txt = s.ctx.ui.stage.html;
+    ok(/data-cmd="\/ajuda tarefas"/.test(txt) && /data-fill="\/cat "/.test(txt) && /data-cmd="\/mes"/.test(txt), 'abas, tracejado e cheio');
     ok(/\/mes/.test(txt) && /\/credito/.test(txt) && /paguei a fatura 1\.680/.test(txt) && !/\/pessoa\b/.test(txt), txt);
   });
   test('/ajuda tudo lista todos os comandos; /ajuda mes detalha; palavra estranha dá erro', async () => {
     const s = setup([]);
     s.ctx.commands.get('ajuda').run('tudo');
-    const txt = s.term.text();
+    const txt = s.ctx.ui.stage.html;
     const faltam = s.ctx.commands.names().filter(n => !txt.includes('/' + n));
     eq(faltam, []);
     s.term.out.length = 0;

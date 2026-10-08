@@ -53,10 +53,6 @@ export function criarSistema(kit) {
         for (const c of todos) areaDe.set(c, AREAS.find(ar => ar.pick(c)).key);
         const curto = d => esc(String(d || '').split(' · ')[0]);
         const exemplos = ex => ex.forEach(([f, o]) => term.print(`<span class="c-int">${esc(f)}</span> <span class="dim">→ ${esc(o)}</span>`, 'ex'));
-        const teclado = () => {
-          term.print('teclado', 'tgrp');
-          table([['tab', 'completa /comandos e #tags'], ['↑ ↓', 'histórico'], ['ctrl+c', 'cancela a tarefa em andamento'], ['ctrl+k', 'limpa a tela'], ['ctrl+.', 'mostra/esconde o painel'], ['alt+1..4', 'abas: ~ · tcc · weg · pessoal'], ['esc', 'apaga a linha · fecha a tela grande']]);
-        };
 
         // /ajuda (sem nada): o essencial em poucas linhas + as áreas como botões
         if (!a) {
@@ -68,35 +64,37 @@ export function criarSistema(kit) {
           return;
         }
 
-        // /ajuda tudo: a lista completa de antes, por área
+        // /ajuda dinheiro e /ajuda tudo: na tela grande do centro (o terminal embaixo do núcleo mostrava poucos comandos por vez).
+        // Comandos em colunas, botão e descrição lado a lado; as áreas viram abas no topo; esc fecha.
+        const NUNCA = ['sair', 'entrar', 'codigo', 'boot', 'migrar', 'importar', 'exportar', 'limpar'];
+        const item = c => {
+          const roda = !c.exec && !String(c.args || '').startsWith('<') && !NUNCA.includes(c.name);
+          const botao = roda
+            ? `<button type="button" class="cmdpill" data-cmd="/${esc(c.name)}">/${esc(c.name)}</button>`
+            : `<button type="button" class="cmdpill is-fill" data-fill="/${esc(c.name)} ">/${esc(c.name)}</button>`;
+          return `<div class="aj-item" title="${esc(c.desc)}">${botao}<span class="cd">${curto(c.desc)}</span></div>`;
+        };
+        const abas = atual => `<nav class="aj-tabs">${AREAS.map(x => `<button type="button" class="chip${x.key === atual ? ' is-on' : ''}" data-cmd="/ajuda ${x.key}">${esc(x.nome)}</button>`).join('')}` +
+          `<button type="button" class="chip${atual === 'tudo' ? ' is-on' : ''}" data-cmd="/ajuda tudo">tudo</button></nav>`;
+        const legenda = '<div class="aj-leg"><span class="cmdpill">/cheio</span> roda na hora · <span class="cmdpill is-fill">/tracejado</span> escreve no campo pra você completar · <span class="c-int">/ajuda mes</span> detalha um comando</div>';
+        const exHtml = ex => (ex.length ? `<div class="aj-ex">${ex.map(([f, o]) => `<span><span class="c-int">${esc(f)}</span> <span class="dim">→ ${esc(o)}</span></span>`).join('')}</div>` : '');
+
         if (a === 'tudo' || a === 'todos') {
-          for (const ar of AREAS) {
-            const lista = todos.filter(c => areaDe.get(c) === ar.key);
-            if (!lista.length) continue;
-            term.print(`── ${ar.nome}`, 'sep');
-            table(lista.map(c => [`/${c.name}${c.args ? ' ' + esc(c.args) : ''}`, esc(c.desc)]), 'cmd');
-          }
-          return teclado();
+          const secoes = AREAS.map(x => {
+            const lista = todos.filter(c => areaDe.get(c) === x.key);
+            return lista.length ? `<section class="aj-sec"><h3>${esc(x.nome)} <span>${lista.length}</span></h3><div class="aj-grid">${lista.map(item).join('')}</div></section>` : '';
+          }).join('');
+          ctx.ui.openStage('ajuda', { titulo: 'AJUDA', html: `<div class="aj">${abas('tudo')}${legenda}${secoes}</div>` });
+          return term.say(`todos os ${todos.length} comandos abertos na tela · <span class="c-int">esc</span> fecha`);
         }
 
-        // /ajuda dinheiro: uma área (exemplos do que escrever + os comandos dela, uma linha cada)
         const ar = AREAS.find(x => x.key === a || x.alias.includes(a) || strip(x.nome) === strip(a));
         if (ar) {
-          term.print(`── ${ar.nome} ${'─'.repeat(10)}`, 'sep');
-          if (ar.ex.length) { term.print('escreva assim', 'tgrp'); exemplos(ar.ex); }
-          term.print('comandos <span class="dim">· toque: os cheios rodam na hora · os tracejados escrevem no campo pra você completar</span>', 'tgrp');
-          // um botão claro por comando + a descrição em cor normal (antes: texto pequeno em duas cores, difícil de ler)
-          const NUNCA = ['sair', 'entrar', 'codigo', 'boot', 'migrar', 'importar', 'exportar', 'limpar'];
-          for (const c of todos.filter(x => areaDe.get(x) === ar.key)) {
-            const roda = !c.exec && !String(c.args || '').startsWith('<') && !NUNCA.includes(c.name);
-            const botao = roda
-              ? `<button type="button" class="cmdpill" data-cmd="/${esc(c.name)}">/${esc(c.name)}</button>`
-              : `<button type="button" class="cmdpill is-fill" data-fill="/${esc(c.name)} ">/${esc(c.name)}</button>`;
-            term.print(`${botao}<span class="cd">${curto(c.desc)}</span>`, 'cmdrow');
-          }
-          if (ar.key === 'sistema') teclado();
-          term.print(`<span class="dim">/ajuda &lt;comando&gt; mostra o uso completo · outras áreas:</span>${chips(AREAS.filter(x => x !== ar).map(x => chip(x.nome, '/ajuda ' + x.key)))}`);
-          return;
+          const lista = todos.filter(c => areaDe.get(c) === ar.key);
+          const teclas = ar.key === 'sistema'
+            ? `<section class="aj-sec"><h3>teclado</h3><div class="aj-ex">${[['tab', 'completa'], ['↑ ↓', 'histórico'], ['ctrl+c', 'cancela'], ['ctrl+k', 'limpa a tela'], ['ctrl+.', 'painel'], ['alt+1..4', 'abas'], ['esc', 'fecha a tela grande']].map(([k, d]) => `<span><span class="c-int">${k}</span> <span class="dim">${d}</span></span>`).join('')}</div></section>` : '';
+          ctx.ui.openStage('ajuda', { titulo: `AJUDA · ${ar.nome.toUpperCase()}`, html: `<div class="aj">${abas(ar.key)}${exHtml(ar.ex)}${legenda}<div class="aj-grid">${lista.map(item).join('')}</div>${teclas}</div>` });
+          return term.say(`ajuda de ${esc(ar.nome)} aberta na tela · as abas trocam de área · <span class="c-int">esc</span> fecha`);
         }
 
         // /ajuda mes: um comando

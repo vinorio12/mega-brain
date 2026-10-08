@@ -1,6 +1,6 @@
 # v0.14 · polimento com uso real (UX, bugs e dois saldos)
 
-> Status: **aprovado pelo Vini em 08/10/2026**, com as mudanças da seção "Decisões do Vini" · **feito até a etapa 7 (v0.14.10)** · próxima: etapa 8 (fechamento), 6 (celular), 7 (`/revisar` + `/arrumar`, que corrige o "paguei cartão de crédito 1.680" antigo), 8 (fechamento) · pedido completo em `docs/prompt-ux-uso-real.md`.
+> Status: **aprovado pelo Vini em 08/10/2026**, com as mudanças da seção "Decisões do Vini" · **rodada concluída e publicada (08/10/2026, v0.14.10)**: etapas 1 a 8 feitas, 6 (celular), 7 (`/revisar` + `/arrumar`, que corrige o "paguei cartão de crédito 1.680" antigo), 8 (fechamento) · pedido completo em `docs/prompt-ux-uso-real.md`.
 > Nada de funcionalidade nova além do pedido. Ritual de cada etapa: explico antes → faço → `/tests/` verde → prints **antes e depois** em 1440×900, 1280×720 e 390×844 → como testar → `sw.js` (`CACHE`) → commit em português → `CLAUDE.md`.
 > Versão: cada etapa sobe um número (v0.14.1, v0.14.2…), porque a v0.14.0 já é a da 3d. No roadmap a rodada aparece como "v0.14 · polimento com uso real".
 
@@ -92,7 +92,7 @@ Mesma estética (escuro, verde/ciano, mono, HUD), conteúdo trocado: a tela most
   - tarefas abertas com **prazo automático** antigo (as que você adiou em lote) → sugere tirar o prazo.
   - Você responde `/sim` (tudo), `/arrumar 1 3` (só esses) ou `/nao`. Tudo entra no `/desfazer`. O comando é genérico (procura padrões), então serve de novo se acontecer.
 
-### Etapa 8 · Fechamento
+### Etapa 8 · Fechamento · **feita**
 README, `/ajuda` (comandos novos: `/detalhes`, `/sistema`, `/credito`, `/financas`, `/revisar`, `/arrumar`), `CLAUDE.md` (Visual, roadmap "v0.14 · polimento com uso real", formato do registro novo), backlog.
 
 ---

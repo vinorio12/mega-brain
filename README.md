@@ -5,11 +5,19 @@ Tudo entra escrevendo, do seu jeito: notas, tarefas, gastos, treinos, links e te
 Instalável no celular e no PC (PWA), com dados na nuvem e acesso só do dono.
 
 ```
-MB CORE v0.14.0                                 ■ READY  ⇅ ON  ◫ NUVEM  ⋮ 18° 94%
+MB CORE v0.14                                          ■ READY  ☁ 21° 99%  qui 08.10
 › ligar pro dentista amanhã
-18:03 OK  task   tarefa t4 · ligar pro dentista · T0007 · 84ms
-          ↳ entendi · tarefa · #pessoal* · >amanhã · !média* · * auto · regra 80% · /desfazer ou /editar t4
+✓ tarefa t4 · ligar pro dentista · #pessoal · amanhã                    [desfazer]
+› gastei 45 no ifood
+✓ gasto f2 · R$ 45,00 · alimentação · ifood · hoje                       [desfazer]
+  ↳ forma?  [pix] [crédito] [débito] [dinheiro] [boleto]
+› débito
+✓ f2 · débito · gastei 45 no ifood · aprendi
 ```
+
+A tela mostra a sua vida, não a máquina: à esquerda o que vence **hoje** (um toque conclui), no centro o núcleo com o
+**anel do dia** e as suas **áreas** (TCC, WEG, PESSOAL, DINHEIRO) com números reais, à direita os próximos dias e o dinheiro.
+No celular, o app abre na tela **Hoje**, com botões logo acima do teclado. A telemetria (rede, processos, rodapé técnico) fica no `/sistema`.
 
 ## O que dá pra fazer
 
@@ -24,7 +32,10 @@ MB CORE v0.14.0                                 ■ READY  ⇅ ON  ◫ NUVEM  �
 | `nota: …` | guarda como nota, sem tentar entender |
 | `/tipo tarefa` · `/tipo gasto #3` | corrige o que o app entendeu (sem número: a última coisa escrita) |
 | `esperando o João mandar o orçamento` · `falar com a Ana amanhã` | reconhece quem já está cadastrado (sem @); "esperando/aguardando" vira @esperando |
-| `/sim` · `/nao` | responde a última pergunta do app ("Carla é uma pessoa?", "era tarefa?") |
+| `débito` · `saúde` · `sim` (logo depois de uma pergunta) | responde sem barra; toda pergunta também tem botões |
+| `t2 sexta` · `t2 05.10` · `t2 fazendo` · `t2 feito` · `hoje concluí t1, t2, t3` | mexe nas tarefas com frase curta |
+| `ajuda` · `mês` · `hoje` (sozinhos) | rodam o comando (`nota: ajuda` guarda como nota) |
+| `/sim` · `/nao` | responde a última pergunta do app ("Carla é uma pessoa?", "#faculdade não é projeto", "/arrumar") |
 | `/pessoas` · `/pessoa João` · `/pessoa juntar Jão com João` | quem está cadastrado, tudo de uma pessoa, editar e juntar cadastros |
 | `/memoria` · `/memoria planilha = weg` · `/memoria ifood = alimentação` | o que o app aprendeu (pessoa/palavra → projeto, categoria, forma) e como corrigir |
 | `/saldo` · `/mes` · `/gastos alimentação` · `/fatura nubank` · `/recorrentes` · `/cat f3 lazer` · `/forma pix` | o mês em dinheiro, a lista numerada, a fatura do cartão, as contas fixas e as correções |
@@ -33,8 +44,13 @@ MB CORE v0.14.0                                 ■ READY  ⇅ ON  ◫ NUVEM  �
 | `/editar t2 #weg !alta` · `/mover t3 fazendo` · `/feito t1-t3` | mexe nas tarefas |
 | `/mudancas t2` | o histórico de uma tarefa (criada, status, prazos, concluída) |
 | `/buscar termo [tipo:gasto]` | procura em tudo |
+| `/hoje` | a tela Hoje: o que vence hoje e o atrasado, o dinheiro do mês, os próximos dias |
+| `/revisar` | as tarefas vencidas, uma por uma: feito · amanhã · sexta · semana que vem · sem prazo · apagar |
+| `/financas` · `/credito 1500` · `paguei a fatura 1.680` | a tela de finanças, o seu crédito do mês e o pagamento da fatura (não é gasto) |
+| `/arrumar` | procura o que limpar nos dados e só mexe com o seu sim |
 | `/desfazer` | desfaz a última mudança |
-| `/ajuda` | lista todos os comandos |
+| `/detalhes` · `/sistema` | as linhas técnicas de cada lançamento · a telemetria na tela |
+| `/ajuda` · `/ajuda dinheiro` · `/ajuda tudo` | o essencial e as áreas em botões · os comandos de uma área · todos |
 
 ## O intérprete
 
@@ -43,7 +59,11 @@ Tudo o que você escreve passa por uma função só, `interpretar(texto)` (`js/i
 1. **Regras primeiro** (`js/provedor-regras.js`): leem datas (amanhã, sexta, dia 15, semana que vem), valores (30, R$ 30,50),
    começos como "preciso", "tenho que", verbos e palavras-chave dos projetos. Cada tipo (`js/tipos-*.js`) diz como se reconhece.
 2. **Na dúvida**, se a IA estiver ligada, ela decide. Hoje ela está **criada e desligada** (`INTERPRETADOR` em `js/config.js`).
-3. **Sem certeza e sem IA**: salva como nota e pergunta "era tarefa? `/tipo tarefa`". Nunca perde o que foi escrito.
+3. **Sem certeza e sem IA**: quando o palpite é tarefa, cria a tarefa direto (com o botão "era nota"); outro palpite
+   ("abasteci 200 no posto": gasto?) salva como nota e pergunta. Nunca perde o que foi escrito.
+
+Antes do intérprete, a frase curta passa por `js/conversa.js`: resposta a uma pergunta pendente ("débito"), atalho de tarefa
+("t2 sexta", "hoje concluí t1, t2") ou nome de comando sozinho ("ajuda"). Tarefa sem data na frase fica sem prazo.
 
 Toda resposta segue o mesmo contrato (`js/tipos.js`): tipo, campos, confiança e origem (regra ou IA).
 A régua `tests/frases.js` tem as frases de exemplo com o resultado esperado. As regras passam nela, e a IA vai ter que passar também.
@@ -73,8 +93,13 @@ lugar e pessoa, e mostra na linha "↳ entendi" com um número (f1, f2...).
   `fone 3x de 100` e `almoço 40 no nubank` vão pra fatura certa: compra antes do fechamento entra na fatura do mês; no dia do
   fechamento ou depois, na seguinte. Uma compra parcelada aparece uma vez na lista ("crédito nubank 3x") e cada parcela
   (centavos, a sobra na primeira: 100 em 3x = 33,34 + 33,33 + 33,33) entra na fatura do seu mês.
-- **Saldo do mês** = entradas − o que sai à vista no mês (pix, débito, dinheiro, boleto) − as faturas que vencem no mês.
-  Não é o saldo do banco. Sem cartão cadastrado, o crédito conta no mês da compra.
+- **Sobra do mês** = entradas − o que sai à vista no mês (pix, débito, dinheiro, boleto) − as faturas que vencem no mês.
+  Não é o saldo do banco (esse é a **conta**, abaixo).
+- **Crédito do mês** (v0.14): `/credito 1500` diz quanto você se dá de crédito (vale até mudar). Sem cartão cadastrado,
+  a fatura fecha dia 29 e vence dia 5 (`/credito 1500 fecha 29 vence 5` muda). Cada compra no crédito ocupa o valor todo
+  (parcelada também) e diz quanto resta; cada fatura paga devolve a parte dela. `paguei a fatura 1.680` ou
+  `paguei cartão de crédito 1.680` sai da conta e **não é gasto** (com ou sem cartão cadastrado). `/financas` mostra a tela:
+  conta, crédito com barra, gastos por categoria, saídas dia a dia e os últimos lançamentos.
 - Comandos: `/mes [-1]` · `/gastos [categoria] [mês]` · `/entradas` · `/fatura [cartão] [+1]` · `/cartoes` · `/cartao novo|padrao|renomear|arquivar` ·
   `/editar f3 45,90 débito ontem` · `/editar f3 3x` · `/editar f3 inter` · `/categorias` · `/categoria nova|renomear|arquivar` ·
   `/categorizar` (dá categoria aos lançamentos antigos) · `/memoria ifood = alimentação` · `/memoria ifood = nubank`.
@@ -100,6 +125,10 @@ lugar e pessoa, e mostra na linha "↳ entendi" com um número (f1, f2...).
 - **Funciona offline:** um service worker guarda o app, e uma fila guarda o que você escreve sem internet
   e envia quando a rede volta. O tempo real sincroniza entre os aparelhos.
 - **O núcleo** (canvas) reage ao estado real: READY, LISTENING, PROCESSING, EXECUTING, LOCKED, OFFLINE, DEGRADED, FAULT.
+  O anel externo é o dia (tarefas de hoje feitas e atrasadas) e os satélites são as suas áreas: o conector acende quando o que
+  você digita é daquela área.
+- **Telas grandes no centro** (o "palco"): overview, kanban, finanças, Hoje e a ajuda de uma área ocupam o lugar do núcleo,
+  e o terminal encolhe pra 3–4 linhas embaixo (`esc` fecha).
 
 ## Rodar localmente
 
@@ -118,10 +147,12 @@ Abra http://localhost:5173. Os testes ficam em http://localhost:5173/tests/.
 | `index.html`, `css/style.css` | a tela e o visual |
 | `js/app.js` | boot, login e ligação das peças |
 | `js/core.js`, `js/boot.js`, `js/state.js` | o núcleo, a sequência de boot, os estados e a prévia do que o Enter vai fazer |
-| `js/terminal.js`, `js/commands.js` | o terminal e a linguagem de comandos |
+| `js/terminal.js` | o terminal: saída, log, teclado e os botões tocáveis |
+| `js/commands.js`, `js/comandos/*.js` | a linguagem de comandos: o índice e uma área por arquivo (tela, intérprete, tarefas, pessoas, notas, dados, sistema, finanças) |
+| `js/conversa.js`, `js/arrumar.js` | frases curtas antes do intérprete ("t2 sexta", "débito", "ajuda") · o que o `/arrumar` sugere limpar |
 | `js/interpretar.js`, `js/provedor-regras.js`, `js/provedor-ia.js` | o intérprete: regras, IA (desligada) e a ordem entre eles |
 | `js/tipos.js`, `js/tipos-base.js`, `js/tipos-financas.js`, `js/tipos-corpo.js` | contrato + registro de tipos (nota, tarefa, link, trecho, gasto, entrada, transferência, treino) |
-| `js/financas.js`, `js/comandos/financas.js` | finanças: leitura da frase, categorias, o mês e o saldo · os comandos e telas de dinheiro |
+| `js/financas.js` | finanças: leitura da frase, categorias, o mês, cartões, recorrentes, os saldos e o crédito |
 | `js/dates.js`, `js/valores.js` | datas faladas e valores em reais (centavos) |
 | `js/historico.js`, `js/aprendizado.js`, `js/contexto.js` | histórico de mudanças, frases não entendidas e o resumo pra IA |
 | `js/pessoas.js`, `js/memoria.js` | pessoas reconhecidas na frase e a memória que aprende projeto, categoria e forma pelo uso |

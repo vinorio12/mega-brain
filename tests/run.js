@@ -29,6 +29,7 @@ import { montarContexto, estimarTokens } from '../js/contexto.js';
 import { pessoasDe, findPessoas, candidatosPessoa, acharPessoa, editApelidos, juntarPessoas, resumoPessoa } from '../js/pessoas.js';
 import { criarMemoria, decidirProjeto, palavrasDe } from '../js/memoria.js';
 import { lerAtalhoTarefa, respostaPergunta, comandoSozinho } from '../js/conversa.js';
+import { sugestoesArrumacao, semTags } from '../js/arrumar.js';
 
 /* ---------------- mini framework ---------------- */
 
@@ -236,6 +237,76 @@ describe('valores (valores.js · Fase 2)', () => {
   test('tirar o valor não cola o marcador na palavra de antes', () => eq(findValor('pagar 30 !alta').resto, 'pagar !alta'));
   test('fmtValor', () => eq([3000, 123456, 5, -500, 0, 100000000].map(fmtValor),
     ['R$ 30,00', 'R$ 1.234,56', 'R$ 0,05', '-R$ 5,00', 'R$ 0,00', 'R$ 1.000.000,00']));
+});
+
+describe('revisar e arrumar (v0.14 · etapa 7)', () => {
+  const T = { id: 'T', elapsed: () => 1 };
+  const reg = registry([]);
+  const nota = (id, text) => ({ id, kind: 'nota', text, tags: [], ts: 1, day: '2026-10-05' });
+  test('sugestoesArrumacao: respostas, comandos, atalhos e tentativas viram "apagar"', () => {
+    const es = [nota('a', 'debito'), nota('b', 'débito'), nota('c', 'ajuda'), nota('d', 'inbox'), nota('e', 't2 05.10'), nota('f', 'pix de 270'), nota('g', 'ideia boa pro tcc')];
+    const ler = t => provedorRegras.interpretar(t, { now: new Date(2026, 9, 8, 12), reg });
+    const r = sugestoesArrumacao(es, { projetos: reg.projects, statuses: reg.statuses, comandos: ['ajuda', 'inbox', 'hoje'], ler });
+    eq(r.map(x => [x.ids[0], x.acao]), [['a', 'apagar'], ['b', 'apagar'], ['c', 'apagar'], ['d', 'apagar'], ['e', 'apagar'], ['f', 'apagar']]);
+    ok(/hoje seria gasto/.test(r.find(x => x.ids[0] === 'f').motivo), 'diz que hoje seria gasto');
+  });
+  test('sugestoesArrumacao: tarefa "fazendo", fatura gravada como gasto, #tag no título e prazo automático', () => {
+    const es = [
+      { id: 't1', kind: 'tarefa', text: 'fazendo', tags: ['tcc'], ts: 1, data: { projeto: 'tcc', status: 'a fazer' } },
+      { id: 't2', kind: 'tarefa', text: 'enviar comprovante #faculdade', tags: ['faculdade'], ts: 2, data: { status: 'a fazer' } },
+      { id: 't3', kind: 'tarefa', text: 'revisar cap 2', tags: [], ts: 3, data: { status: 'a fazer', prazo: '2026-10-06', auto: { campos: ['prazo', 'status'] } } },
+      { id: 'g1', kind: 'gasto', text: 'paguei cartão de crédito 1.680', tags: [], ts: 4, data: { valor: 168000, data: '2026-10-05', forma: 'credito' } },
+      { id: 'g2', kind: 'gasto', text: 'mercado 87', tags: [], ts: 5, data: { valor: 8700 } },
+    ];
+    const r = sugestoesArrumacao(es, { projetos: reg.projects, statuses: reg.statuses });
+    eq(r.map(x => [x.acao, x.ids]), [['apagar', ['t1']], ['tirar-tag', ['t2']], ['fatura', ['g1']], ['sem-prazo', ['t3']]]);
+    eq(semTags('enviar comprovante #faculdade de horas', ['faculdade']), 'enviar comprovante de horas');
+  });
+  test('/arrumar lista e não mexe; "sim" aplica tudo num passo só; /desfazer volta tudo', async () => {
+    const s = setup(['debito', 'ideia boa']);
+    await s.ctx.store.restore({ id: 'g1', kind: 'gasto', text: 'paguei cartão de crédito 1.680', tags: [], ts: 5, day: '2026-10-05', data: { valor: 168000, data: '2026-10-05', forma: 'credito' } });
+    await s.run('/arrumar');
+    eq(s.S.entries.length, 3, 'só listou');
+    eq(s.ctx.commands.interceptar('sim'), { cmd: '/sim' });
+    await s.run('/sim');
+    eq(s.S.entries.map(e => e.text), ['ideia boa']);
+    eq(s.S.records.filter(e => e.kind === 'faturapaga').map(e => e.data.valor), [168000]);
+    await s.run('/desfazer');
+    eq(s.S.entries.length, 3);
+    eq(s.S.records.filter(e => e.kind === 'faturapaga').length, 0);
+  });
+  test('/arrumar tira a #tag do título e o projeto que o app chutou (criando o projeto, a tarefa vai pra ele)', async () => {
+    const s = setup([]);
+    await s.ctx.store.restore({ id: 'c1', kind: 'tarefa', text: 'enviar comprovante #faculdade', tags: ['weg', 'faculdade'], ts: 9, day: '2026-10-05', data: { projeto: 'weg', status: 'a fazer', prazo: null, prioridade: 'média', feito_em: null, auto: { campos: ['projeto'] } } });
+    await s.run('/arrumar');
+    await s.run('/sim');
+    const e = s.S.entries.find(x => x.id === 'c1');
+    eq([e.text, e.data.projeto, e.tags.includes('weg'), e.tags.includes('faculdade')], ['enviar comprovante', null, false, true]);
+    await s.run('/projeto novo faculdade');
+    eq(projectOf(s.S.entries.find(x => x.id === 'c1'), registry(s.S.records).projects), 'faculdade');
+  });
+  test('/arrumar 2 aplica só o escolhido', async () => {
+    const s = setup(['debito', 'pix']);
+    await s.run('/arrumar');
+    await s.run('/arrumar 2');
+    eq(s.S.entries.map(e => e.text), ['debito']);
+  });
+  test('/revisar: uma por uma; feito, amanhã e apagar resolvem e a próxima aparece', async () => {
+    const s = setup([]);
+    await s.run('/t primeira >01/10');
+    await s.run('/t segunda >02/10');
+    await s.run('/t terceira >03/10');
+    const id = txt => s.S.entries.find(e => e.text === txt).id;
+    await s.run('/revisar');
+    ok(/1 de 3/.test(s.term.text()) && /primeira/.test(s.term.text()), 'mostra a primeira');
+    await s.run('/revisar feito ' + id('primeira'));
+    ok(/2 de 3/.test(s.term.text()), 'a próxima aparece');
+    await s.run('/revisar amanhã ' + id('segunda'));
+    await s.run('/revisar apagar ' + id('terceira'));
+    eq(s.S.entries.map(e => e.text), ['primeira', 'segunda']);
+    ok(!!s.S.entries.find(e => e.text === 'primeira').data.feito_em && s.S.entries.find(e => e.text === 'segunda').data.prazo > dayKey(new Date()), 'feita e adiada');
+    ok(/nada vencido ✓/.test(s.term.text()), 'acabou');
+  });
 });
 
 describe('rail "hoje" (v0.14 · etapa 5)', () => {

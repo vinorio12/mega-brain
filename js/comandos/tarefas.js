@@ -19,6 +19,8 @@ export function criarTarefas(kit) {
   const tagsNovas = (...a) => kit.tagsNovas(...a);
   const mostrarPergunta = (...a) => kit.mostrarPergunta(...a);
   const resumo = (...a) => kit.resumo(...a);
+  const chip = (...a) => kit.chip(...a);
+  const chips = (...a) => kit.chips(...a);
 
   // a linha "↳ auto": o que o app escolheu sozinho, pra você conferir e corrigir
   function autoLine(values, auto, n, fonte = 'regra') {
@@ -186,7 +188,86 @@ export function criarTarefas(kit) {
     S.lastLatency = t.elapsed();
   }
 
+  /* ---------- /revisar (v0.14): as vencidas uma por uma, um toque resolve cada (sem bronca) ---------- */
+
+  const vencidas = (now = new Date()) => S.entries.filter(e => isTask(e) && !doneAt(e) && e.data?.prazo && e.data.prazo < dayKey(now))
+    .sort((a, b) => a.data.prazo.localeCompare(b.data.prazo) || a.ts - b.ts);
+  // a próxima da fila (que ainda existe, está aberta e vencida) com os botões
+  function proximaRevisao() {
+    const r = S.revisao;
+    const hoje = dayKey(new Date());
+    while (r.fila.length) {
+      const e = S.entries.find(x => x.id === r.fila[0]);
+      if (e && !doneAt(e) && e.data?.prazo && e.data.prazo < hoje) break;
+      r.fila.shift();
+    }
+    if (!r.fila.length) {
+      S.revisao = null;
+      return term.say(r.resolvidas ? `pronto · ${plural(r.resolvidas, 'tarefa')} resolvida${r.resolvidas > 1 ? 's' : ''} · nada vencido ✓` : 'nada vencido ✓');
+    }
+    const e = S.entries.find(x => x.id === r.fila[0]), id = e.id;
+    const proj = projectOf(e, ctx.reg().projects);
+    const pos = r.total - r.fila.length + 1;
+    term.print(`── revisar · ${pos} de ${r.total} ${'─'.repeat(8)}`, 'sep');
+    term.print(`${prioOf(e) === 'alta' ? '<span class="c-warn">!</span> ' : ''}<b>${hl(e.text)}</b>${proj ? ` <span class="c-act">#${esc(proj)}</span>` : ''} <span class="c-warn">${esc(fmtDue(e.data.prazo))}</span>`, 'rev');
+    term.print(chips(['feito', 'amanhã', 'sexta', 'semana que vem', 'sem prazo', 'apagar', 'pular'].map(a => chip(a, `/revisar ${a.replace(/ /g, '-')} ${id}`, a === 'apagar' ? 'is-undo' : ''))), 'rev-acoes');
+  }
+  // uma decisão sobre a tarefa: feito · amanhã · sexta · semana-que-vem · sem-prazo · apagar · pular
+  async function decidirRevisao(acao, id, t) {
+    if (!S.revisao) S.revisao = { fila: vencidas().map(e => e.id), total: vencidas().length, resolvidas: 0 };
+    const e = S.entries.find(x => x.id === id && isTask(x));
+    if (!e) throw new CmdError('E_404', 'task', 'essa tarefa não existe mais', '<span class="c-int">/revisar</span> recomeça');
+    const alvo = [{ n: (S.taskList || []).indexOf(e.id) + 1 || 1, e }];
+    const PRAZO = { 'amanhã': 'amanhã', amanha: 'amanhã', sexta: 'sex', 'semana-que-vem': '+7' };
+    if (acao === 'feito') {
+      await updateTasks(alvo, () => statusChange(ctx.reg(), finalStatus(ctx.reg())), 'conclusão');
+      term.ok('task', `concluída · ${hl(e.text)}`);
+    } else if (PRAZO[acao]) {
+      const prazo = parseDue(PRAZO[acao]);
+      await editTasks(alvo, { prazo }, t, 'mudança de prazo');
+      term.ok('task', `${hl(e.text)} → <span class="c-int">${esc(fmtDue(prazo))}</span>`);
+    } else if (acao === 'sem-prazo') {
+      await editTasks(alvo, { prazo: '' }, t, 'mudança de prazo');
+      term.ok('task', `${hl(e.text)} → sem prazo`);
+    } else if (acao === 'apagar') {
+      await ctx.store.remove(e.id);
+      S.undo.push({ label: 'tarefa apagada', items: [e] });
+      term.warn('task', `apagada · ${hl(e.text)} <span class="c-meta">· /desfazer recupera</span>`);
+    } else if (acao !== 'pular') throw usage('revisar', '(os botões fazem isso por você)');
+    S.revisao.fila = S.revisao.fila.filter(x => x !== id);
+    if (acao === 'pular') S.revisao.fila.push(id); else S.revisao.resolvidas++;
+    // pular joga pro fim; se só sobrou ela, a revisão acaba (não fica em loop)
+    if (acao === 'pular' && S.revisao.fila.length === 1) { S.revisao.fila = []; }
+    S.lastLatency = t.elapsed();
+    ctx.ui.pulse('act');
+    proximaRevisao();
+  }
+  // uma vez por dia, ao abrir: "2 tarefas ficaram pra trás" (sem bronca) · com os botões vamos / agora não
+  function lembrarRevisao() {
+    const n = vencidas().length, hoje = dayKey(new Date());
+    let visto = null;
+    try { visto = localStorage.getItem('mb.revisao.v1'); } catch {}
+    if (!n || visto === hoje) return false;
+    try { localStorage.setItem('mb.revisao.v1', hoje); } catch {}
+    term.print(`<span class="c-warn">↳ ${plural(n, 'tarefa')} ${n > 1 ? 'ficaram' : 'ficou'} pra trás</span> <span class="dim">· quer passar uma por uma?</span>${chips([chip('vamos', '/revisar'), chip('agora não', '/revisar depois')])}`, 'auto');
+    return true;
+  }
+
   const defs = [
+    {
+      name: 'revisar', alias: ['revisao', 'revisão', 'vencidas'], data: true, async: true, exec: true, args: '',
+      desc: 'as tarefas vencidas, uma por uma: feito · amanhã · sexta · semana que vem · sem prazo · apagar (um toque resolve)',
+      async run(arg, signal, t) {
+        const [acao, id] = String(arg).trim().split(/\s+/);
+        if (acao === 'depois') return term.say('ok · fica pra depois. <span class="c-int">/revisar</span> quando quiser.');
+        if (acao && id) return decidirRevisao(acao.toLowerCase(), id, t);
+        const fila = vencidas();
+        if (!fila.length) return term.say('nada vencido ✓');
+        S.revisao = { fila: fila.map(e => e.id), total: fila.length, resolvidas: 0 };
+        term.say(`${plural(fila.length, 'tarefa')} ${fila.length > 1 ? 'ficaram' : 'ficou'} pra trás · vamos uma por uma, um toque resolve cada`);
+        proximaRevisao();
+      },
+    },
     {
       name: 'overview', alias: ['ov', 'geral', 'tudo'], data: true,
       desc: 'o geral de tudo (tarefas, finanças, projetos, notas, acervo) numa tela própria · esc fecha',
@@ -508,5 +589,5 @@ export function criarTarefas(kit) {
       },
     },
   ];
-  return { defs, autoLine, parseError, currentView, showView, showCalendar, taskPool, resolveTasks, updateTasks, projLabel, plural, addTask, editTasks };
+  return { defs, lembrarRevisao, autoLine, parseError, currentView, showView, showCalendar, taskPool, resolveTasks, updateTasks, projLabel, plural, addTask, editTasks };
 }

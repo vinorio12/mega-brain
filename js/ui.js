@@ -638,7 +638,7 @@ export function createUI(ctx) {
     const notasHtml = notas.length ? notas.slice(-3).reverse().map(e => `<div class="ov-row"><span class="n">${hhmm(new Date(e.ts))}</span><span class="t">${hl(e.text)}</span><span class="r"></span></div>`).join('') : '';
     const r = resumoDia(E, now);
     return `<div class="ov-grid hoje-grid">` +
-      `<div class="ov-b"><h3>tarefas <span>${esc(r.titulo)}</span></h3>${tarefas}</div>` +
+      `<div class="ov-b"><h3>tarefas <span>${esc(r.titulo)}</span></h3>${tarefas}${vencem.some(e => e.data.prazo < hoje) ? `<div class="hoje-rev"><button type="button" class="chip" data-cmd="/revisar">revisar as atrasadas</button></div>` : ''}</div>` +
       `<div class="ov-b"><h3>dinheiro <span>${esc(fmtMes(fin.mes, now))}</span></h3>${din}</div>` +
       `<div class="ov-b"><h3>próximos 7 dias <span>${prox.length}</span></h3>${proxHtml}</div>` +
       (notasHtml ? `<div class="ov-b"><h3>notas de hoje <span>${notas.length}</span></h3>${notasHtml}</div>` : '') +
@@ -656,7 +656,7 @@ export function createUI(ctx) {
     if (f) resp.push(...['pix', 'credito', 'debito', 'dinheiro'].map(x => btn(FORMA_ROTULO[x] || x, `/forma ${x} ${f.n}`, 'is-q')));
     const c = q.find(x => x.tipo === 'categoria');
     if (c) resp.push(...(c.lista || []).filter(x => x !== 'outros').slice(0, 5).map(x => btn(x, `/cat ${x} ${c.n}`, 'is-q')));
-    if (q.some(x => ['tipo', 'pessoa', 'projeto', 'verbo'].includes(x.tipo))) resp.push(btn('sim', '/sim', 'is-q'), btn('não', '/nao', 'is-q'));
+    if (q.some(x => ['tipo', 'pessoa', 'projeto', 'verbo', 'arrumar'].includes(x.tipo))) resp.push(btn('sim', '/sim', 'is-q'), btn('não', '/nao', 'is-q'));
     const html = (ctx.store ? [...resp, btn('hoje', '/hoje'), btn('mês', '/financas'), btn('desfazer', '/desfazer')] : []).join('');
     // compara com a última versão desenhada (o innerHTML que o navegador devolve nunca é igual ao que foi escrito:
     // redesenhar a cada atualização trocava o botão no meio do toque e o toque se perdia)

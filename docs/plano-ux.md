@@ -1,6 +1,6 @@
 # v0.14 · polimento com uso real (UX, bugs e dois saldos)
 
-> Status: **aprovado pelo Vini em 08/10/2026**, com as mudanças da seção "Decisões do Vini" · **feito até a etapa 6 (v0.14.9)** · próxima: etapa 7 (`/revisar` + `/arrumar`), 6 (celular), 7 (`/revisar` + `/arrumar`, que corrige o "paguei cartão de crédito 1.680" antigo), 8 (fechamento) · pedido completo em `docs/prompt-ux-uso-real.md`.
+> Status: **aprovado pelo Vini em 08/10/2026**, com as mudanças da seção "Decisões do Vini" · **feito até a etapa 7 (v0.14.10)** · próxima: etapa 8 (fechamento), 6 (celular), 7 (`/revisar` + `/arrumar`, que corrige o "paguei cartão de crédito 1.680" antigo), 8 (fechamento) · pedido completo em `docs/prompt-ux-uso-real.md`.
 > Nada de funcionalidade nova além do pedido. Ritual de cada etapa: explico antes → faço → `/tests/` verde → prints **antes e depois** em 1440×900, 1280×720 e 390×844 → como testar → `sw.js` (`CACHE`) → commit em português → `CLAUDE.md`.
 > Versão: cada etapa sobe um número (v0.14.1, v0.14.2…), porque a v0.14.0 já é a da 3d. No roadmap a rodada aparece como "v0.14 · polimento com uso real".
 
@@ -82,7 +82,7 @@ Mesma estética (escuro, verde/ciano, mono, HUD), conteúdo trocado: a tela most
 - **Abrir cai na tela "Hoje"**: vence hoje + vencidas + gasto do mês (e crédito restante), com o campo de escrever embaixo.
 - Testo com o teclado aberto (a área visível encolhe) e sem corte de texto em 390px.
 
-### Etapa 7 · Revisão rápida + arrumar os dados (seções 7 e 8)
+### Etapa 7 · Revisão rápida + arrumar os dados (seções 7 e 8) · **feita (v0.14.10)**
 - **`/revisar`** (abre sozinho uma vez por dia se tiver vencida, dá pra pular): `3 tarefas ficaram pra trás · vamos uma por uma?` e mostra **uma de cada vez** com os chips `feito` · `amanhã` · `sexta` · `semana que vem` · `sem prazo` · `apagar`. Um toque resolve e aparece a próxima, até "pronto, nada vencido". Sem bronca. (`apagar` pede confirmação, como hoje.)
 - **`/arrumar`**: procura e **lista**, sem mexer em nada:
   - notas que eram resposta ou tentativa (`debito`, `pix de 270`, `ajuda`, `inbox`, `gastei $45 na farmácia`…) → sugere apagar (as que agora seriam gasto, sugere trocar pra gasto);

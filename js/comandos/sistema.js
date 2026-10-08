@@ -36,7 +36,7 @@ export function criarSistema(kit) {
         const todos = kit.defs();
         // as áreas (v0.14, pedido do Vini: o /ajuda era muita coisa numa lista só)
         const AREAS = [
-          { key: 'tarefas', nome: 'tarefas', alias: ['tarefa', 'projetos'], pick: c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'projeto', 'status', 'ir'].includes(c.name),
+          { key: 'tarefas', nome: 'tarefas', alias: ['tarefa', 'projetos'], pick: c => ['overview', 'inicio', 't', 'tarefas', 'ver', 'feito', 'mover', 'editar', 'reabrir', 'adiar', 'feitas', 'revisar', 'projeto', 'status', 'ir'].includes(c.name),
             ex: [['- revisar cap 2 #tcc sexta', 'cria tarefa'], ['t2 feito · t2 sexta · t2 fazendo', 'mexe na t2'], ['hoje concluí t1, t3', 'conclui várias']] },
           { key: 'dinheiro', nome: 'dinheiro', alias: ['financas', 'finanças', 'fin'], pick: c => fin.defs.includes(c),
             ex: [['gastei 45 no ifood', 'gasto (categoria e forma aprendem)'], ['paguei a fatura 1.680', 'sai da conta, não é gasto'], ['netflix 55,90 todo mês dia 15', 'recorrente']] },

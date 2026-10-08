@@ -29,7 +29,7 @@ export function criarInterprete(kit) {
   // /detalhes ligado: as linhas técnicas de antes (T0005 · 1ms · regra 90% · * auto) · desligado (padrão): uma linha "✓" legível
   const det = () => !!S.detalhes;
   // perguntas de sim ou não (/sim e /nao respondem a primeira delas); forma e categoria têm o /forma e o /cat
-  const SIM_NAO = ['tipo', 'pessoa', 'projeto', 'verbo'];
+  const SIM_NAO = ['tipo', 'pessoa', 'projeto', 'verbo', 'arrumar'];
 
   // Grava o que o intérprete entendeu (qualquer tipo registrado). Tudo entra no /desfazer.
   // A linha técnica ("OK fin gasto lançado f1 · T0005 · 1ms") só aparece com /detalhes; sem ele vai só pro /log.
@@ -147,6 +147,8 @@ export function criarInterprete(kit) {
     const i = (S.perguntas || []).findIndex(q => SIM_NAO.includes(q.tipo));
     if (i < 0) return term.say('nada pra responder agora.');
     const [q] = S.perguntas.splice(i, 1);
+    // /arrumar: sim aplica todas as sugestões (um passo só do /desfazer), não deixa tudo como está
+    if (q.tipo === 'arrumar') return sim ? kit.aplicarArrumacao(null, t) : (S.arrumacao = null, term.say('ok · nada mudou. <span class="c-int">/arrumar 1 3</span> aplica só alguns.'));
     if (q.tipo === 'tipo') {
       if (sim) {
         S.ultima = { id: q.id, texto: q.texto };

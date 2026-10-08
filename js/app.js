@@ -273,6 +273,7 @@ function showHome() {
   catch (e) { term.error(e); }
   // celular: o app abre na tela Hoje (o dia, o dinheiro, os próximos dias), com o campo de escrever embaixo
   if (matchMedia('(max-width: 760px)').matches) ui.openStage('hoje');
+  try { ctx.commands.lembrarRevisao(); } catch (e) { console.warn('revisão', e); }
   term.print('<span class="dim">escreva do seu jeito · <span class="c-act">ligar pro dentista amanhã</span> · <span class="c-act">gastei 30 no almoço</span> · <span class="c-act">- texto</span> é sempre tarefa · <span class="c-act">/ajuda</span> mostra tudo</span>');
 }
 

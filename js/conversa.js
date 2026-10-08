@@ -55,7 +55,7 @@ export function lerAtalhoTarefa(texto, { statuses = [], now = new Date() } = {})
 // → o comando ('/forma debito f3', '/cat saúde f3', '/sim', '/nao') · null = não é resposta (lê a frase normal)
 const SIM = /^(?:s|sim|isso|claro|pode|yes|y|aham|uhum|exato|bora|cria|criar)[.!]?$/;
 const NAO = /^(?:n|nao|no|nope|negativo|deixa|deixa assim)[.!]?$/;
-const SIM_NAO = ['tipo', 'pessoa', 'projeto', 'verbo'];
+const SIM_NAO = ['tipo', 'pessoa', 'projeto', 'verbo', 'arrumar'];
 export function respostaPergunta(texto, perguntas = []) {
   const s = strip(texto).trim().replace(/\s+/g, ' ');
   if (!s || s.length > 40) return null;

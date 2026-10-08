@@ -5,7 +5,7 @@
 //   findValor('gastei 30 no almoço') → { centavos: 3000, trecho: '30', resto: 'gastei no almoço', explicito: false }
 //   fmtValor(123456) → 'R$ 1.234,56'
 //
-// Entende: 30 · 30,5 · 30,50 · 30.50 · 1.234 · 1.234,56 · R$30 · R$ 30,00 · 30 reais · 1 real · 50 conto/pila/pau
+// Entende: 30 · 30,5 · 30,50 · 30.50 · 1.234 · 1.234,56 · R$30 · R$ 30,00 · $30 · 30 reais · 1 real · 50 conto/pila/pau
 //          50 centavos · 2 mil · R$ 2 mil · 2 mil reais
 // explicito = tem R$, reais, centavos ou gíria de dinheiro. Número solto (explicito: false) só vira gasto/entrada
 // se o intérprete achar palavra de contexto (gastei, paguei, recebi…). Hora, km, cap 15, dia 15, 15/10 não são valor.
@@ -21,7 +21,7 @@ const NAO_ANTES = String.raw`(?<!(?<![\p{L}\d])(?:dia|cap|capitulo|capítulo|pag
 const NAO_DEPOIS = String.raw`(?!\s*(?:h|hs|hrs?|horas?|min|mins|minutos?|seg|segundos?|km|kms|m|metros?|kg|kgs|quilos?|g|gramas?|l|litros?|x|vezes|parcelas?|series|séries|reps?|repeti\p{L}*|dias?|semanas?|mes|mês|meses|anos?|pessoas?|anos?|%|de\s+(?:${MESES}))(?![\p{L}\d]))`;
 
 const RULES = [
-  { explicito: true, re: String.raw`r\$\s*(?<n>${NUM})(?<mil>\s*mil)?` },
+  { explicito: true, re: String.raw`(?:r\$|\$)\s*(?<n>${NUM})(?<mil>\s*mil)?` }, // R$ 45 · r$45 · $45
   { explicito: true, re: String.raw`(?<n>${NUM})(?<mil>\s*mil)?\s*(?:${MOEDA})` },
   { explicito: true, centavos: true, re: String.raw`(?<n>\d+)\s*centavos?` },
   { explicito: false, re: String.raw`${NAO_ANTES}(?<n>${NUM})(?<mil>\s*mil)?${NAO_DEPOIS}` },
@@ -51,7 +51,7 @@ export function findValor(input) {
   }
   if (!best) return null;
   const resto = (text.slice(0, best.inicio) + ' ' + text.slice(best.fim))
-    .replace(/\s+/g, ' ').replace(/\s+([,.;:!?])/g, '$1').replace(/^[\s,.;:–-]+|[\s,;:–-]+$/g, '');
+    .replace(/\s+/g, ' ').replace(/\s+([,.;:!?])(?=\s|$)/g, '$1').replace(/^[\s,.;:–-]+|[\s,;:–-]+$/g, '');
   return { centavos: best.centavos, trecho: text.slice(best.inicio, best.fim), resto, explicito: best.explicito, inicio: best.inicio, fim: best.fim };
 }
 

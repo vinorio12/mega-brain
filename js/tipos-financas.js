@@ -26,7 +26,7 @@ import { findPessoas } from './pessoas.js';
 import { FINANCAS } from './config.js';
 
 // "gastei 45 reais ontem no mercado" → { valor: 4500, descricao: 'mercado', data: ontem } (leitura simples da Fase 2)
-const SOBRA = /^(?:gastei|paguei|comprei|torrei|desembolsei|recebi|ganhei|entrou|entraram|caiu|caíram|vendi|faturei|me\s+pagaram|pagaram|gasto|gastos|no|na|nos|nas|o|a|os|as|de|do|da|dos|das|com|em|pro|pra|para|por|um|uma)\s+/i;
+const SOBRA = /^(?:gastei|paguei|comprei|torrei|desembolsei|recebi|ganhei|entrou|entraram|caiu|caíram|vendi|faturei|me\s+pagaram|pagaram|gasto|gastos|no|na|nos|nas|o|a|os|as|de|do|da|dos|das|com|em|pro|pra|para|por|um|uma)(?:\s+|$)/i;
 export function lerMovimento(texto, now = new Date()) {
   const v = findValor(texto);
   if (!v) return null;
@@ -58,6 +58,7 @@ export function tipoFinanceiro(texto, ctx = {}) {
   if (f.estorno) return { tipo: 'entrada', confianca: 0.9, f };
   if (f.verbo) return { tipo: f.verbo.tipo, confianca: 0.9, f };
   if (f.forma === 'pix' && f.direcao) return { tipo: f.direcao === 'de' ? 'entrada' : 'gasto', confianca: 0.85, f };
+  if (f.forma === 'pix') return { tipo: 'gasto', confianca: 0.85, f }; // "pix de 270", "fiz pix de 270": pix com valor e sem "do/da" é gasto
   if (f.parcelas) return { tipo: 'gasto', confianca: 0.85, f }; // "fone 3x de 100": parcelado é compra
   if (conhecida) return { tipo: conhecida, confianca: 0.85, f };
   if (categoriaSemente(texto, 'gasto', { lugar: f.lugar }) || f.palavras.some(w => naMemoria(w) === 'gasto')) return { tipo: 'gasto', confianca: 0.6, f };

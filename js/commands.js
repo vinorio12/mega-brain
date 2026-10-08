@@ -271,11 +271,15 @@ export function createCommands(ctx) {
     // perguntas pendentes (/sim, /nao respondem a primeira) · escrever outra coisa troca a fila
     S.perguntas = [
       ...(r.pergunta && r.palpite ? [{ tipo: 'tipo', palpite: r.palpite, id: e.id, texto: text, mostrada: true }] : []),
+      ...tagsNovas(r).map(tag => ({ tipo: 'projeto', tag, id: e.id })),
       ...(r.pessoasNovas || []).map(nome => ({ tipo: 'pessoa', nome, id: e.id, texto: text })),
     ];
     mostrarPergunta();
     return { e, n };
   }
+
+  // tarefa com #tag que não é projeto ("#faculdade"): a tag saiu do título e o app pergunta se cria o projeto
+  const tagsNovas = r => (r?.tipo === 'tarefa' && r.motivos?.projeto?.tipo === 'tagnova' ? r.motivos.projeto.tags : []);
 
   // mostra a primeira pergunta da fila (se ainda não apareceu)
   function mostrarPergunta() {
@@ -283,7 +287,9 @@ export function createCommands(ctx) {
     if (!q || q.mostrada) return;
     q.mostrada = true;
     const mais = S.perguntas.length > 1 ? ` <span class="dim">· depois tem mais ${S.perguntas.length - 1}</span>` : '';
-    if (q.tipo === 'pessoa') {
+    if (q.tipo === 'projeto') {
+      term.print(`<span class="c-warn">↳ #${esc(q.tag)} não é projeto</span> <span class="dim">· a tarefa ficou sem projeto ·</span> <span class="c-int">/sim</span> <span class="dim">cria #${esc(q.tag)} e move ·</span> <span class="c-int">/nao</span> <span class="dim">deixa assim</span>${mais}`, 'auto');
+    } else if (q.tipo === 'pessoa') {
       term.print(`<span class="c-int">↳ ${esc(q.nome)} é uma pessoa?</span> <span class="c-int">/sim</span> <span class="dim">cadastra e liga ·</span> <span class="c-int">/nao</span> <span class="dim">não pergunto mais</span>${mais}`, 'auto');
     } else if (q.tipo === 'verbo') {
       term.print(`<span class="c-int">↳ aprender "${esc(q.palavra)}" como ${esc(q.valor)}?</span> <span class="c-int">/sim</span> <span class="dim">da próxima vez já entendo ·</span> <span class="c-int">/nao</span>${mais}`, 'auto');
@@ -310,6 +316,17 @@ export function createCommands(ctx) {
         term.ok('fin', `aprendi · "<span class="c-act">${esc(q.palavra)}</span>" agora é ${esc(q.valor)} <span class="c-meta">· /memoria mostra · /desfazer volta</span>`);
         ctx.ui.pulse('act');
       } else term.ok('fin', `ok · "${esc(q.palavra)}" continua sem significado pra mim`);
+    } else if (q.tipo === 'projeto') {
+      const entry = S.entries.find(x => x.id === q.id);
+      if (sim) {
+        const reg = ctx.reg();
+        const p = reg.projects.includes(q.tag) ? null
+          : await ctx.store.add({ kind: 'projeto', text: q.tag, tags: [], ts: Date.now(), day: dayKey(new Date()), data: { ordem: reg.projects.length + 1, arquivado: false } });
+        if (entry) await ctx.store.restore({ ...entry, tags: [...new Set([q.tag, ...(entry.tags || [])])], data: { ...(entry.data || {}), projeto: q.tag } });
+        S.undo.push({ label: 'projeto criado', items: entry ? [entry] : [], created: p ? [p.id] : [] });
+        term.ok('task', `projeto criado · <span class="c-act">#${esc(q.tag)}</span>${entry ? ` · ${hl(entry.text)} foi pra ele` : ''} <span class="c-meta">· /desfazer volta</span>`);
+        ctx.ui.pulse('act');
+      } else term.ok('task', `ok · fica sem projeto <span class="c-meta">· #${esc(q.tag)} continua como etiqueta · /editar muda</span>`);
     } else if (q.tipo === 'pessoa') {
       if (sim) {
         const p = await ctx.store.add({ kind: 'pessoa', text: q.nome, tags: [], ts: Date.now(), day: dayKey(new Date()), data: { apelidos: [], arquivada: false, juntada_em: null } });
@@ -604,8 +621,10 @@ export function createCommands(ctx) {
     const r = previa(raw, ictx({ forcar: 'tarefa' }));
     if (!r || r.erro?.codigo === 'vazio') throw usage('t', 'revisar cap 2 #tcc @fazendo >sex !alta');
     if (r.erro) throw parseError({ error: r.erro.codigo, token: r.erro.token });
-    const { n } = await salvar(r, t);
+    const { e, n } = await salvar(r, t);
     autoLine(r.campos, r.auto, n.slice(1));
+    S.perguntas = tagsNovas(r).map(tag => ({ tipo: 'projeto', tag, id: e.id }));
+    mostrarPergunta();
   }
 
   // /editar e /mover: muda só os campos informados; o que você corrigir deixa de ser "auto"
@@ -834,6 +853,8 @@ export function createCommands(ctx) {
         if (!nums.length) throw usage('editar', 't2 #weg @fazendo >sex !alta  ·  t3 texto novo');
         const p = parseTaskInput(words.join(' '), { reg: ctx.reg(), allowEmpty: true });
         if (p.error) throw parseError(p);
+        // "#faculdade" que não existe não pode virar o título novo da tarefa
+        if (p.novas?.length) throw new CmdError('E_PROJ', 'task', `projeto #${p.novas[0]} não existe`, `crie com <span class="c-int">/projeto novo ${esc(p.novas[0])}</span> · ou use ${ctx.reg().projects.map(x => '<span class="c-int">#' + esc(x) + '</span>').join(' ')}`);
         if (p.text && nums.length > 1) throw new CmdError('E_ARG', 'task', 'texto novo só dá pra uma tarefa por vez', 'use um número só, ex: /editar t2 texto novo');
         if (!p.text && !p.projeto && !p.status && !p.prioridade && p.prazo === null) throw usage('editar', 't2 #weg @fazendo >sex !alta  ·  t3 texto novo');
         const targets = resolveTasks(nums.join(' '), 'editar', 't2 #weg');

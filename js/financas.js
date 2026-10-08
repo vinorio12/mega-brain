@@ -125,7 +125,7 @@ export const tipoDaPalavra = w => TIPOS_FINANCAS.find(t => SEMENTE_MAPA[t].has(s
 /* ---------- ler a frase ---------- */
 
 // palavras que sobram no começo da descrição (verbos, artigos, preposições)
-const SOBRA = /^(?:gastei|paguei|comprei|torrei|desembolsei|recebi|ganhei|entrou|entraram|caiu|caíram|cairam|vendi|faturei|saiu|saíram|sairam|deu|deram|custou|custaram|pagaram|me\s+pagaram|no|na|nos|nas|num|numa|o|a|os|as|de|do|da|dos|das|com|em|pro|pra|pros|pras|para|por|um|uma|via)\s+/i;
+const SOBRA = /^(?:gastei|paguei|comprei|torrei|desembolsei|recebi|ganhei|entrou|entraram|caiu|caíram|cairam|vendi|faturei|saiu|saíram|sairam|deu|deram|custou|custaram|pagaram|me\s+pagaram|no|na|nos|nas|num|numa|o|a|os|as|de|do|da|dos|das|com|em|pro|pra|pros|pras|para|por|um|uma|via)(?:\s+|$)/i; // até sozinho: "paguei 270" → descrição vazia
 
 // "no almoço", "no fim de semana": é quando, não onde
 const NAO_LUGAR = new Set('almoco jantar janta lanche cafe fim final comeco meio mes semana dia total'.split(' '));

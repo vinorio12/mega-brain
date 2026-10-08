@@ -162,7 +162,8 @@ export function findDate(input, now = new Date()) {
   }
   if (!best) return null;
   const resto = (text.slice(0, best.inicio) + ' ' + text.slice(best.fim))
-    .replace(/\s+/g, ' ').replace(/\s+([,.;:!?])/g, '$1').replace(/^[\s,.;:–-]+|[\s,;:–-]+$/g, '');
+    // junta o espaço só antes de pontuação de verdade ("amanhã, às 9"), nunca antes de marcador ("#tcc !alta")
+    .replace(/\s+/g, ' ').replace(/\s+([,.;:!?])(?=\s|$)/g, '$1').replace(/^[\s,.;:–-]+|[\s,;:–-]+$/g, '');
   return { data: best.data, trecho: text.slice(best.inicio, best.fim), resto, inicio: best.inicio, fim: best.fim };
 }
 

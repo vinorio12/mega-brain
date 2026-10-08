@@ -137,7 +137,7 @@ export function matchStatus(token, statuses) {
 //   allowEmpty: pro /editar, que pode mudar só um campo
 export function parseTaskInput(raw, { ctx = null, reg = registry([]), now = new Date(), allowEmpty = false } = {}) {
   let prazo = null, prioridade = null, status = null, projeto = null;
-  const words = [];
+  const words = [], novas = [];
   for (const w of String(raw).trim().split(/\s+/)) {
     if (!w) continue;
     if (w.startsWith('>') && w.length > 1) {
@@ -152,13 +152,15 @@ export function parseTaskInput(raw, { ctx = null, reg = registry([]), now = new 
       if (!status) return { error: 'status', token: w };
     } else if (/^#[\p{L}\p{N}_-]+$/u.test(w) && !projeto && reg.projects.includes(w.slice(1).toLowerCase())) {
       projeto = w.slice(1).toLowerCase();
+    } else if (/^#[\p{L}\p{N}_-]+$/u.test(w) && !reg.projects.includes(w.slice(1).toLowerCase())) {
+      novas.push(w.slice(1).toLowerCase()); // #faculdade não é projeto: sai do título (quem chama pergunta se cria)
     } else words.push(w);
   }
   const text = words.join(' ');
   if (!text && !allowEmpty) return { error: 'vazio' };
   if (!projeto && ctx) projeto = ctx; // dentro de uma aba, o projeto é o dela
-  const tags = [...new Set([...(projeto ? [projeto] : []), ...tagsOf(text)])];
-  return { text, tags, projeto, status, prazo, prioridade };
+  const tags = [...new Set([...(projeto ? [projeto] : []), ...tagsOf(text), ...novas])];
+  return { text, tags, projeto, status, prazo, prioridade, novas: [...new Set(novas)] };
 }
 
 // palavras "de conteúdo" (3+ letras, sem acento, sem as muito comuns) pra comparar textos
@@ -203,7 +205,9 @@ export function fillByRules(parsed, { entries = [], reg = registry([]), now = ne
   const motivos = {};
   const auto = [];
   const v = { projeto: parsed.projeto, status: parsed.status, prioridade: parsed.prioridade, prazo: parsed.prazo };
-  if (!v.projeto) {
+  // escreveu uma #tag que não é projeto: não chuta outro, fica sem projeto e o app pergunta se cria
+  if (!v.projeto && parsed.novas?.length) motivos.projeto = { tipo: 'tagnova', tags: parsed.novas };
+  else if (!v.projeto) {
     if (decidir) { const d = decidir(parsed.text); v.projeto = d.projeto; motivos.projeto = d.motivo; }
     else v.projeto = guessProject(parsed.text, { entries, reg });
     auto.push('projeto');

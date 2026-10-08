@@ -138,6 +138,18 @@ export const FRASES = [
   // acervo
   { frase: 'https://arxiv.org/abs/2005.11401 paper do RAG #tcc', esperado: { tipo: 'link', campos: { url: 'https://arxiv.org/abs/2005.11401', contexto: 'paper do RAG #tcc', tags: ['tcc'] } } },
   { frase: '"a persistência é o caminho do êxito"', esperado: { tipo: 'trecho', campos: { texto: 'a persistência é o caminho do êxito' } } },
+
+  // v0.14 · uso real do Vini (01–08/10): frases que viraram lixo ou saíram erradas
+  { frase: '- trabalhar no tcc #tcc amanhã !alta', esperado: { tipo: 'tarefa', campos: { texto: 'trabalhar no tcc', projeto: 'tcc', prazo: '2026-10-02', prioridade: 'alta' } } },
+  { frase: '- enviar comprovante de horas complementares #faculdade', esperado: { tipo: 'tarefa', campos: { texto: 'enviar comprovante de horas complementares', projeto: undefined, tags: ['faculdade'] } } },
+  { frase: 'paguei 270', esperado: { tipo: 'gasto', campos: { valor: 27000, descricao: undefined } } },
+  { frase: 'gastei 36', esperado: { tipo: 'gasto', campos: { valor: 3600, descricao: undefined } } },
+  { frase: 'entrou 400', esperado: { tipo: 'entrada', campos: { valor: 40000, descricao: undefined } } },
+  { frase: 'pix de 270', esperado: { tipo: 'gasto', campos: { valor: 27000, forma: 'pix', descricao: undefined } } },
+  { frase: 'fiz pix de 270', esperado: { tipo: 'gasto', campos: { valor: 27000, forma: 'pix' } } },
+  { frase: 'pix de $270', esperado: { tipo: 'gasto', campos: { valor: 27000, forma: 'pix' } } },
+  { frase: 'gastei $45 na farmácia', esperado: { tipo: 'gasto', campos: { valor: 4500, categoria: 'saúde', lugar: 'farmácia' } } },
+  { frase: 'caiu um pix de 200', esperado: { tipo: 'entrada', campos: { valor: 20000, forma: 'pix' } } },
 ];
 
 // Frases que só a IA precisa acertar (as regras não são obrigadas). Ficam fora da exigência automática.

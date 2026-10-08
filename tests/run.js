@@ -230,6 +230,9 @@ describe('valores (valores.js · Fase 2)', () => {
   test('hora, distância, capítulo, dia e data não são valor', () => eq(
     ['treinei 1h', 'corri 5km', 'corri 5 km', 'ler cap 15', 'reunião às 15', 'prova dia 15', 'prova 15/10', '3x10 supino', 'supino 4 séries', '15:30', 'aula 3', '#tcc2', 'dia 15 de outubro', 'dormi 8 horas'].map(findValor),
     Array(14).fill(null)));
+  test('$ também é dinheiro (v0.14)', () => eq(['$45', '$ 45', 'r$45', 'R$ 45', '45 reais', '45 contos'].map(parseValor), Array(6).fill(4500)));
+  test('findValor: "gastei $45 na farmácia"', () => eq([findValor('gastei $45 na farmácia').centavos, findValor('gastei $45 na farmácia').resto], [4500, 'gastei na farmácia']));
+  test('tirar o valor não cola o marcador na palavra de antes', () => eq(findValor('pagar 30 !alta').resto, 'pagar !alta'));
   test('fmtValor', () => eq([3000, 123456, 5, -500, 0, 100000000].map(fmtValor),
     ['R$ 30,00', 'R$ 1.234,56', 'R$ 0,05', '-R$ 5,00', 'R$ 0,00', 'R$ 1.000.000,00']));
 });
@@ -238,10 +241,15 @@ describe('tarefas · lógica (tasks.js)', () => {
   const now = new Date(2026, 8, 30, 15, 0); // quarta 30/09
   const T = (text, prazo = null, feito = null, i = 0) => ({ id: 'k' + i + text, text, tags: tagsOf(text), kind: 'tarefa', ts: 1000 + i, day: '2026-09-30', data: { prazo, feito } });
   const P = (s, o = {}) => parseTaskInput(s, { now, ...o });
-  test('parseTaskInput: projeto, status, prazo e prioridade', () => eq(P('revisar cap 2 #tcc @fazendo >sex !alta'), { text: 'revisar cap 2', tags: ['tcc'], projeto: 'tcc', status: 'fazendo', prazo: '2026-10-02', prioridade: 'alta' }));
-  test('parseTaskInput: nada informado = tudo null', () => eq(P('ligar pro joão'), { text: 'ligar pro joão', tags: [], projeto: null, status: null, prazo: null, prioridade: null }));
+  test('parseTaskInput: projeto, status, prazo e prioridade', () => eq(P('revisar cap 2 #tcc @fazendo >sex !alta'), { text: 'revisar cap 2', tags: ['tcc'], projeto: 'tcc', status: 'fazendo', prazo: '2026-10-02', prioridade: 'alta', novas: [] }));
+  test('parseTaskInput: nada informado = tudo null', () => eq(P('ligar pro joão'), { text: 'ligar pro joão', tags: [], projeto: null, status: null, prazo: null, prioridade: null, novas: [] }));
   test('parseTaskInput: prazo no meio do texto', () => eq(P('ligar >amanhã pro joão').text, 'ligar pro joão'));
-  test('parseTaskInput: #tag que não é projeto fica no texto', () => { const p = P('ler #artigo #tcc'); eq([p.text, p.projeto, p.tags], ['ler #artigo', 'tcc', ['tcc', 'artigo']]); });
+  // v0.14 (pedido do Vini): #tag que não é projeto sai do título; quem chama pergunta se cria o projeto
+  test('parseTaskInput: #tag que não é projeto sai do título e vira novas', () => { const p = P('ler #artigo #tcc'); eq([p.text, p.projeto, p.tags, p.novas], ['ler', 'tcc', ['tcc', 'artigo'], ['artigo']]); });
+  test('fillByRules: #tag nova não chuta projeto (fica sem e pergunta)', () => {
+    const r = fillByRules(P('enviar comprovante de horas #faculdade'), { reg: registry([]), now });
+    eq([r.values.projeto, r.auto.includes('projeto'), r.motivos.projeto], [null, false, { tipo: 'tagnova', tags: ['faculdade'] }]);
+  });
   test('parseTaskInput: aba vira o projeto', () => eq(P('ler artigo', { ctx: 'weg' }).projeto, 'weg'));
   test('parseTaskInput: #projeto explícito vence a aba', () => eq(P('ler #tcc', { ctx: 'weg' }).projeto, 'tcc'));
   test('parseTaskInput: prioridades por nome, letra e número', () => eq(['!alta', '!media', '!b', '!1', '!3'].map(x => P('x ' + x).prioridade), ['alta', 'média', 'baixa', 'alta', 'baixa']));

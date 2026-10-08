@@ -137,7 +137,11 @@ export function lerFinanca(texto, { now = new Date(), pessoas = [], aprendidos =
   const original = String(texto ?? '').normalize('NFC').trim();
   const v = findValor(original);
   if (!v) return null;
-  const d = findDate(v.resto, now);
+  let d = findDate(v.resto, now);
+  // "dia 5" sozinho (sem mês) que já passou neste mês: em dinheiro é o dia 5 DESTE mês (o gasto aconteceu), não o do mês que vem.
+  // Sem isso, "mercado 187 no débito dia 2" (escrito no dia 8) virava futuro → tarefa. "pagar 120 dia 20" continua futuro.
+  const soDia = d && d.data > dayKey(now) && d.trecho.trim().match(/^(?:(?:no|em)\s+)?(?:dia\s+)?(\d{1,2})$/i);
+  if (soDia && +soDia[1] <= now.getDate()) d = { ...d, data: `${dayKey(now).slice(0, 7)}-${pad(+soDia[1])}` };
   let resto = d ? d.resto : v.resto;
   const low = strip(original);
   const ws = palavras(original);
@@ -621,8 +625,9 @@ export function pagamentosFatura(records = []) {
     data: r.data?.data || dayKey(new Date(r.ts)), ts: r.ts,
   }));
 }
-// quando uma fatura sai da conta: no dia em que você disse que pagou, ou sozinha no vencimento
-const pagaEm = (pagas, cartao, mes, vence) => { const p = pagas.get(cartao.id + '|' + mes); return p && p < vence ? p : vence; };
+// quando uma fatura é paga: no dia em que você disse que pagou (antes ou depois do vencimento: o Vini paga no 5º dia útil),
+// ou sozinha no vencimento se você não disse nada
+const pagaEm = (pagas, cartao, mes, vence) => pagas.get(cartao.id + '|' + mes) || vence;
 
 // compra parcelada no boleto (carnê, v0.14): cada parcela vence um mês depois da outra, a partir da data da compra
 //   → [{ valor, data }] · não parcelada → null
@@ -664,11 +669,12 @@ export function saldoConta(entries = [], records = [], now = new Date(), cartoes
     const mes = dayKey(d).slice(0, 7);
     for (const c of cartoes) {
       // com valor escrito ("paguei a fatura 1.680") sai o valor; sem, o total que o app calculou das compras
-      const escrito = pags.find(x => x.cartao === c.id && x.mes === mes && x.valor);
-      const total = escrito ? escrito.valor : parcelasNoMes(entries, mes, cartoes).filter(p => p.cartao.id === c.id).reduce((s, p) => s + p.valor, 0);
+      const escrito = pags.find(x => x.cartao === c.id && x.mes === mes);
+      const total = escrito?.valor || parcelasNoMes(entries, mes, cartoes).filter(p => p.cartao.id === c.id).reduce((s, p) => s + p.valor, 0);
       if (!total) continue;
-      const quando = pagaEm(pagas, c, mes, vencimentoDa(c, mes).vence);
-      if (quando > a.data && quando <= hoje) v -= total;
+      // você disse que pagou: conta se registrou depois da âncora (a mesma regra dos gastos) · senão, sai sozinha no vencimento
+      if (escrito) { if (escrito.ts >= a.ts && escrito.data <= hoje) v -= total; }
+      else { const vence = vencimentoDa(c, mes).vence; if (vence > a.data && vence <= hoje) v -= total; }
     }
   }
   // pagamento com valor sem ciclo conhecido (sem cartão nem /credito): sai da conta quando você registra

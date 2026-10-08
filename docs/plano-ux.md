@@ -58,7 +58,7 @@
 - **Concluir falando**: `hoje concluí t1, t2, t3`, `fiz t2`, `terminei t1 e t4` concluem as tarefas (um passo só no `/desfazer`).
 - **Frase curta pra mudar tarefa**: `t2 sexta`, `t2 05.10`, `t2 amanhã`, `t2 sem prazo`, `t2 feito`, `t2 fazendo`, `t2 esperando` (qualquer status cadastrado). Entra no `/desfazer` e no histórico.
 
-### Etapa 4 · Finanças: conta, crédito e a tela de finanças (seção 6) · detalhes logo abaixo
+### Etapa 4 · Finanças: conta, crédito e a tela de finanças (seção 6) · **feita (v0.14.6)** · detalhes logo abaixo
 
 ### Etapa 4.5 · `/ajuda` enxuta (pedido do Vini, 08/10)
 Hoje o `/ajuda` despeja todos os comandos numa lista só. Vira um menu curto:

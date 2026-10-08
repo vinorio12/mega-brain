@@ -9,7 +9,7 @@ import { taskStats, groupTasks, projectOf, briefing, prioOf, projectsSummary, is
 import { viewGroups } from './views.js';
 import { fmtDue, fmtDia } from './dates.js';
 import { fmtValor } from './valores.js';
-import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes, cartoesDe, proximasFaturas, resumoSaldos, ciclosCredito } from './financas.js';
+import { hudFinancas, fmtMes, FORMA_ROTULO, resumoMes, cartoesDe, proximasFaturas, resumoSaldos, ciclosCredito, parcelasNoMes, cartaoDoGasto, mesDe } from './financas.js';
 import { shortUrl, isAcervo, isLink, safeUrl } from './acervo.js';
 import { deriveState, describeState, readIntent, LISTEN_MS, FAULT_MS } from './state.js';
 import { pessoasDe } from './pessoas.js';
@@ -386,14 +386,17 @@ export function createUI(ctx) {
     $('x-fin-sub').textContent = fmtMes(fin.mes, now);
     const na = '<span class="dim">NA</span>';
     const tom = v => (v < 0 ? 'c-warn' : 'c-act');
+    // v0.14: os dois saldos do Vini (conta e crédito, com barra) + gastos do mês; investido só se tiver · tocar abre /financas
+    const rc = sd.credito;
+    const corCred = rc.resta < 0 || rc.frac > 0.8 ? 'c-warn' : 'c-act';
     $('x-fin').innerHTML = [
       ['conta', sd.conta == null ? na : `<span class="${tom(sd.conta)}">${esc(fmtValor(sd.conta))}</span>`],
-      ['investido', sd.investido == null ? na : esc(fmtValor(sd.investido))],
-      ['cartões', sd.devo == null ? na : `deve ${esc(fmtValor(sd.devo))}`],
-      // o limite livre só aparece quando algum cartão tem limite (linha curta: o painel é estreito)
-      ...(sd.livre != null ? [['livre', `<span class="${tom(sd.livre)}">${esc(fmtValor(sd.livre))}</span>`]] : []),
+      ['crédito', rc.limite == null ? na : `<span class="${corCred}">${rc.resta < 0 ? 'passou ' + esc(fmtValor(-rc.resta)) : 'resta ' + esc(fmtValor(rc.resta))}</span>`],
+      ...(rc.limite == null ? [] : [['', `<span class="dim">${esc(fmtValor(rc.usado))} de ${esc(fmtValor(rc.limite))}</span>`],
+        ['meter', `<li class="meter${rc.resta < 0 || rc.frac > 0.8 ? ' is-warn' : ''}" title="crédito usado ${Math.round((rc.frac || 0) * 100)}%"><i style="width:${Math.min(100, Math.round((rc.frac || 0) * 100))}%"></i></li>`]]),
       ['gastos', fin.vazio ? na : `${esc(fmtValor(fin.gastos))}${fin.vs === null ? '' : ` <span class="${fin.vs > 0 ? 'c-warn' : 'c-act'}">${fin.vs > 0 ? '+' : ''}${fin.vs}%</span>`}`],
-    ].map(([k, v]) => `<li><span>${k}</span><b>${v}</b></li>`).join('');
+      ...(sd.investido != null ? [['investido', esc(fmtValor(sd.investido))]] : []),
+    ].map(([k, v]) => (k === 'meter' ? v : `<li><span>${k}</span><b>${v}</b></li>`)).join('');
 
     // módulos
     const phaseState = Object.fromEntries(PHASES.map(([n, , s]) => [n, s]));
@@ -460,9 +463,9 @@ export function createUI(ctx) {
 
   function renderStage(E, now) {
     const meta = `${DOW[now.getDay()]} ${ddmm(now)} · ${hhmm(now)} · ~${stage.proj ? '/' + stage.proj : ''}`;
-    $('st-title').textContent = stage.kind === 'kanban' ? 'KANBAN' : 'OVERVIEW';
+    $('st-title').textContent = { kanban: 'KANBAN', financas: 'FINANÇAS' }[stage.kind] || 'OVERVIEW';
     $('st-meta').textContent = stage.kind === 'kanban' ? `${stage.proj ? '#' + stage.proj : 'todas'}${stage.status ? ' · @' + stage.status : ''} · ${hhmm(now)}` : meta;
-    const html = stage.kind === 'kanban' ? kanbanHtml(E, now) : overviewHtml(E, now);
+    const html = stage.kind === 'kanban' ? kanbanHtml(E, now) : stage.kind === 'financas' ? financasHtml(E, now) : overviewHtml(E, now);
     // só troca o HTML quando muda: digitar não reinicia a rolagem nem a aba do kanban
     if (html !== stageHtml) { $('st-body').innerHTML = html; stageHtml = html; }
   }
@@ -491,7 +494,15 @@ export function createUI(ctx) {
   }
   // abas do kanban: toque no nome ou deslize o dedo pro lado
   const kbGo = i => { const n = document.querySelectorAll('#st-body .kb-tab').length; if (!n) return; kbTab = (i + n) % n; stageHtml = ''; renderNow(); };
-  $('st-body').addEventListener('click', e => { const b = e.target.closest('.kb-tab'); if (b) kbGo(+b.dataset.tab); });
+  const rodar = cmd => { const i = $('cmd'); i.value = cmd; $('form').requestSubmit(); };
+  $('st-body').addEventListener('click', e => {
+    const b = e.target.closest('.kb-tab');
+    if (b) return kbGo(+b.dataset.tab);
+    const c = e.target.closest('[data-cmd]');
+    if (c) { e.preventDefault(); rodar(c.dataset.cmd); }
+  });
+  // tocar no bloco de finanças do painel abre a tela de finanças
+  document.querySelector('.ctx-fin')?.addEventListener('click', () => rodar('/financas'));
   let touchX = null;
   $('st-body').addEventListener('touchstart', e => { touchX = e.touches[0].clientX; }, { passive: true });
   $('st-body').addEventListener('touchend', e => {
@@ -499,6 +510,64 @@ export function createUI(ctx) {
     const dx = e.changedTouches[0].clientX - touchX; touchX = null;
     if (Math.abs(dx) > 60) kbGo(kbTab + (dx < 0 ? 1 : -1));
   }, { passive: true });
+
+  // FINANÇAS (v0.14): conta e crédito no topo, gastos por categoria (barras), gastos dia a dia e os últimos lançamentos.
+  // Só dado real; sem dado, cada bloco diz como alimentar. Uma série por gráfico (uma cor só); âmbar = atenção, sempre com texto.
+  function financasHtml(E, now) {
+    const recs = S.records || [], cic = ciclosCredito(recs);
+    const sd = resumoSaldos(E, recs, now), rc = sd.credito;
+    const fin = hudFinancas(E, now, { cartoes: cic });
+    const rm = resumoMes(E, fin.mes, { cartoes: cic });
+    const btn = (label, cmd) => `<button type="button" class="chip" data-cmd="${esc(cmd)}">${esc(label)}</button>`;
+    const kpi = (rot, valor, sub = '', extra = '') => `<div class="fz-kpi"><span class="fz-rot">${rot}</span><b class="fz-val">${valor}</b>${sub ? `<span class="fz-sub">${sub}</span>` : ''}${extra}</div>`;
+    const pct = Math.min(100, Math.round((rc.frac || 0) * 100)), alerta = rc.resta < 0 || rc.frac > 0.8;
+    const kpis = [
+      sd.conta == null ? kpi('conta', '<span class="dim">NA</span>', 'diga quanto tem no banco', btn('/saldo 2.500', '/saldo 2.500'))
+        : kpi('conta', `<span class="${sd.conta < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(sd.conta))}</span>`, 'hoje, pelo que você registrou'),
+      rc.limite == null ? kpi('crédito', '<span class="dim">NA</span>', 'quanto você se dá por mês?', btn('/credito 1500', '/credito 1500'))
+        : kpi('crédito', `<span class="${alerta ? 'c-warn' : 'c-act'}">${rc.resta < 0 ? 'passou ' + esc(fmtValor(-rc.resta)) : 'resta ' + esc(fmtValor(rc.resta))}</span>`,
+          `usado ${esc(fmtValor(rc.usado))} de ${esc(fmtValor(rc.limite))}${alerta && rc.resta >= 0 ? ' · quase no limite' : ''}${rc.proxima ? ` · fatura ${esc(fmtValor(rc.proxima.total))} vence ${esc(ddmm(new Date(rc.proxima.vence + 'T12:00')))}` : ''}`,
+          `<div class="fz-meter${alerta ? ' is-warn' : ''}" title="crédito usado ${pct}%"><i style="width:${pct}%"></i></div>`),
+      kpi(`gastos · ${esc(fmtMes(fin.mes, now))}`, fin.vazio ? '<span class="dim">NA</span>' : esc(fmtValor(fin.gastos)),
+        fin.vazio ? 'nada lançado este mês' : `à vista + fatura que vence no mês${fin.vs === null ? '' : ` · ${fin.vs > 0 ? '+' : ''}${fin.vs}% vs ${esc(fmtMes(fin.mesAnterior, now))}`}`),
+      kpi('entradas', fin.entradas ? esc(fmtValor(fin.entradas)) : '<span class="dim">NA</span>', fin.entradas ? `sobra ${esc(fmtValor(fin.saldo))}` : 'escreva "caiu o salário 3.200"'),
+    ].join('');
+
+    // gastos por categoria: barras horizontais, uma cor; o valor escrito ao lado (a fatura paga não entra: não é gasto)
+    const maxCat = Math.max(1, ...rm.porCategoria.map(([, v]) => v));
+    const cats = rm.porCategoria.length ? rm.porCategoria.map(([c, v]) =>
+      `<div class="fz-hbar" title="${esc(c)} · ${esc(fmtValor(v))} · ${Math.round((v / (rm.gastos || 1)) * 100)}% do mês"><span>${esc(c)}</span><span class="fz-track"><i style="width:${Math.max(2, Math.round((v / maxCat) * 100))}%"></i></span><b>${esc(fmtValor(v))}</b></div>`).join('')
+      : '<div class="ov-empty">nada lançado este mês · escreva <span class="c-int">gastei 30 no almoço</span></div>';
+
+    // saídas dia a dia, com a MESMA conta dos "gastos do mês" (os totais batem): à vista no dia da compra + cada fatura no dia
+    // em que vence (a compra no crédito aparece no quadro do crédito) · o mês inteiro: os dias que vêm ficam apagados
+    const [y, m] = fin.mes.split('-').map(Number), hoje = now.getDate(), ultimo = new Date(y, m, 0).getDate();
+    const porDia = Array(ultimo).fill(0);
+    for (const e of E) {
+      if (e.kind !== 'gasto' || mesDe(e) !== fin.mes || !Number.isInteger(e.data?.valor) || (e.data?.forma === 'credito' && cartaoDoGasto(e, cic))) continue;
+      porDia[+String(e.data?.data || e.day).slice(8, 10) - 1] += e.data.valor;
+    }
+    for (const pc of parcelasNoMes(E, fin.mes, cic)) porDia[+pc.vence.slice(8, 10) - 1] += pc.valor;
+    const maxDia = Math.max(1, ...porDia), totalDias = porDia.reduce((t, v) => t + v, 0);
+    const dias = totalDias ? `<div class="fz-days">${porDia.map((v, i) =>
+      `<span class="fz-day${i + 1 === hoje ? ' is-today' : ''}${i + 1 > hoje ? ' is-future' : ''}" title="${pad(i + 1)}/${pad(m)} · ${v ? esc(fmtValor(v)) : 'nada'}${i + 1 > hoje && v ? ' (vai sair)' : ''}"><i style="height:${v ? Math.max(4, Math.round((v / maxDia) * 100)) : 0}%"></i></span>`).join('')}</div>` +
+      `<div class="fz-axis"><span>1</span><span>maior dia ${esc(fmtValor(maxDia))}</span><span>${ultimo}</span></div>`
+      : '<div class="ov-empty">nenhum gasto este mês ainda</div>';
+
+    // últimos lançamentos
+    const ult = E.filter(e => ['gasto', 'entrada'].includes(e.kind)).sort((a, b) => b.ts - a.ts).slice(0, 8);
+    const lanc = ult.length ? ult.map(e => {
+      const d = e.data || {};
+      const quando = d.data ? `${d.data.slice(8, 10)}.${d.data.slice(5, 7)}` : '';
+      return `<div class="fz-lanc"><span class="n">${esc(quando)}</span><span class="t">${esc(d.descricao || e.text)}<span class="dim"> · ${esc(d.categoria || 'sem categoria')}${d.forma ? ' · ' + esc(FORMA_ROTULO[d.forma] || d.forma) : ''}</span></span><b class="${e.kind === 'entrada' ? 'c-act' : ''}">${e.kind === 'entrada' ? '+' : ''}${esc(fmtValor(d.valor))}</b></div>`;
+    }).join('') : '<div class="ov-empty">nenhum lançamento ainda</div>';
+
+    return `<div class="fz"><div class="fz-kpis">${kpis}</div>` +
+      `<div class="fz-grid"><section class="ov-b"><h3>gastos por categoria <span>${esc(fmtMes(fin.mes, now))}</span></h3>${cats}</section>` +
+      `<section class="ov-b"><h3>saídas dia a dia <span>${esc(fmtValor(totalDias))}</span></h3>${dias}</section>` +
+      `<section class="ov-b"><h3>últimos lançamentos <span>${ult.length}</span></h3>${lanc}</section></div>` +
+      `<div class="st-foot">/mes em texto · /credito · /gastos · "paguei a fatura 1.680" · esc fecha</div></div>`;
+  }
 
   // OVERVIEW: blocos que se reorganizam pela largura (5 → 3 → 2 → 1) · título até 2 linhas · dinheiro nunca corta
   function overviewHtml(E, now) {
@@ -547,7 +616,7 @@ export function createUI(ctx) {
     const finHtml = [
       sdo.conta != null ? kv('conta', esc(fmtValor(sdo.conta)), sdo.conta < 0 ? 'c-warn' : 'c-act') : '',
       sdo.investido != null ? kv('investido', esc(fmtValor(sdo.investido))) : '',
-      sdo.devo != null ? kv('cartões', 'deve ' + esc(fmtValor(sdo.devo)), 'c-warn') : '',
+      sdo.credito.limite != null ? kv('crédito', (sdo.credito.resta < 0 ? 'passou ' + esc(fmtValor(-sdo.credito.resta)) : 'resta ' + esc(fmtValor(sdo.credito.resta))), sdo.credito.resta < 0 || sdo.credito.frac > 0.8 ? 'c-warn' : 'c-act', `${esc(fmtValor(sdo.credito.usado))} de ${esc(fmtValor(sdo.credito.limite))}`) : '',
       fin.vazio ? '<div class="ov-empty">nada lançado este mês · escreva <span class="c-int">gastei 30 no almoço</span></div>' : [
         kv('sobra do mês', esc(fmtValor(fin.saldo)), fin.saldo < 0 ? 'c-warn' : 'c-act'),
         kv('gastos', esc(fmtValor(fin.gastos)), '', fin.vs === null ? '' : `${fin.vs > 0 ? '+' : ''}${fin.vs}%`),

@@ -98,7 +98,7 @@ const { term, ui } = ctx;
 /* ================= executar o que foi digitado ================= */
 
 // comandos que não fecham o palco (o /ver e o /tarefas decidem sozinhos: kanban abre, as outras visões fecham)
-const STAGE_FICA = /^\/(overview|ov|geral|tudo|ver|v|visao|tarefas|ts|feito|ok|x|done|reabrir|reopen|mover|mv|editar|ed|e|adiar|prazo|desfazer|undo|apagar|rm|sim|s|yes|nao|não|n|no|t)(\s|$)/i;
+const STAGE_FICA = /^\/(overview|ov|geral|tudo|ver|v|visao|tarefas|ts|feito|ok|x|done|reabrir|reopen|mover|mv|editar|ed|e|adiar|prazo|desfazer|undo|apagar|rm|sim|s|yes|nao|não|n|no|t|cat|forma|pagamento|credito|crédito|saldo|financas|finanças|fin|dinheiro)(\s|$)/i;
 
 async function run(text) {
   // com o palco aberto (overview, kanban): texto livre e comandos de tarefa deixam ele aberto (a tela se atualiza

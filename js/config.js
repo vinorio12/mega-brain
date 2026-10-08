@@ -29,4 +29,5 @@ export const MEMORIA = { dominancia: 0.7, pesoMinimo: 3 };
 // Finanças (Fase 3a, js/financas.js e js/tipos-financas.js).
 //   formaPadrao: forma de pagamento quando você não diz e a memória não sabe · null = o app pergunta (/forma pix)
 //   (troque por 'pix', 'credito', 'debito'... pra ele usar essa e marcar como automática)
-export const FINANCAS = { formaPadrao: null };
+// ciclo: o da fatura do Vini (fecha 29, vence 5), usado pelo /credito quando não há cartão cadastrado
+export const FINANCAS = { formaPadrao: null, ciclo: { fechamento: 29, vencimento: 5 } };

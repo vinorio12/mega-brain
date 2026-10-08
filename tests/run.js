@@ -1729,14 +1729,61 @@ describe('crédito como limite seu, pelo ciclo da fatura (v0.14 · etapa 4)', ()
     const recs = [credito(), anc, paga('2026-10', '2026-10-07', 168000)];
     eq(saldoConta(es, recs, new Date(2026, 9, 8)).valor, 32000);
   });
+  test('conta: /saldo hoje e "paguei a fatura 1.680 ontem" escrito depois: sai (vale a hora em que você registrou)', () => {
+    const anc = { id: 'a', kind: 'saldo', text: 'conta', ts: at(8, 10, 10), data: { onde: 'conta', valor: 279000, data: '2026-10-08' } };
+    const pg = { id: 'p', kind: 'faturapaga', text: 'fatura do cartão', ts: at(8, 10, 11), data: { cartao: CARTAO_CREDITO, mes: '2026-10', valor: 168000, data: '2026-10-07' } };
+    eq(saldoConta([], [credito(), anc, pg], new Date(2026, 9, 8, 12)).valor, 111000);
+  });
   test('conta: boleto parcelado sai parcela por parcela', () => {
     const anc = { id: 'a', kind: 'saldo', text: 'conta', ts: at(1, 10, 8), data: { onde: 'conta', valor: 100000, data: '2026-10-01' } };
     const e = gasto('geladeira', 30000, '2026-10-02', { forma: 'boleto', parcelas: 3 });
     eq([saldoConta([e], [anc], new Date(2026, 9, 8)).valor, saldoConta([e], [anc], new Date(2026, 10, 3)).valor], [90000, 80000]);
   });
+  test('"dia 2" que já passou neste mês é este mês (o gasto aconteceu); dia que ainda vem continua futuro', () => {
+    const now = new Date(2026, 9, 8, 10);
+    eq(['mercado 187,40 no débito dia 2', 'caiu o salário 3.200 dia 5', 'pagar o boleto 120 dia 20'].map(f => { const r = lerFinanca(f, { now }); return [r.data, r.futuro]; }),
+      [['2026-10-02', false], ['2026-10-05', false], ['2026-10-20', true]]);
+    eq(provedorRegras.interpretar('mercado 187,40 no débito dia 2', { now, reg: registry([]) }).tipo, 'gasto');
+  });
   test('"paguei cartão de crédito 1.680" é pagamento; "paguei 1.680 no cartão" é compra', () => {
     eq(['paguei cartão de crédito 1.680', 'paguei o cartão 1.680', 'paguei a fatura 1.680', 'fatura 1.680 paga', 'paguei 1.680 no cartão', 'paguei o almoço no cartão'].map(ehPagamentoFatura),
       [true, true, true, true, false, false]);
+  });
+});
+
+describe('crédito e fatura paga na tela (v0.14 · etapa 4)', () => {
+  const T = { id: 'T', elapsed: () => 1 };
+  const plain = s => s.term.text().replace(/<[^>]+>/g, '');
+  test('/credito 1500 grava o crédito com o ciclo padrão (fecha 29, vence 5); compra no crédito diz quanto resta', async () => {
+    const s = setup([]);
+    s.S.detalhes = false;
+    await s.run('/credito 1500');
+    eq(creditoDe(s.S.records), { valor: 150000, fechamento: 29, vencimento: 5 });
+    await s.ctx.commands.capturar('ifood 54,90 no crédito', T);
+    ok(/✓ gasto f1 · R\$ 54,90 .*resta R\$ 1\.445,10/.test(plain(s)), plain(s));
+    await s.run('/desfazer');
+    await s.run('/desfazer');
+    eq(creditoDe(s.S.records), null);
+  });
+  test('"paguei a fatura 1.680" sem cartão: fatura paga, não é gasto, sai da conta', async () => {
+    const s = setup([]);
+    s.S.detalhes = false;
+    await s.run('/saldo 2.000');
+    await new Promise(r => setTimeout(r, 3));
+    await s.ctx.commands.capturar('paguei cartão de crédito 1.680', T);
+    eq([s.S.records.filter(e => e.kind === 'faturapaga').map(e => e.data.valor), s.S.entries.filter(e => e.kind === 'gasto').length], [[168000], 0]);
+    ok(/fatura paga · R\$ 1\.680,00 saiu da conta/.test(plain(s)), plain(s));
+    eq(resumoSaldos(s.S.entries, s.S.records).conta, 32000);
+  });
+  test('/mes mostra conta, crédito e a fatura paga fora dos gastos', async () => {
+    const s = setup([]);
+    await s.run('/credito 1500');
+    await s.ctx.commands.capturar('gastei 40 no mercado no débito', T);
+    await s.ctx.commands.capturar('paguei a fatura 1.000', T);
+    s.term.out.length = 0;
+    await s.ctx.commands.get('mes').run('');
+    const txt = plain(s);
+    ok(/crédito\s*usado R\$ 0,00 de R\$ 1\.500,00/.test(txt) && /sobra do mês/.test(txt) && /fatura paga\s*R\$ 1\.000,00/.test(txt) && !/outros/.test(txt), txt);
   });
 });
 
@@ -1787,7 +1834,7 @@ describe('/saldo, /investimentos, limite e fatura paga na tela (etapa 3 · Fase 
     ok(/deve R\$ 300,00 · livre R\$ 4\.700,00 de R\$ 5\.000,00/.test(plain(s)), plain(s));
     await s.ctx.commands.capturar('paguei a fatura do nubank', T);
     eq([s.S.records.some(e => e.kind === 'faturapaga'), s.S.entries.filter(e => e.kind === 'gasto').length], [true, 1]);
-    ok(/↳ fatura nubank/.test(plain(s)) && /não é gasto/.test(plain(s)), plain(s));
+    ok(/fatura paga/.test(plain(s)) && /não é gasto|não mexi na conta/.test(plain(s)), plain(s)); // v0.14: fatura vazia no app pede o valor
     await s.run('/cartao nubank limite 6 mil');
     eq(cartoesDe(s.S.records)[0].limite, 600000);
   });

@@ -15,6 +15,7 @@ import { parseMonth } from '../views.js';
 import { seedId } from '../tasks.js';
 import { decidirCategoria } from '../tipos-financas.js';
 import { previa } from '../interpretar.js';
+import { FINANCAS } from '../config.js';
 import { saldoConta, investimentosPorLugar, devoNoCartao, chaveLugar, recorrentesDe, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, dataNoMes, eDaRecorrente, mesDe, cartoesDe, cartaoPadrao, cartaoDoGasto, vencimentoDa, proximaFatura, parcelasDe, parcelasNoMes, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos, ciclosCredito, creditoDe, resumoCredito, faturaAPagar, pagamentosFatura, CARTAO_CREDITO } from '../financas.js';
 
 export const KINDS_FINANCAS = ['gasto', 'entrada', 'transferencia', 'rendimento'];
@@ -106,7 +107,15 @@ export function criarFinancas(h) {
       c.forma ? esc(formaTxt(c.forma)) + (cartao ? ' ' + esc(cartao.nome) : '') : '',
       c.lugar ? esc(c.lugar) : '', ...nomes.map(esc),
       esc(fmtDia(c.data)),
+      ...(r.tipo === 'gasto' && (c.forma === 'credito' || (c.forma === 'boleto' && c.parcelas)) ? [restaCredito()] : []),
     ];
+  }
+  // depois de uma compra no crédito: "resta R$ 805,10" · âmbar passando de 80% · "passou R$ 40,00 do seu crédito"
+  function restaCredito() {
+    const rc = resumoCredito(S.entries, S.records || []);
+    if (rc.limite == null) return '';
+    if (rc.resta < 0) return `<span class="c-warn">passou ${esc(fmtValor(-rc.resta))} do seu crédito</span>`;
+    return `<span class="${rc.frac > 0.8 ? 'c-warn' : 'dim'}">resta ${esc(fmtValor(rc.resta))}</span>`;
   }
 
   // Cada pergunta aparece na hora, com botões, e entra na fila S.perguntas (devolvida aqui): assim "débito" ou "saúde"
@@ -196,14 +205,20 @@ export function criarFinancas(h) {
       return term.say(`nada lançado em ${esc(fmtMes(mes, now))} · escreva normal: <span class="c-int">gastei 45 no ifood</span> · <span class="c-int">caiu o salário 3.200</span>`);
     }
     const comFatura = r.faturas.length > 0;
+    // v0.14: os dois saldos do Vini no topo (conta e crédito), e a "sobra" do mês (entradas − gastos) logo abaixo
+    const conta = saldoConta(S.entries, S.records || [], now), rc = resumoCredito(S.entries, S.records || [], now);
+    const pagas = pagamentosFatura(S.records || []).filter(x => x.data.slice(0, 7) === mes);
     h.table([
-      ['saldo', `<span class="${r.saldo < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(r.saldo))}</span> <span class="dim">entradas − ${comFatura ? 'à vista − faturas' : 'gastos'} · não é o saldo do banco</span>`],
+      ['conta', conta ? `<span class="${conta.valor < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(conta.valor))}</span> <span class="dim">hoje</span>` : '<span class="dim">NA ·</span> <span class="c-int">/saldo 2.500</span> <span class="dim">acerta com o banco</span>'],
+      ['crédito', linhaCredito(rc)],
+      ['sobra do mês', `<span class="${r.saldo < 0 ? 'c-warn' : 'c-act'}">${esc(fmtValor(r.saldo))}</span> <span class="dim">entradas − ${comFatura ? 'à vista − faturas' : 'gastos'} · não é o saldo do banco</span>`],
       ['entradas', `${esc(fmtValor(r.entradas))} <span class="dim">· ${r.n.entradas}</span>`],
       ['gastos', `${esc(fmtValor(r.gastos))} <span class="dim">· ${r.n.gastos}${vs === null ? '' : ` · vs ${esc(fmtMes(mesAnterior(mes), now))} ${vs > 0 ? '+' : ''}${vs}%`}</span>`],
       ...(comFatura ? [
         ['à vista', `${esc(fmtValor(r.aVista))} <span class="dim">pix, débito, dinheiro, boleto</span>`],
         ...r.faturas.map(f => [`fatura ${esc(f.nome)}`, `${esc(fmtValor(f.total))} <span class="dim">vence ${esc(fmtDia(f.vence, now))} · ${f.itens} ${f.itens === 1 ? 'item' : 'itens'} · /fatura ${esc(f.nome)}</span>`]),
       ] : []),
+      ...(pagas.length ? [['fatura paga', `${pagas.some(x => x.valor) ? esc(fmtValor(pagas.reduce((t, x) => t + (x.valor || 0), 0))) : pagas.length + 'x'} <span class="dim">saiu da conta · não é gasto (as compras já contaram)</span>`]] : []),
     ]);
     if (r.porCategoria.length) {
       term.print('por categoria', 'tgrp');
@@ -217,7 +232,7 @@ export function criarFinancas(h) {
     const lem = mes === dayKey(now).slice(0, 7) ? lembretesVariaveis(recorrentesDe(S.records || []), S.entries, now) : [];
     const notas = [
       recDoMes.length || lem.length ? `↻ recorrentes ${esc(fmtValor(recDoMes.reduce((s, e) => s + (e.data?.valor || 0), 0)))} (${recDoMes.length})${lem.length ? ` · <span class="c-warn">falta lançar: ${lem.map(l => esc(l.rec.nome)).join(', ')}</span>` : ''} · <span class="c-int">/recorrentes</span>` : '',
-      r.provisorio ? `crédito ${esc(fmtValor(r.credito))} conta no mês da compra (provisório até cadastrar cartões · <span class="c-int">/cartao novo nubank fecha 3 vence 10</span>)` : '',
+      r.provisorio ? `crédito ${esc(fmtValor(r.credito))} conta no mês da compra (provisório: <span class="c-int">/credito 1500</span> diz o seu crédito e o ciclo da fatura)` : '',
       r.semForma ? `${r.semForma} sem forma · <span class="c-int">/gastos</span> mostra · <span class="c-int">/forma f3 pix</span>` : '',
       r.semCategoria ? `${r.semCategoria} sem categoria · <span class="c-int">/cat f3 alimentação</span>` : '',
       r.transferencias.para || r.transferencias.de ? `transferências: ${r.transferencias.para ? esc(fmtValor(r.transferencias.para)) + ' guardado' : ''}${r.transferencias.para && r.transferencias.de ? ' · ' : ''}${r.transferencias.de ? esc(fmtValor(r.transferencias.de)) + ' resgatado' : ''} (não mexem no saldo)` : '',
@@ -603,11 +618,58 @@ export function criarFinancas(h) {
     term.print(`<span class="c-int">↳ saldo</span> · ${esc(nome)} <span class="c-act">${esc(fmtValor(r.campos.valor))}</span> · ${resto} <span class="dim">· /saldo · /desfazer</span>`, 'auto');
   }
   // "↳ fatura nubank (vence 10.11) paga · R$ 420,00 saiu da conta"
+  // "✓ fatura paga (vence 05.10) · R$ 1.680,00 saiu da conta · não é gasto · crédito: resta R$ 1.500,00"
   function entendiFatura(r) {
-    const now = new Date(), c = cartoesDe(S.records || [], { todos: true }).find(x => x.id === r.campos.cartao);
-    if (!c) return;
-    const total = parcelasNoMes(S.entries, r.campos.mes, opts().cartoes).filter(p => p.cartao.id === c.id).reduce((s, p) => s + p.valor, 0);
-    term.print(`<span class="c-int">↳ fatura</span> <span class="c-act">${esc(c.nome)}</span> <span class="dim">(vence ${esc(fmtDia(vencimentoDa(c, r.campos.mes).vence, now))})</span> paga · ${esc(fmtValor(total))} saiu da conta <span class="dim">· não é gasto (as compras já contaram) · /desfazer</span>`, 'auto');
+    const now = new Date(), c = ciclosCredito(S.records || []).find(x => x.id === r.campos.cartao);
+    const calc = c && r.campos.mes ? parcelasNoMes(S.entries, r.campos.mes, opts().cartoes).filter(p => p.cartao.id === c.id).reduce((t, p) => t + p.valor, 0) : null;
+    const valor = r.campos.valor || calc;
+    const desfazer = h.chips([h.chip('desfazer', '/desfazer', 'is-undo')]);
+    if (!valor) return term.print(`<span class="c-warn">↳ fatura paga</span> <span class="dim">· sem valor e sem compras no app, não mexi na conta · escreva o valor:</span> <span class="c-int">paguei a fatura 1.680</span>${desfazer}`, 'auto');
+    const qual = c && r.campos.mes ? ` <span class="dim">(${c.id === CARTAO_CREDITO ? '' : esc(c.nome) + ' · '}vence ${esc(fmtDia(vencimentoDa(c, r.campos.mes).vence, now))})</span>` : '';
+    // pagou mais do que o app sabia: compras que não foram lançadas (sem bronca: só o número)
+    const dif = r.campos.valor && calc != null && calc > 0 && r.campos.valor !== calc
+      ? ` <span class="dim">· o app tinha ${esc(fmtValor(calc))} de compras nessa fatura${r.campos.valor > calc ? ` (${esc(fmtValor(r.campos.valor - calc))} não estão no app)` : ''}</span>` : '';
+    const rc = resumoCredito(S.entries, S.records || [], now);
+    const libera = rc.limite != null ? ` · crédito: resta ${esc(fmtValor(rc.resta))}` : '';
+    term.print(`<span class="c-act">✓</span> fatura paga${qual} · <span class="c-act">${esc(fmtValor(valor))}</span> saiu da conta <span class="dim">· não é gasto (as compras já contaram)${libera}</span>${dif}${desfazer}`, 'res');
+  }
+
+  // "usado R$ 640,00 de R$ 1.500,00 · resta R$ 860,00 ████░░░░░░" (âmbar passando de 80%, com o texto junto)
+  function linhaCredito(rc) {
+    if (rc.limite == null) return '<span class="dim">NA ·</span> <span class="c-int">/credito 1500</span> <span class="dim">diz quanto você se dá por mês</span>';
+    const f = rc.frac || 0, tom = rc.resta < 0 || f > 0.8 ? 'c-warn' : 'c-act';
+    return `usado ${esc(fmtValor(rc.usado))} de ${esc(fmtValor(rc.limite))} · <span class="${tom}">${rc.resta < 0 ? 'passou ' + esc(fmtValor(-rc.resta)) : 'resta ' + esc(fmtValor(rc.resta))}</span> <span class="c-int">${barra(Math.min(1, f))}</span>${f > 0.8 && rc.resta >= 0 ? ' <span class="c-warn">quase no limite</span>' : ''}`;
+  }
+
+  // /credito 1500 [fecha 29 vence 5] · /credito (mostra)
+  async function credito(raw, t) {
+    const now = new Date(), txt = String(raw).trim();
+    if (!txt) return mostrarCredito();
+    const v = findValor(txt.replace(/(?:fecha|vence)\s+(?:dia\s+)?\d{1,2}/gi, ' '));
+    if (!v) throw usage('credito', '1500 · 1500 fecha 29 vence 5');
+    const fm = txt.match(/fecha\s+(?:dia\s+)?(\d{1,2})/i), vm = txt.match(/vence\s+(?:dia\s+)?(\d{1,2})/i);
+    const antes = creditoDe(S.records || []), temCartao = cartoesDe(S.records || []).length > 0;
+    // o ciclo: o que você escreveu · senão o de antes · senão (sem cartão) o padrão (fecha 29, vence 5)
+    const fechamento = fm ? +fm[1] : antes?.fechamento || (temCartao ? null : FINANCAS.ciclo.fechamento);
+    const vencimento = vm ? +vm[1] : antes?.vencimento || (temCartao ? null : FINANCAS.ciclo.vencimento);
+    const e = await ctx.store.add({ kind: 'credito', text: 'crédito', tags: [], ts: Date.now(), day: dayKey(now), data: { valor: v.centavos, fechamento, vencimento } });
+    S.undo.push({ label: 'crédito', items: [], created: [e.id] });
+    S.lastLatency = t.elapsed();
+    term.ok('fin', `crédito · <span class="c-act">${esc(fmtValor(v.centavos))}</span>${temCartao ? ' <span class="dim">· o ciclo vem do cartão</span>' : ` <span class="dim">· a fatura fecha dia ${fechamento} e vence dia ${vencimento}</span>`} <span class="c-meta">· /desfazer volta · ${t.id}</span>`);
+    mostrarCredito();
+    ctx.ui.pulse('act');
+  }
+  function mostrarCredito() {
+    const now = new Date(), rc = resumoCredito(S.entries, S.records || [], now), c = creditoDe(S.records || []);
+    term.print(`── crédito ${'─'.repeat(12)}`, 'sep');
+    if (rc.limite == null) return term.say('você ainda não disse quanto se dá de crédito · <span class="c-int">/credito 1500</span> (a fatura fecha dia 29 e vence dia 5; outro ciclo: <span class="c-int">/credito 1500 fecha 29 vence 5</span>)');
+    h.table([
+      ['crédito', `${esc(fmtValor(rc.limite))}${rc.fonte === 'cartao' ? ' <span class="dim">(o limite dos cartões · /credito 1500 diz o seu)</span>' : ''}`],
+      ['agora', linhaCredito(rc)],
+      ...(rc.proxima ? [['próxima fatura', `${esc(fmtValor(rc.proxima.total))} <span class="dim">vence ${esc(fmtDia(rc.proxima.vence, now))}</span>`]] : []),
+      ...(c?.fechamento && !cartoesDe(S.records || []).length ? [['ciclo', `fecha dia ${c.fechamento} · vence dia ${c.vencimento}`]] : []),
+    ]);
+    term.print('<span class="dim">compra no crédito ocupa o valor todo (parcelada também) · cada fatura paga devolve a parte dela · "paguei a fatura 1.680" registra · /financas mostra a tela</span>');
   }
 
   // /saldo 2.500 · /saldo poupança 5.000 · /saldo xp 3.000 (qualquer lugar)
@@ -788,7 +850,7 @@ export function criarFinancas(h) {
 
   const defs = [
     {
-      name: 'mes', alias: ['mês', 'fin', 'financas', 'finanças', 'grana'], data: true, args: '[mês: -1 | 9 | 2026-09]',
+      name: 'mes', alias: ['mês', 'grana'], data: true, args: '[mês: -1 | 9 | 2026-09]',
       desc: 'o mês em dinheiro: saldo, entradas, gastos por categoria e comparação com o mês passado · ex: /mes · /mes -1',
       run(arg) {
         const a = String(arg).trim();
@@ -806,6 +868,15 @@ export function criarFinancas(h) {
       name: 'entradas', alias: ['entrada', 'receitas'], data: true, args: '[categoria] [mês]',
       desc: 'as entradas do mês, numeradas f1, f2... · ex: /entradas · /entradas salário',
       run(arg) { mostrarLista('entrada', arg); },
+    },
+    {
+      name: 'financas', alias: ['finanças', 'fin', 'dinheiro'], data: true, desc: 'a tela de finanças: conta, crédito, gastos por categoria e dia a dia · esc fecha',
+      run() { ctx.ui.openStage('financas'); term.say('finanças abertas · <span class="c-int">esc</span> fecha · /mes mostra o mesmo em texto'); },
+    },
+    {
+      name: 'credito', alias: ['crédito'], data: true, async: true, exec: true, args: '[valor] [fecha 29 vence 5]',
+      desc: 'o crédito que você se dá: usado, resta e a próxima fatura · /credito 1500 define (vale até mudar)',
+      async run(arg, signal, t) { await credito(arg, t); },
     },
     {
       name: 'cat', data: true, async: true, exec: true, args: '<categoria> [f3]',

@@ -278,6 +278,41 @@ ul, ol, dl, dd { margin: 0; padding: 0; list-style: none; }
 .ov-b a { color: var(--int); text-decoration: none; }
 .ov-b a:hover { text-decoration: underline; }
 
+/* bloco de finanças do painel: tocável (abre /financas) · barra do crédito usado */
+.ctx-fin { cursor: pointer; border-radius: var(--r); margin: -4px -6px; padding: 4px 6px; transition: background .15s; }
+.ctx-fin:hover, .ctx-fin:focus-visible { background: color-mix(in srgb, var(--int) 6%, transparent); outline: none; }
+.list li.meter { display: block; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 2px; }
+.list li.meter i, .fz-meter i { display: block; height: 100%; background: var(--act); border-radius: 2px; }
+.list li.meter.is-warn i, .fz-meter.is-warn i { background: var(--warn); }
+
+/* FINANÇAS no palco (v0.14): números no topo, barras de uma cor, valor sempre escrito (nunca corta) */
+.fz { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.fz-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 12px; }
+.fz-kpi { display: grid; gap: 4px; align-content: start; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg-1); }
+.fz-rot { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--meta); }
+.fz-val { font-size: 20px; font-weight: 500; white-space: nowrap; letter-spacing: .02em; }
+.fz-sub { font-size: 11.5px; color: var(--meta); }
+.fz-kpi .chip { justify-self: start; margin-top: 4px; }
+.fz-meter { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+.fz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 22px 26px; align-content: start; }
+.fz-hbar { display: grid; grid-template-columns: minmax(0, 11ch) minmax(40px, 1fr) auto; gap: 1.2ch; align-items: center; font-size: 12.5px; }
+.fz-hbar > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tx); }
+.fz-hbar b { font-weight: 400; white-space: nowrap; }
+.fz-track { height: 8px; background: color-mix(in srgb, var(--line) 60%, transparent); border-radius: 4px; overflow: hidden; }
+.fz-track i { display: block; height: 100%; background: var(--act); border-radius: 0 4px 4px 0; }
+.fz-hbar:hover .fz-track i { filter: brightness(1.25); }
+.fz-days { display: flex; align-items: flex-end; gap: 2px; height: 96px; padding-top: 4px; border-bottom: 1px solid var(--line-2); }
+.fz-day { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 0; cursor: default; }
+.fz-day i { display: block; width: 100%; background: var(--act); border-radius: 4px 4px 0 0; opacity: .85; }
+.fz-day:hover i { opacity: 1; filter: brightness(1.2); }
+.fz-day.is-today i { background: var(--int); }
+.fz-day.is-future i { opacity: .35; }
+.fz-axis { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--meta); padding-top: 4px; }
+.fz-lanc { display: grid; grid-template-columns: 5ch minmax(0, 1fr) auto; gap: 1.2ch; font-size: 12.5px; align-items: baseline; }
+.fz-lanc .n { color: var(--meta-2); font-size: 11px; }
+.fz-lanc .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fz-lanc b { font-weight: 400; white-space: nowrap; }
+
 /* kanban no palco: uma coluna por status · no celular, abas */
 .kb { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .kb-tabs { display: none; }
@@ -609,6 +644,12 @@ a.acard:hover { border-color: color-mix(in srgb, var(--int) 50%, transparent); }
   .field-strip span { color: var(--meta); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .field.is-boot .field-strip { display: none; }
   .stage { padding: 10px 12px 6px; }
+  /* finanças no celular: dois números por linha (o crédito ocupa a linha toda: tem a barra) */
+  .fz-kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .fz-kpi { padding: 10px; }
+  .fz-kpi:nth-child(2) { grid-column: 1 / -1; order: -1; }
+  .fz-val { font-size: 17px; }
+  .fz-sub { font-size: 11px; }
   .st-body { padding-top: 10px; }
   .app.stage-open .out { max-height: 4.4em; }
   .ov-grid { gap: 18px; }

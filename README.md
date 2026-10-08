@@ -121,7 +121,7 @@ Abra http://localhost:5173. Os testes ficam em http://localhost:5173/tests/.
 | `js/terminal.js`, `js/commands.js` | o terminal e a linguagem de comandos |
 | `js/interpretar.js`, `js/provedor-regras.js`, `js/provedor-ia.js` | o intérprete: regras, IA (desligada) e a ordem entre eles |
 | `js/tipos.js`, `js/tipos-base.js`, `js/tipos-financas.js`, `js/tipos-corpo.js` | contrato + registro de tipos (nota, tarefa, link, trecho, gasto, entrada, transferência, treino) |
-| `js/financas.js`, `js/comandos-financas.js` | finanças: leitura da frase, categorias, o mês e o saldo · os comandos e telas de dinheiro |
+| `js/financas.js`, `js/comandos/financas.js` | finanças: leitura da frase, categorias, o mês e o saldo · os comandos e telas de dinheiro |
 | `js/dates.js`, `js/valores.js` | datas faladas e valores em reais (centavos) |
 | `js/historico.js`, `js/aprendizado.js`, `js/contexto.js` | histórico de mudanças, frases não entendidas e o resumo pra IA |
 | `js/pessoas.js`, `js/memoria.js` | pessoas reconhecidas na frase e a memória que aprende projeto, categoria e forma pelo uso |

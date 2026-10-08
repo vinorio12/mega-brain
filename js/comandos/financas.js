@@ -1,19 +1,21 @@
-// Comandos e telas de finanças (Fase 3a). Separado do commands.js, que já está grande.
+// Comandos e telas de finanças (Fases 3a–3d): /mes, /gastos, /entradas, /cat, /forma, /editar f3, /fatura, /cartao,
+// /recorrente, /saldo, /investimentos. As contas ficam em js/financas.js (funções puras); aqui é só a tela.
+// Uma das áreas da linguagem de comandos: js/commands.js junta todas (veja o comentário de lá).
 //
 // O commands.js chama criarFinancas(h) e junta os `defs` daqui na lista dele (aparecem sozinhos no /ajuda e no Tab).
-//   h = { S, term, ctx, usage, mem }  · S = estado do app · ctx.store grava (com histórico) · mem() = a memória do momento
+//   h = { S, term, ctx, usage, mem, ictx, table }  · S = estado do app · ctx.store grava (com histórico) · mem() = a memória do momento
 //
 // Números dos lançamentos: f1, f2... (da última lista; um lançamento novo entra no fim), como t1 nas tarefas.
 // Perguntas de dinheiro não travam e não usam /sim: cada uma tem o seu comando (/cat, /forma), então aparecem na hora.
 
-import { esc, hl, dayKey, CmdError } from './util.js';
-import { fmtValor, parseValor, findValor } from './valores.js';
-import { fmtDia, findDate } from './dates.js';
-import { parseMonth } from './views.js';
-import { seedId } from './tasks.js';
-import { decidirCategoria } from './tipos-financas.js';
-import { previa } from './interpretar.js';
-import { saldoConta, investimentosPorLugar, devoNoCartao, chaveLugar, recorrentesDe, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, dataNoMes, eDaRecorrente, mesDe, cartoesDe, cartaoPadrao, cartaoDoGasto, vencimentoDa, proximaFatura, parcelasDe, parcelasNoMes, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from './financas.js';
+import { esc, hl, dayKey, CmdError } from '../util.js';
+import { fmtValor, parseValor, findValor } from '../valores.js';
+import { fmtDia, findDate } from '../dates.js';
+import { parseMonth } from '../views.js';
+import { seedId } from '../tasks.js';
+import { decidirCategoria } from '../tipos-financas.js';
+import { previa } from '../interpretar.js';
+import { saldoConta, investimentosPorLugar, devoNoCartao, chaveLugar, recorrentesDe, pendentesRecorrentes, lancamentoRecorrente, lembretesVariaveis, dataNoMes, eDaRecorrente, mesDe, cartoesDe, cartaoPadrao, cartaoDoGasto, vencimentoDa, proximaFatura, parcelasDe, parcelasNoMes, lerFinanca, seedCategorias, categoriasDe, acharCategoria, acharForma, FORMAS, FORMA_ROTULO, resumoMes, mesAnterior, fmtMes, variacao, barra, lancamentos } from '../financas.js';
 
 export const KINDS_FINANCAS = ['gasto', 'entrada', 'transferencia', 'rendimento'];
 export const isFinanca = e => KINDS_FINANCAS.includes(e?.kind);
